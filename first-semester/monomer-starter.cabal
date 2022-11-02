@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.35.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -19,6 +19,7 @@ extra-source-files:
 executable app
   main-is: Main.hs
   other-modules:
+      Board
       Paths_monomer_starter
   hs-source-dirs:
       src

@@ -15,22 +15,35 @@ import Board
 
 import qualified Data.Text as T
 import qualified Monomer.Lens as L
+import Monomer.Main.Platform (initSDLWindow)
+import GHC.Base (VecElem(Int16ElemRep))
 
+-- the model representation that indicates the state of the application
+-- information could be stored here that models the subject
 data AppModel = AppModel {
-  _clickCount :: Int,
+  -- the integer that identifies which player is currently playing, could also defines the start and end of the game
   _turnS :: Int,
+  -- the string that represents the winning player's color
   _winner :: String,
-  _boardE :: [RowBoardState]
+  -- the representation of the board
+  _boardE :: [[Int]],
+  -- the players of the game
+  _playersAmount :: Int
 } deriving (Eq, Show)
 
+-- the event type, representing different action the handler could react to
 data AppEvent
+  -- the initialize of the model status
   = AppInit
-  | AppIncrease
+  -- the round change between players
   | AppTurnChange
+  | ButtonClick
+  | DoNothing
   deriving (Eq, Show)
 
 makeLenses 'AppModel
 
+-- produce the title text
 printText :: AppModel -> String
 printText model
   | model ^. turnS == -1 = "Weclome"
@@ -39,51 +52,53 @@ printText model
   | model ^. turnS == 3 = "Green's turn"
   | otherwise = model ^. winner ++ " wins"
 
+-- construct the user interface layout of the application
 buildUI
   :: WidgetEnv AppModel AppEvent
   -> AppModel
   -> WidgetNode AppModel AppEvent
 buildUI wenv model = widgetTree where
 
-  colouredLabel :: BoardType -> WidgetNode s e
-  colouredLabel ch 
-    | ch == U = spacer
-    | otherwise = label (T.pack $ show ch)
-      `styleBasic` [styleIf (ch == R) (textColor red),
-                    styleIf (ch == G) (textColor green),
-                    styleIf (ch == B) (textColor blue),
-                    styleIf (ch == E) (textColor white)]
+  -- render the color of different pieces on the board based on the labels
+  colouredLabel :: Int -> WidgetNode s AppEvent
+  colouredLabel ch
+    | ch == 0 = spacer -- button "00" DoNothing `styleBasic` [radius 25]
+    | otherwise = button_ (T.pack $ show ch) DoNothing [ellipsis]
+                  `styleBasic` [radius 30, bgColor white,
+                                styleIf (ch `elem` threePlayerFirst)(bgColor red),
+                                styleIf (ch `elem` threePlayerSecond) (bgColor green),
+                                styleIf (ch `elem` threePlayerThrid) (bgColor blue),
+                                styleIf (ch `elem` (threePlayerFirst ++ threePlayerSecond ++ threePlayerThrid))(textColor white)
+                                ]`nodeKey` showt ch
 
-  -- display an element in a row of the board
-  makeOneState :: [Int] -> [BoardType] -> WidgetNode s e
-  makeOneState [] rowState = label "\n"
-  makeOneState (i:idx) rowState = hstack[
-      colouredLabel $ rowState !! i,
-      spacer,
-      makeOneState idx rowState]
+  -- -- display a row of elements on the board
+  makeRowState :: [Int] -> WidgetNode s AppEvent
+  makeRowState row = hgrid(colouredLabel <$> row) -- render the rows of button
 
-  makeRowState :: [Int] -> [Int] -> [RowBoardState] -> WidgetNode s e
-  makeRowState _ [] boardState = label ""
-  makeRowState rs (i:idx) boardState = vstack[
-    makeOneState rs (boardState !! i),
-    spacer,
-    spacer,
-    makeRowState rs idx boardState]
-  -- display a row's elements of a board
-  -- makeRowState idx boardState = hgrid $ zipWith makeOneState [0..] (boardState !! idx)
-
+  -- call functions to render the application
   widgetTree = vstack [
-      box $ label_ (T.pack $ printText model) [ellipsis]
-      `styleBasic` [textFont "Bold", textSize 40],
-      spacer,
-      box $ makeRowState [0..boardWidth-1] [0..boardHeight-1] (model ^. boardE)
-      -- hstack [
-      --   label $ "Click count: " <> showt (model ^. clickCount),
+      -- print the title
+      -- box $ label_ (T.pack $ printText model) [ellipsis] `styleBasic` [textFont "Bold", textSize 40],
+      -- spacer,
+      -- -- label $ "Click count: " <> showt (model ^. turnS),
+      -- -- display the board
+      -- box $ hstack[
+      --   vstack[
+      --     button "New Game" DoNothing,
+      --     hstack[
+      --       labeledRadio "3" 3 playersAmount,
+      --       labeledRadio "4" 4 playersAmount,
+      --       labeledRadio "6" 6 playersAmount
+      --     ]
+      --   ],
       --   spacer,
-      --   button "Increase count" AppIncrease
-      -- ]
+      --   button "End Game" DoNothing
+      -- ],
+      -- spacer,
+      vgrid_ [childSpacing_ 11] (makeRowState <$> (model ^. boardE)) -- render the whole board state row by row
     ] `styleBasic` [padding 10]
 
+-- declare how the events are handled respectively
 handleEvent
   :: WidgetEnv AppModel AppEvent
   -> WidgetNode AppModel AppEvent
@@ -92,9 +107,11 @@ handleEvent
   -> [AppEventResponse AppModel AppEvent]
 handleEvent wenv node model evt = case evt of
   AppInit -> []
-  AppIncrease -> [Model (model & clickCount +~ 1)]
   AppTurnChange -> []
+  ButtonClick -> [Model (model & turnS +~ 1)]
+  DoNothing -> []
 
+-- load the configuration options as well as define the initial state of the application
 main :: IO ()
 main = do
   startApp model handleEvent buildUI config
@@ -107,11 +124,14 @@ main = do
       appFontDef "Medium" "./assets/fonts/Roboto-Medium.ttf",
       appFontDef "Bold" "./assets/fonts/Roboto-Bold.ttf",
       appFontDef "Italic" "./assets/fonts/Roboto-Italic.ttf",
+      -- appWindowResizable False, -- disable resizing windows
+      -- appWindowState $ MainWindowNormal (800, 700),
       appInitEvent AppInit
       ]
+    -- provide an initial model of the application
     model = AppModel {
-      _clickCount = 0,
       _turnS = -1,
       _winner = "",
-      _boardE = myList
+      _boardE = myList2,
+      _playersAmount = 3
     }
