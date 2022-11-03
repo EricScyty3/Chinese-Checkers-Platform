@@ -64,8 +64,8 @@ buildUI wenv model = widgetTree where
     | otherwise = button_ (T.pack $ show $ getIndex ch) ButtonClick [ellipsis]
                   `styleBasic` [radius 30, bgColor white,
                                 styleIf (isRed ch)(bgColor red),
-                                styleIf (isBlue ch) (bgColor green),
-                                styleIf (isGreen ch) (bgColor blue),
+                                styleIf (isBlue ch) (bgColor blue),
+                                styleIf (isGreen ch) (bgColor green),
                                 styleIf (isOccupied ch == Just True)(textColor white)
                                 ]--`nodeKey` showt ch
 
