@@ -4,12 +4,53 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Main where
-
+-- module Main where
 import Control.Lens
 import Data.Maybe
 import Data.Text (Text)
 import Monomer
+    ( nodeKey,
+      nodeVisible,
+      darkTheme,
+      blue,
+      green,
+      orange,
+      purple,
+      red,
+      white,
+      yellow,
+      startApp,
+      appFontDef,
+      appInitEvent,
+      appTheme,
+      appWindowIcon,
+      appWindowTitle,
+      styleIf,
+      box,
+      box_,
+      hgrid,
+      vgrid_,
+      vstack,
+      button,
+      button_,
+      label_,
+      labeledRadio,
+      filler,
+      spacer,
+      CmbAlignLeft(alignLeft),
+      CmbBgColor(bgColor),
+      CmbChildSpacing(childSpacing_),
+      CmbEllipsis(ellipsis),
+      CmbPadding(padding),
+      CmbRadius(radius),
+      CmbStyleBasic(styleBasic),
+      CmbTextColor(textColor),
+      CmbTextFont(textFont),
+      CmbTextSize(textSize),
+      WidgetEnv,
+      WidgetNode,
+      AppEventResponse,
+      EventResponse(Model), nodeInfoFromKey )
 import TextShow
 import Board
 
@@ -20,14 +61,18 @@ import qualified Monomer.Lens as L
 -- information could be stored here that models the subject
 data AppModel = AppModel {
   -- the integer that identifies which player is currently playing, could also defines the start and end of the game
+  -- 0 means the first player in the list
   _turnS :: Int,
+  _startGame :: Bool,
   -- the string that represents the winning player's color
   _winner :: String,
   -- the representation of the board
-  _boardE :: [RowBoardState],
+  _boardE :: Board,
   -- the players of the game
   _playersAmount :: Int,
-  sampleText :: Text
+  _fromIndex :: Int,
+  _toIndex :: Int,
+  _errorMessage :: String
 } deriving (Eq, Show)
 
 -- the event type, representing different action the handler could react to
@@ -35,20 +80,26 @@ data AppEvent
   -- the initialize of the model status
   = AppInit
   -- the round change between players
-  | AppTurnChange
-  | ButtonClick
+  | AppTurnChange BoardType
+  | StartGameButtonClick
+  | DoNothing
+  | EndGameButtonClick
   deriving (Eq, Show)
 
 makeLenses 'AppModel
 
 -- produce the title text
-printText :: AppModel -> String
-printText model
-  | model ^. turnS == -1 = "Weclome"
-  | model ^. turnS == 1 = "Red's turn"
-  | model ^. turnS == 2 = "Blue's turn"
-  | model ^. turnS == 3 = "Green's turn"
-  | otherwise = model ^. winner ++ " wins"
+titleText :: AppModel -> String
+titleText model
+  | not (model ^. startGame) = "Haskell Chinese Checkers"
+  | otherwise = show (turnText model) ++ "'s turn"
+
+turnText :: AppModel -> Colour
+turnText model
+  | model ^. playersAmount == 3 = threePlayersSet !! turn
+  | model ^. playersAmount == 4 = fourPlayersSet !! turn
+  | otherwise = sixPlayersSet !! turn
+  where turn = model ^. turnS
 
 -- construct the user interface layout of the application
 buildUI
@@ -61,7 +112,7 @@ buildUI wenv model = widgetTree where
   colouredLabel :: BoardType -> WidgetNode s AppEvent
   colouredLabel ch
     | ch == U = spacer -- button "00" DoNothing `styleBasic` [radius 25]
-    | otherwise = button_ (T.pack $ show $ getIndex ch) ButtonClick [ellipsis]
+    | otherwise = button_ (T.pack $ show $ getIndex ch) (AppTurnChange ch ) [ellipsis]
                   `styleBasic` [radius 30, bgColor white,
                                 styleIf (isRed ch)(bgColor red),
                                 styleIf (isBlue ch) (bgColor blue),
@@ -70,33 +121,30 @@ buildUI wenv model = widgetTree where
                                 styleIf (isOrange ch) (bgColor orange),
                                 styleIf (isYellow ch) (bgColor yellow),
                                 styleIf (isOccupied ch == Just True && not (isYellow ch))(textColor white)
-                                ]--`nodeKey` showt ch
+                                ]-- `nodeKey` T.pack (show $ getIndex ch)
 
   -- -- display a row of elements on the board
-  makeRowState :: RowBoardState -> WidgetNode s AppEvent
+  makeRowState :: [BoardType] -> WidgetNode s AppEvent
   makeRowState row = hgrid(colouredLabel <$> row) -- render the rows of button
 
   -- call functions to render the application
   widgetTree = vstack [
-      -- print the title
-      box $ label_ (T.pack $ printText model) [ellipsis] `styleBasic` [textFont "Bold", textSize 40],
-      -- spacer,
-      -- -- label $ "Click count: " <> showt (model ^. turnS),
-      -- -- display the board
-      -- box $ hstack[
-      --   vstack[
-      --     button "New Game" DoNothing,
-      --     hstack[
-      --       labeledRadio "3" 3 playersAmount,
-      --       labeledRadio "4" 4 playersAmount,
-      --       labeledRadio "6" 6 playersAmount
-      --     ]
-      --   ],
-      --   spacer,
-      --   button "End Game" DoNothing
-      -- ],
-      -- spacer,
-      vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. boardE)) -- render the whole board state row by row
+      box $ label_ (T.pack $ titleText model) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
+      filler,
+      box_ [alignLeft] $ button "Quit Game" EndGameButtonClick `styleBasic`[textSize 20] `nodeVisible` model ^. startGame,
+      box $ vstack[
+        hgrid[
+          labeledRadio "3" 3 playersAmount `styleBasic`[textSize 30],
+          spacer,
+          labeledRadio "4" 4 playersAmount `styleBasic`[textSize 30],
+          spacer,
+          labeledRadio "6" 6 playersAmount `styleBasic`[textSize 30]
+        ],
+        spacer,
+        button "New Game" StartGameButtonClick `styleBasic`[textSize 50]
+      ] `nodeVisible` not (model ^. startGame),
+      vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. boardE)) `nodeVisible` (model ^. startGame),
+      filler
     ] `styleBasic` [padding 20]
 
 -- declare how the events are handled respectively
@@ -108,9 +156,33 @@ handleEvent
   -> [AppEventResponse AppModel AppEvent]
 handleEvent wenv node model evt = case evt of
   AppInit -> []
-  AppTurnChange -> []
-  ButtonClick -> [] --[Model (model & turnS +~ 1)]
-  
+  StartGameButtonClick -> [Model (model & startGame .~ True)]
+  DoNothing -> []
+  EndGameButtonClick -> [Model $ model & turnS .~ 0
+                                       & winner .~ ""
+                                       & boardE .~ externalBoard
+                                       & playersAmount .~ 3
+                                       & startGame .~ False
+                                       & fromIndex .~ -1
+                                       & toIndex .~ -1
+                                       & errorMessage .~ ""]
+
+  -- first enter the "from position", and check for the correct input
+  -- then enter the "to position", if no error is made then process normal turn change, otherwise, reset and print the error message 
+  AppTurnChange b -> case model ^. fromIndex of
+                      -1 -> if Just (turnText model) == getColour b then [Model (model & fromIndex .~ getIndex b)] 
+                            else [Model (model & errorMessage .~ "Wrong Piece")]
+                      _  -> []
+
+
+
+
+turnChange :: AppModel -> Int
+turnChange model
+    | model ^. turnS == model ^. playersAmount - 1 = 0
+    | otherwise = model ^. turnS + 1
+
+
 
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
@@ -131,9 +203,12 @@ main = do
       ]
     -- provide an initial model of the application
     model = AppModel {
-      _turnS = -1,
+      _turnS = 0,
       _winner = "",
       _boardE = externalBoard,
       _playersAmount = 3,
-      sampleText = ""
+      _startGame = False,
+      _fromIndex = -1,
+      _toIndex = -1,
+      _errorMessage = ""
     }
