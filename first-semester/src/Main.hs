@@ -66,7 +66,10 @@ buildUI wenv model = widgetTree where
                                 styleIf (isRed ch)(bgColor red),
                                 styleIf (isBlue ch) (bgColor blue),
                                 styleIf (isGreen ch) (bgColor green),
-                                styleIf (isOccupied ch == Just True)(textColor white)
+                                styleIf (isPurple ch)(bgColor purple),
+                                styleIf (isOrange ch) (bgColor orange),
+                                styleIf (isYellow ch) (bgColor yellow),
+                                styleIf (isOccupied ch == Just True && not (isYellow ch))(textColor white)
                                 ]--`nodeKey` showt ch
 
   -- -- display a row of elements on the board
@@ -93,8 +96,8 @@ buildUI wenv model = widgetTree where
       --   button "End Game" DoNothing
       -- ],
       -- spacer,
-      vgrid_ [childSpacing_ 11] (makeRowState <$> (model ^. boardE)) -- render the whole board state row by row
-    ] `styleBasic` [padding 10]
+      vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. boardE)) -- render the whole board state row by row
+    ] `styleBasic` [padding 20]
 
 -- declare how the events are handled respectively
 handleEvent
