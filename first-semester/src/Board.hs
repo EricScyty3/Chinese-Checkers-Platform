@@ -1,9 +1,11 @@
 module Board where
 import Data.Maybe
 import Data.List
+import Data.Vector
 
 -- the board type should be able to represent the unique identification, occupy state and the occupied piece's color
 data BoardType = G Int | B Int | P Int | R Int | O Int | Y Int | E Int | U deriving (Eq, Show)
+-- data BoardType2 = G Int Pos | B Int Pos | P Int Pos | R Int Pos | O Int Pos | Y Int Pos | E Int Pos | U Pos deriving (Eq, Show)
 data Colour = Green | Blue | Purple | Red | Orange | Yellow deriving (Eq, Show)
 type Board = [[BoardType]]
 type Pos = (Int, Int)
@@ -121,7 +123,20 @@ externalBoard = [
                   [P 58, U, P 59, U, P 60, U, E 61, U, E 62, U, E 63, U, E 64, U, O 65, U, O 66, U, O 67],
                   [U, U, U, U, U, U, U, R 68, U, R 69, U, R 70, U, U, U, U, U, U, U],
                   [U, U, U, U, U, U, U, U, R 71, U, R 72, U, U, U, U, U, U, U, U],
-                  [U, U, U, U, U, U, U, U, U, R 73, U, U, U, U, U, U, U, U, U]]
+                  [U, U, U, U, U, U, U, U, U, R 73, U, U, U, U, U, U, U, U, U]
+                ]
+{-
+transform :: [[BoardType]] -> Int -> IO ()
+transform [] _ = putStrLn ""
+transform [x] iy = printExternalBoardWithPos x 0 iy
+transform (x:xs) iy = do printExternalBoardWithPos x 0 iy
+                         transform xs (iy+1)
+
+printExternalBoardWithPos :: [BoardType] -> Int -> Int -> IO ()
+printExternalBoardWithPos [] _ _ = putStrLn ""
+printExternalBoardWithPos [x] ix fy = putStrLn (show x ++ "(" ++ show ix ++ ", " ++ show fy ++ ")")
+printExternalBoardWithPos (x:xs) ix fy = do putStr (show x ++ "(" ++ show ix ++ ", " ++ show fy ++ "), ")
+                                            printExternalBoardWithPos xs (ix+1) fy
 
 replace :: Int -> a -> [a] -> [a]
 replace idx v xs = front ++ [v] ++ end
@@ -143,16 +158,19 @@ changeBoardElement f (x, y) myBoard = let newElement = f (getElement myBoard (x,
 --                                        newRow = replace x newElement (myBoard !! y)
 --                                    in  replace y newRow myBoard    
 
--- erase the board sections according to the players amount
-eraseBoard :: [Colour] -> Board -> Board
-eraseBoard cs = map (eraseRow cs)
+-- erase the board sections according to the colours, whether to keep or remove
+eraseBoard :: Bool -> [Colour] -> Board -> Board
+eraseBoard t cs = map (eraseRow t cs)
     where
-        eraseRow :: [Colour] -> [BoardType] -> [BoardType]
-        eraseRow _ [] = []
-        eraseRow cs (x:xs) = case getColour x of
-                                Nothing -> x:eraseRow cs xs
-                                Just c  -> if c `elem` cs then erase x:eraseRow cs xs
-                                        else x:eraseRow cs xs
+        eraseRow :: Bool -> [Colour] -> [BoardType] -> [BoardType]
+        eraseRow t _ [] = []
+        eraseRow t cs (x:xs) = case getColour x of
+                                Nothing -> x:eraseRow t cs xs
+                                Just c  -> if f t c cs then erase x:eraseRow t cs xs
+                                        else x:eraseRow t cs xs
+
+        f :: Bool -> Colour -> [Colour] -> Bool
+        f t x xs = if t then x `elem` xs else x `notElem` xs
 
 repaintPath :: Pos -> Pos -> Board -> Maybe Board
 repaintPath (fx, fy) (tx, ty) myBoard = let fromColour = getColour (getElement myBoard (fx, fy))
@@ -161,25 +179,31 @@ repaintPath (fx, fy) (tx, ty) myBoard = let fromColour = getColour (getElement m
                                                 Just c  -> let tempBoard = changeBoardElement erase (fx, fy) myBoard
                                                            in  Just $ changeBoardElement (repaint c) (fx, fy) myBoard
 
-
-{-
--- Hex
--- search for all positions around that satisfy certain requirements
-findValidNeighbors :: Board -> Pos -> [Pos]
-findValidNeighbors myBoard (x, y) = filter (testOccupyState myBoard) (findAllNeighbors (x, y))
+-- One jump range
+-- search for all neighbor positions around that are not occupied
+findAvaliableNeighbors :: Board -> Pos -> [Pos]
+findAvaliableNeighbors myBoard (x, y) = filter (not . testOccupyState myBoard) (findTureNeighbors (findValidNeighbors (x, y)) myBoard)
+-- findTureNeighbors :: Pos -> Board -> Bool
+findTureNeighbors :: [Pos] -> Board -> [Pos]
+findTureNeighbors ps myBoard = filter (isJust . isOccupied . getElement myBoard) ps
 -- search for all piece positions inside the board around
-findAllNeighbors :: Pos -> [Pos]
-findAllNeighbors (x, y) = filter testValid [(x-1, y-1), (x-1, y), (x-1, y+1), (x+1, y+1), (x+1, y), (x+1, y-01)]
+findValidNeighbors :: Pos -> [Pos]
+findValidNeighbors (x, y) = filter testValidPos [(x-1, y-1), (x-1, y), (x-1, y+1), (x+1, y+1), (x+1, y), (x+1, y-1)]
 -- test if a piece's position is out of boarder
-testValid :: Pos -> Bool
-testValid (x, y) = x >= 0 && y >= 0
--}
+testValidPos :: Pos -> Bool
+testValidPos (x, y) = (x >= 0 && y >= 0) && (x <= boardWidth - 1 && y <= boardHeight - 1)
+
+-- chained jump range
+-- search for all occupied neighbors for chained jump
+findOccupiedNeighbors :: Board -> Pos -> [Pos]
+findOccupiedNeighbors myBoard (x, y) = filter (testOccupyState myBoard) (findTureNeighbors (findValidNeighbors (x, y)) myBoard)
+
 -- access element in a matrix 
 getElement :: Board -> Pos -> BoardType
 getElement m (x, y) = (m !! y) !! x
 -- test if a position is occupied by a piece
 testOccupyState :: Board -> Pos -> Bool
-testOccupyState myBoard (x, y) = isOccupied (getElement myBoard (x, y)) == Just False
+testOccupyState myBoard (x, y) = isOccupied (getElement myBoard (x, y)) /= Just False
 -- check the color of a certain position 
 testRedState :: Board -> Pos -> Bool
 testRedState myBoard (x, y) = isRed (getElement myBoard (x, y))
@@ -194,10 +218,10 @@ testOrangeState myBoard (x, y) = isOrange (getElement myBoard (x, y))
 testYellowState :: Board -> Pos -> Bool
 testYellowState myBoard (x, y) = isYellow (getElement myBoard (x, y))
 -- an addition check should be transformed into square and tested
--- through counting the colored pieces
-testValidMove :: Board -> Colour -> Bool
-testValidMove resultBoard color = sum (map sum (project resultBoard color)) == totalPieces
-
+-- through counting the colored pieces, this is only for computer players to enable sufficient compute and shorter game
+testCorners :: Board -> Colour -> Bool
+testCorners resultBoard color = sum (map sum (project resultBoard color)) == totalPieces
+-- bedies, computer is only allow frontward move
 {-
     -- retrieve the occupy state of the board
     returnOccupiedBoard :: Board -> [[Int]]
@@ -338,3 +362,5 @@ printBoard :: Show a => [a] -> IO ()
 printBoard [] = putStr ""
 printBoard (x:xs) = do print x
                        printBoard xs
+
+-}

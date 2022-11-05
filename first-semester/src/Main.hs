@@ -50,7 +50,7 @@ import Monomer
       WidgetEnv,
       WidgetNode,
       AppEventResponse,
-      EventResponse(Model), nodeInfoFromKey )
+      EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline) )
 import TextShow
 import Board
 
@@ -89,6 +89,9 @@ data AppEvent
 makeLenses 'AppModel
 
 -- produce the title text
+-- if the game does not start then just print welcome title
+-- if an error is made then print it
+-- finally, if everything is normal and the game is started, then print the turn
 titleText :: AppModel -> String
 titleText model
   | not (model ^. startGame) = "Haskell Chinese Checkers"
@@ -101,6 +104,11 @@ turnText model
   | otherwise = sixPlayersSet !! turn
   where turn = model ^. turnS
 
+printHint :: AppModel -> String
+printHint model
+  | null (model ^. errorMessage) = "From " ++ show (model ^. fromIndex) ++ " to " ++ show (model ^. toIndex)
+  | otherwise = model ^. errorMessage
+
 -- construct the user interface layout of the application
 buildUI
   :: WidgetEnv AppModel AppEvent
@@ -111,7 +119,7 @@ buildUI wenv model = widgetTree where
   -- render the color of different pieces on the board based on the labels
   colouredLabel :: BoardType -> WidgetNode s AppEvent
   colouredLabel ch
-    | ch == U = spacer -- button "00" DoNothing `styleBasic` [radius 25]
+    | ch == U = spacer
     | otherwise = button_ (T.pack $ show $ getIndex ch) (AppTurnChange ch ) [ellipsis]
                   `styleBasic` [radius 30, bgColor white,
                                 styleIf (isRed ch)(bgColor red),
@@ -130,6 +138,8 @@ buildUI wenv model = widgetTree where
   -- call functions to render the application
   widgetTree = vstack [
       box $ label_ (T.pack $ titleText model) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
+      spacer,
+      box $ label_ (T.pack $ printHint model) [ellipsis] `styleBasic` [textFont "Italic", textSize 20] `nodeVisible` model ^. startGame,
       filler,
       box_ [alignLeft] $ button "Quit Game" EndGameButtonClick `styleBasic`[textSize 20] `nodeVisible` model ^. startGame,
       box $ vstack[
@@ -156,12 +166,15 @@ handleEvent
   -> [AppEventResponse AppModel AppEvent]
 handleEvent wenv node model evt = case evt of
   AppInit -> []
-  StartGameButtonClick -> [Model (model & startGame .~ True)]
+  StartGameButtonClick
+    | model ^. playersAmount == 3 -> [Model $ model & startGame .~ True & boardE .~ eraseBoard False threePlayersSet (model ^. boardE)]
+    | model ^. playersAmount == 4 -> [Model $ model & startGame .~ True & boardE .~ eraseBoard False fourPlayersSet (model ^. boardE)]
+    | otherwise -> [Model(model & startGame .~ True)]
   DoNothing -> []
   EndGameButtonClick -> [Model $ model & turnS .~ 0
                                        & winner .~ ""
                                        & boardE .~ externalBoard
-                                       & playersAmount .~ 3
+                                       -- & playersAmount .~ 4
                                        & startGame .~ False
                                        & fromIndex .~ -1
                                        & toIndex .~ -1
@@ -170,19 +183,18 @@ handleEvent wenv node model evt = case evt of
   -- first enter the "from position", and check for the correct input
   -- then enter the "to position", if no error is made then process normal turn change, otherwise, reset and print the error message 
   AppTurnChange b -> case model ^. fromIndex of
-                      -1 -> if Just (turnText model) == getColour b then [Model (model & fromIndex .~ getIndex b)] 
-                            else [Model (model & errorMessage .~ "Wrong Piece")]
-                      _  -> []
-
-
-
+                      -1 -> if Just (turnText model) == getColour b then [Model $ model & fromIndex .~ getIndex b & errorMessage .~ ""]
+                            else [Model (model & errorMessage .~ show (turnText model) ++ ": invalid start")]
+                      _  -> case model ^. fromIndex == getIndex b of
+                              True -> [Model (model & errorMessage .~ show (turnText model) ++ ": no move made")]
+                              False -> case isOccupied b of
+                                        Just False -> []
+                                        _ -> [Model (model & errorMessage .~ show (turnText model) ++ ": destination occupied")]
 
 turnChange :: AppModel -> Int
 turnChange model
     | model ^. turnS == model ^. playersAmount - 1 = 0
     | otherwise = model ^. turnS + 1
-
-
 
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
