@@ -106,8 +106,11 @@ turnText model
 
 printHint :: AppModel -> String
 printHint model
-  | null (model ^. errorMessage) = "From " ++ show (model ^. fromIndex) ++ " to " ++ show (model ^. toIndex)
-  | otherwise = model ^. errorMessage
+  | null (model ^. errorMessage) = "From " ++ printIndex (model ^. fromIndex) ++ " to " ++ printIndex (model ^. toIndex)
+  | otherwise = "From " ++ printIndex (model ^. fromIndex) ++ " to " ++ printIndex (model ^. toIndex) ++ ", " ++ model ^. errorMessage
+    where
+      printIndex :: Int -> String
+      printIndex idx = if idx /= -1 then show idx else " "
 
 -- construct the user interface layout of the application
 buildUI
@@ -119,17 +122,17 @@ buildUI wenv model = widgetTree where
   -- render the color of different pieces on the board based on the labels
   colouredLabel :: BoardType -> WidgetNode s AppEvent
   colouredLabel ch
-    | ch == U = spacer
+    | isNothing(isOccupied ch) = spacer
     | otherwise = button_ (T.pack $ show $ getIndex ch) (AppTurnChange ch ) [ellipsis]
                   `styleBasic` [radius 30, bgColor white,
-                                styleIf (isRed ch)(bgColor red),
-                                styleIf (isBlue ch) (bgColor blue),
-                                styleIf (isGreen ch) (bgColor green),
-                                styleIf (isPurple ch)(bgColor purple),
-                                styleIf (isOrange ch) (bgColor orange),
-                                styleIf (isYellow ch) (bgColor yellow),
-                                styleIf (isOccupied ch == Just True && not (isYellow ch))(textColor white)
-                                ]-- `nodeKey` T.pack (show $ getIndex ch)
+                                styleIf (compareColour ch Red)(bgColor red),
+                                styleIf (compareColour ch Blue) (bgColor blue),
+                                styleIf (compareColour ch Green) (bgColor green),
+                                styleIf (compareColour ch Purple)(bgColor purple),
+                                styleIf (compareColour ch Orange) (bgColor orange),
+                                styleIf (compareColour ch Yellow) (bgColor yellow),
+                                styleIf (isOccupied ch == Just True && not (compareColour ch Yellow))(textColor white)
+                                ]
 
   -- -- display a row of elements on the board
   makeRowState :: [BoardType] -> WidgetNode s AppEvent

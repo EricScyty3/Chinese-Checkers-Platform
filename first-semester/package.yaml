@@ -21,7 +21,6 @@ dependencies:
   - monomer
   - text
   - text-show
-  - vector
 
 executables:
   app:
