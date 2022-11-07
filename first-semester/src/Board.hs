@@ -153,16 +153,17 @@ eraseBoard t cs = map (eraseRow t cs)
         f :: Bool -> Colour -> [Colour] -> Bool
         f t x xs = if t then x `elem` xs else x `notElem` xs
 
-repaintPath :: BoardType -> BoardType -> Board -> Maybe Board
+repaintPath :: BoardType -> BoardType -> Board -> Board
 repaintPath start end myBoard = let startColour = getColour start
                                 in  case startColour of
-                                        Nothing -> Nothing
+                                        Nothing -> myBoard
                                         Just c  -> let tempBoard = changeBoardElement erase start myBoard
-                                                   in  Just $ changeBoardElement (repaint c) end myBoard
+                                                   in  changeBoardElement (repaint c) end tempBoard
+
+testJumpValid :: Board -> BoardType -> BoardType -> Bool
+testJumpValid eBoard start end = end `elem` findAvaliableNeighbors eBoard start || end `elem` searchWithoutLooping eBoard [] start
 
 -- check if this can be reached by one jump
-testOneJumpReachable :: Board -> BoardType -> Bool
-testOneJumpReachable myBoard b = b `elem` findAvaliableNeighbors myBoard b
 -- One adjacent jump range
 -- search for all neighbor positions around that are not occupied
 findAvaliableNeighbors :: Board -> BoardType -> [BoardType]
@@ -173,41 +174,37 @@ findTureNeighbors :: [BoardType] -> [BoardType]
 findTureNeighbors = filter (isJust . isOccupied)
 -- search for all piece positions inside the board around
 findValidNeighbors :: Pos -> Board -> [BoardType]
-findValidNeighbors (x, y) myBoard = map (getElement myBoard) (filter testValidPos [(x-1, y-1), (x-1, y), (x-1, y+1), (x+1, y+1), (x+1, y), (x+1, y-1)])
+findValidNeighbors (x, y) myBoard = map (getElement myBoard) (filter testValidPos [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)])
 -- test if a piece's position is out of boarder
 testValidPos :: Pos -> Bool
 testValidPos (x, y) = (x >= 0 && y >= 0) && x <= boardWidth - 1 && y <= boardHeight - 1
 
 -- chained jump range
 -- one over hop
--- search for all occupied neighbors for chained jump, SHOULD AVOID REPEAT
--- findOccupiedNeighbors :: Board -> BoardType -> [BoardType]
--- findOccupiedNeighbors myBoard b = filter (isJustTrue . isOccupied) (findTureNeighbors (findValidNeighbors (getPos b) myBoard))
+searchWithoutLooping :: Board -> [BoardType] -> BoardType ->  [BoardType]
+searchWithoutLooping myBoard l b = let s = recursiveSearch myBoard b
+                                       renewList = filter (`notElem` l) s
+                                       recordList = renewList ++ l
+                                   in  concatMap (searchWithoutLooping myBoard recordList) renewList ++ renewList
 
-
-recursiveCalled :: Board -> [BoardType] -> BoardType ->  [BoardType]
-recursiveCalled myBoard l b = let s = anotherFinal myBoard b
-                                  renewList = filter (`notElem` l) s
-                                  recordList = renewList ++ l
-                              in  concatMap (recursiveCalled myBoard recordList) renewList ++ renewList
-anotherFinal :: Board -> BoardType -> [BoardType]
-anotherFinal eBoard b = map (getElement eBoard) (final eBoard (getPos b))
+recursiveSearch :: Board -> BoardType -> [BoardType]
+recursiveSearch eBoard b = map (getElement eBoard) (jumpToAllDirections eBoard (getPos b))
 -- one piece dor all six driections checked
-final :: Board -> (Int, Int) -> [(Int, Int)]
-final myBoard pos = filter (/= pos) (allD myBoard pos [(-1, -1), (-1, 0), (-1, 1), (1, 1), (1, 0), (1, -1)])
+jumpToAllDirections :: Board -> Pos -> [Pos]
+jumpToAllDirections myBoard pos = filter (/= pos) (jumpToOneDirection myBoard pos [(-1, -1), (-2, 0), (-1, 1), (1, 1), (2, 0), (1, -1)])
 
-allD :: Board -> (Int, Int) -> [(Int, Int)] -> [Pos]
-allD _ _ [] = []
-allD eBoard pos (a:as) = oneDirection eBoard pos (f a): allD eBoard pos as
+jumpToOneDirection :: Board -> Pos -> [Pos] -> [Pos]
+jumpToOneDirection _ _ [] = []
+jumpToOneDirection eBoard pos (a:as) = determineValidJump eBoard pos (f a): jumpToOneDirection eBoard pos as
     where
         f (a, b) (x, y) = (a+x, b+y)
 
-oneDirection :: Board -> (Int, Int) -> ((Int, Int) -> Pos) -> Pos
-oneDirection myBoard pos f
+determineValidJump :: Board -> Pos -> (Pos -> Pos) -> Pos
+determineValidJump myBoard pos f
     | not (testValidPos (f pos)) || not (testValidPos ((f . f) pos)) = pos -- invalid ones
     | isJustTrue (isOccupied $ getElement myBoard $ f pos) &&
       isJustFalse (isOccupied $ getElement myBoard $ (f . f) pos) = (f . f) pos
-    | otherwise = pos
+    | otherwise = pos -- no ways found
 
 -- an addition check should be transformed into square and tested
 -- through counting the colored pieces, this is only for computer players to enable sufficient compute and shorter game

@@ -50,12 +50,13 @@ import Monomer
       WidgetEnv,
       WidgetNode,
       AppEventResponse,
-      EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline) )
+      EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline), CmbPaddingB (paddingB) )
 import TextShow
 import Board
 
 import qualified Data.Text as T
 import qualified Monomer.Lens as L
+import Monomer.Widgets
 
 -- the model representation that indicates the state of the application
 -- information could be stored here that models the subject
@@ -70,8 +71,8 @@ data AppModel = AppModel {
   _boardE :: Board,
   -- the players of the game
   _playersAmount :: Int,
-  _fromIndex :: Int,
-  _toIndex :: Int,
+  _fromPiece :: BoardType,
+  _toPiece :: BoardType,
   _errorMessage :: String
 } deriving (Eq, Show)
 
@@ -80,9 +81,10 @@ data AppEvent
   -- the initialize of the model status
   = AppInit
   -- the round change between players
-  | AppTurnChange BoardType
+  | MoveCheck BoardType
   | StartGameButtonClick
-  | DoNothing
+  | RenderMove
+  | CancelMove
   | EndGameButtonClick
   deriving (Eq, Show)
 
@@ -106,11 +108,15 @@ turnText model
 
 printHint :: AppModel -> String
 printHint model
-  | null (model ^. errorMessage) = "From " ++ printIndex (model ^. fromIndex) ++ " to " ++ printIndex (model ^. toIndex)
-  | otherwise = "From " ++ printIndex (model ^. fromIndex) ++ " to " ++ printIndex (model ^. toIndex) ++ ", " ++ model ^. errorMessage
+  | null (model ^. errorMessage) = "From " ++ printIndex (model ^. fromPiece) ++ " to " ++ printIndex (model ^. toPiece)
+  | otherwise = "From " ++ printIndex (model ^. fromPiece) ++ " to " ++ printIndex (model ^. toPiece) ++ ", " ++ model ^. errorMessage
     where
-      printIndex :: Int -> String
-      printIndex idx = if idx /= -1 then show idx else " "
+      printIndex :: BoardType -> String
+      printIndex p = if ifInitial p then " " else show $ getIndex p
+
+ifInitial :: BoardType -> Bool
+ifInitial (U (-1, -1)) = True
+ifInitial _ = False
 
 -- construct the user interface layout of the application
 buildUI
@@ -123,7 +129,7 @@ buildUI wenv model = widgetTree where
   colouredLabel :: BoardType -> WidgetNode s AppEvent
   colouredLabel ch
     | isNothing(isOccupied ch) = spacer
-    | otherwise = button_ (T.pack $ show $ getIndex ch) (AppTurnChange ch ) [ellipsis]
+    | otherwise = button_ (T.pack $ show $ getIndex ch) (MoveCheck ch) [ellipsis]
                   `styleBasic` [radius 30, bgColor white,
                                 styleIf (compareColour ch Red)(bgColor red),
                                 styleIf (compareColour ch Blue) (bgColor blue),
@@ -144,7 +150,7 @@ buildUI wenv model = widgetTree where
       spacer,
       box $ label_ (T.pack $ printHint model) [ellipsis] `styleBasic` [textFont "Italic", textSize 20] `nodeVisible` model ^. startGame,
       filler,
-      box_ [alignLeft] $ button "Quit Game" EndGameButtonClick `styleBasic`[textSize 20] `nodeVisible` model ^. startGame,
+      
       box $ vstack[
         hgrid[
           labeledRadio "3" 3 playersAmount `styleBasic`[textSize 30],
@@ -156,6 +162,16 @@ buildUI wenv model = widgetTree where
         spacer,
         button "New Game" StartGameButtonClick `styleBasic`[textSize 50]
       ] `nodeVisible` not (model ^. startGame),
+
+      box $ hstack[
+          button "Quit Game" EndGameButtonClick `styleBasic`[textSize 20],
+          filler,
+          button "Confirm Move" RenderMove `styleBasic`[textSize 20],
+          filler,
+          button "Cancel Move" CancelMove `styleBasic`[textSize 20]
+      ]`nodeVisible` (model ^. startGame),
+      
+      spacer,
       vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. boardE)) `nodeVisible` (model ^. startGame),
       filler
     ] `styleBasic` [padding 20]
@@ -173,31 +189,52 @@ handleEvent wenv node model evt = case evt of
     | model ^. playersAmount == 3 -> [Model $ model & startGame .~ True & boardE .~ eraseBoard False threePlayersSet (model ^. boardE)]
     | model ^. playersAmount == 4 -> [Model $ model & startGame .~ True & boardE .~ eraseBoard False fourPlayersSet (model ^. boardE)]
     | otherwise -> [Model(model & startGame .~ True)]
-  DoNothing -> []
+  CancelMove 
+    | not $ ifInitial $ model ^. toPiece -> [Model $ model & toPiece .~ U(-1, -1) & errorMessage .~ ""]
+    | otherwise -> [Model $ model & fromPiece .~ U(-1, -1) & errorMessage .~ ""]
+  RenderMove
+    | null (model ^. errorMessage) && not (ifInitial (model ^. fromPiece)) && not (ifInitial (model ^. toPiece)) 
+        -> [Model $ model & turnS .~ turnChange model 
+                          & boardE .~ updateBoard model
+                          & fromPiece .~ U(-1, -1)
+                          & toPiece .~ U(-1,-1)]
+    | otherwise -> []
   EndGameButtonClick -> [Model $ model & turnS .~ 0
                                        & winner .~ ""
                                        & boardE .~ externalBoard
                                        -- & playersAmount .~ 4
                                        & startGame .~ False
-                                       & fromIndex .~ -1
-                                       & toIndex .~ -1
+                                       & fromPiece .~ U (-1, -1)
+                                       & toPiece .~ U (-1, -1)
                                        & errorMessage .~ ""]
 
   -- first enter the "from position", and check for the correct input
   -- then enter the "to position", if no error is made then process normal turn change, otherwise, reset and print the error message 
-  AppTurnChange b -> case model ^. fromIndex of
-                      -1 -> if Just (turnText model) == getColour b then [Model $ model & fromIndex .~ getIndex b & errorMessage .~ ""]
-                            else [Model (model & errorMessage .~ show (turnText model) ++ ": invalid start")]
-                      _  -> case model ^. fromIndex == getIndex b of
-                              True -> [Model (model & errorMessage .~ show (turnText model) ++ ": no move made")]
-                              False -> case isOccupied b of
-                                        Just False -> []
-                                        _ -> [Model (model & errorMessage .~ show (turnText model) ++ ": destination occupied")]
+  MoveCheck b -> case model ^. errorMessage /= "" of
+                  True -> []
+                  False -> case ifInitial $ model ^. fromPiece of
+                              True  -> if Just (turnText model) == getColour b then [Model $ model & fromPiece .~ b & errorMessage .~ ""]
+                                      else [Model $ model & errorMessage .~ show (turnText model) ++ ": invalid start" & fromPiece .~ b]
+                              False -> case model ^. fromPiece == b of
+                                          True  -> [Model $ model & errorMessage .~ show (turnText model) ++ ": no move made" & toPiece .~ b]
+                                          False -> case isOccupied b of
+                                                      Just False -> case testJumpValid (model ^. boardE) (model ^. fromPiece) b of
+                                                                        True  -> [Model $ model & toPiece .~ b & errorMessage .~ ""]
+                                                                        False -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination unreacbable" & toPiece .~ b]
+                                                      _ -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination occupied" & toPiece .~ b]
+
+-- Check before a path is made and finally repainted to the board:
+-- 1. the first entered piece should be valid: correct colour
+-- 2. the second enter piece should be valid: no repeated click, no occupied position, reachabld position
+-- finally, settle the movement path and update the turn
 
 turnChange :: AppModel -> Int
 turnChange model
     | model ^. turnS == model ^. playersAmount - 1 = 0
     | otherwise = model ^. turnS + 1
+
+updateBoard :: AppModel -> Board
+updateBoard model = repaintPath (model ^. fromPiece) (model ^. toPiece) (model ^. boardE)
 
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
@@ -223,7 +260,7 @@ main = do
       _boardE = externalBoard,
       _playersAmount = 3,
       _startGame = False,
-      _fromIndex = -1,
-      _toIndex = -1,
+      _fromPiece = U (-1, -1),
+      _toPiece = U (-1, -1),
       _errorMessage = ""
     }
