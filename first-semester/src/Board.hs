@@ -14,6 +14,8 @@ boardHeight :: Int
 boardHeight = 13
 totalPieces :: Int
 totalPieces = 6
+twoPlayersSet :: [Colour]
+twoPlayersSet = [Green, Red]
 threePlayersSet :: [Colour]
 threePlayersSet = [Green, Purple, Orange]
 fourPlayersSet :: [Colour]
@@ -206,12 +208,19 @@ determineValidJump myBoard pos f
       isJustFalse (isOccupied $ getElement myBoard $ (f . f) pos) = (f . f) pos
     | otherwise = pos -- no ways found
 
+-- some rules allow jump to be chained as longer as the symmetric satisfied on a line, no neec to be one position in between
+
 -- an addition check should be transformed into square and tested
 -- through counting the colored pieces, this is only for computer players to enable sufficient compute and shorter game
 testCorners :: Board -> Colour -> Bool
 testCorners resultBoard color = sum (map sum (project resultBoard color)) == totalPieces
 -- bedies, computer is only allow frontward move
 
+-- a win for a player can only be achieved at one's turn
+winStateDetect :: Board -> Colour -> Board -> Bool
+winStateDetect eBoard c iBoard = let projection1 = project eBoard c 
+                                     projection2 = project iBoard c
+                                 in  flipBoard projection2 == projection1
 {-
     -- retrieve the occupy state of the board
     returnOccupiedBoard :: Board -> [[Int]]
@@ -349,8 +358,8 @@ projectToYellow eboard (x:xs) pos = projectToRowYellow eboard x pos : projectToY
         moveDown :: Pos -> Pos
         moveDown (x, y) = (x-1, y+1)
 
--- flipBoard :: [[Int]] -> [[Int]]
--- flipBoard = transpose
+flipBoard :: [[Int]] -> [[Int]]
+flipBoard = transpose
 
 printBoard :: Show a => [a] -> IO ()
 printBoard [] = putStr ""
