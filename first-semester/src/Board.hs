@@ -1,6 +1,7 @@
 module Board where
 import Data.Maybe
 import Data.List
+import State
 
 -- the board type should be able to represent the unique identification, occupy state and the occupied piece's color
 data Colour = Green | Blue | Purple | Red | Orange | Yellow deriving (Eq, Show)
@@ -102,7 +103,7 @@ erase b = E (getIndex b) (getPos b)
                                                     _       -> putStr (show x ++ " (" ++ show ix ++ ", " ++ show fy ++ "), ")
                                                 printExternalBoardWithPos xs (ix+1) fy
 -}
-externalBoard :: [[BoardType]]
+externalBoard :: Board
 externalBoard = [
     [U(0, 0), U(1, 0), U(2, 0), U(3, 0), U(4, 0), U(5, 0), U(6, 0), U(7, 0), U(8, 0), G 1 (9, 0), U(10, 0), U(11, 0), U(12, 0), U(13, 0), U(14, 0), U(15, 0), U(16, 0), U(17, 0), U(18, 0)],
     [U(0, 1), U(1, 1), U(2, 1), U(3, 1), U(4, 1), U(5, 1), U(6, 1), U(7, 1), G 2 (8, 1), U(9, 1), G 3 (10, 1), U(11, 1), U(12, 1), U(13, 1), U(14, 1), U(15, 1), U(16, 1), U(17, 1), U(18, 1)],
@@ -169,11 +170,11 @@ testJumpValid eBoard start end = end `elem` findAvaliableNeighbors eBoard start 
 -- One adjacent jump range
 -- search for all neighbor positions around that are not occupied
 findAvaliableNeighbors :: Board -> BoardType -> [BoardType]
-findAvaliableNeighbors myBoard b = filter (isJustFalse . isOccupied) (findTureNeighbors (findValidNeighbors (getPos b) myBoard))
+findAvaliableNeighbors myBoard b = filter (isJustFalse . isOccupied) (findValidNeighbors (getPos b) myBoard)
 
 -- findTureNeighbors :: Pos -> Board -> Bool
-findTureNeighbors :: [BoardType] -> [BoardType]
-findTureNeighbors = filter (isJust . isOccupied)
+-- findTureNeighbors :: [BoardType] -> [BoardType]
+-- findTureNeighbors = filter (isJust . isOccupied)
 -- search for all piece positions inside the board around
 findValidNeighbors :: Pos -> Board -> [BoardType]
 findValidNeighbors (x, y) myBoard = map (getElement myBoard) (filter testValidPos [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)])

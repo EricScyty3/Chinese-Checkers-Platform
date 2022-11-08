@@ -20,6 +20,8 @@ executable app
   main-is: Main.hs
   other-modules:
       Board
+      BoardState_test
+      State
       Paths_monomer_starter
   hs-source-dirs:
       src
