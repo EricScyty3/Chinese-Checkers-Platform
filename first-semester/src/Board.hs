@@ -3,9 +3,9 @@ import Data.Maybe
 import Data.List
 
 -- the board type should be able to represent the unique identification, occupy state and the occupied piece's color
-data Colour = Green | Blue | Purple | Red | Orange | Yellow deriving (Eq, Show)
+data Colour = Green | Blue | Purple | Red | Orange | Black deriving (Eq, Show)
 type Pos = (Int, Int)
-data BoardType = G Pos | B Pos | P Pos | R Pos | O Pos | Y Pos | E Pos | U Pos deriving (Eq, Show)
+data BoardType = G Pos | B Pos | P Pos | R Pos | O Pos | K Pos | E Pos | U Pos deriving (Eq, Show)
 type Board = [[BoardType]]
 
 boardWidth :: Int
@@ -19,35 +19,35 @@ twoPlayersSet = [Green, Red]
 threePlayersSet :: [Colour]
 threePlayersSet = [Green, Purple, Orange]
 fourPlayersSet :: [Colour]
-fourPlayersSet = [Blue, Purple, Orange, Yellow]
+fourPlayersSet = [Blue, Purple, Orange, Black]
 sixPlayersSet :: [Colour]
-sixPlayersSet = [Green, Blue, Purple, Red, Orange, Yellow]
+sixPlayersSet = [Green, Blue, Purple, Red, Orange, Black]
 -- determine the color state of a piece
 isRed :: BoardType -> Bool
-isRed (R _ _) = True
+isRed (R _) = True
 isRed _ = False
 isGreen :: BoardType -> Bool
-isGreen (G _ _) = True
+isGreen (G _) = True
 isGreen _ = False
 isBlue :: BoardType -> Bool
-isBlue (B _ _) = True
+isBlue (B _) = True
 isBlue _ = False
 isOrange :: BoardType -> Bool
-isOrange (O _ _) = True
+isOrange (O _) = True
 isOrange _ = False
 isPurple :: BoardType -> Bool
-isPurple (P _ _) = True
+isPurple (P _) = True
 isPurple _ = False
-isYellow :: BoardType -> Bool
-isYellow (Y _ _) = True
-isYellow _ = False
+isBlack :: BoardType -> Bool
+isBlack (K _) = True
+isBlack _ = False
 getColour :: BoardType -> Maybe Colour
-getColour (G _ _) = Just Green
-getColour (B _ _) = Just Blue
-getColour (P _ _) = Just Purple
-getColour (R _ _) = Just Red
-getColour (O _ _) = Just Orange
-getColour (Y _ _) = Just Yellow
+getColour (G _) = Just Green
+getColour (B _) = Just Blue
+getColour (P _) = Just Purple
+getColour (R _) = Just Red
+getColour (O _) = Just Orange
+getColour (K _) = Just Black
 getColour _ = Nothing
 compareColour :: BoardType -> Colour -> Bool
 compareColour b c = case getColour b of
@@ -56,38 +56,28 @@ compareColour b c = case getColour b of
 -- identify if a position on the board is occupied
 isOccupied :: BoardType -> Maybe Bool
 isOccupied (U _) = Nothing
-isOccupied (E _ _) = Just False
+isOccupied (E _) = Just False
 isOccupied _ = Just True
--- get the assoicated id for the piece
-getIndex :: BoardType -> Int
-getIndex (U _) = -1
-getIndex (Y x _) = x
-getIndex (O x _) = x
-getIndex (P x _) = x
-getIndex (R x _) = x
-getIndex (B x _) = x
-getIndex (G x _) = x
-getIndex (E x _) = x
 -- get the assoicated position for the piece
 getPos :: BoardType -> Pos
 getPos (U p) = p
-getPos (Y _ p) = p
-getPos (O _ p) = p
-getPos (P _ p) = p
-getPos (R _ p) = p
-getPos (B _ p) = p
-getPos (G _ p) = p
-getPos (E _ p) = p
+getPos (K p) = p
+getPos (O p) = p
+getPos (P p) = p
+getPos (R p) = p
+getPos (B p) = p
+getPos (G p) = p
+getPos (E p) = p
 -- update the new colour state for a board position
 repaint :: Colour -> BoardType -> BoardType
-repaint Green b = G (getIndex b) (getPos b)
-repaint Yellow b = Y (getIndex b) (getPos b)
-repaint Orange b = O (getIndex b) (getPos b)
-repaint Red b = R (getIndex b) (getPos b)
-repaint Blue b = B (getIndex b) (getPos b)
-repaint Purple b = P (getIndex b) (getPos b)
+repaint Green b = G (getPos b)
+repaint Black b = K (getPos b)
+repaint Orange b = O (getPos b)
+repaint Red b = R (getPos b)
+repaint Blue b = B (getPos b)
+repaint Purple b = P (getPos b)
 erase :: BoardType -> BoardType
-erase b = E (getIndex b) (getPos b)
+erase b = E (getPos b)
 -- the overall board state for displaying and for movement changed determining
 {-
     externalBoard :: Board
@@ -122,19 +112,19 @@ erase b = E (getIndex b) (getPos b)
 -}
 externalBoard :: Board
 externalBoard = [
-    [U(0, 0), U(1, 0), U(2, 0), U(3, 0), U(4, 0), U(5, 0), U(6, 0), U(7, 0), U(8, 0), G (9, 0), U(10, 0), U(11, 0), U(12, 0), U(13, 0), U(14, 0), U(15, 0), U(16, 0), U(17, 0), U(18, 0)],
-    [U(0, 1), U(1, 1), U(2, 1), U(3, 1), U(4, 1), U(5, 1), U(6, 1), U(7, 1), G 2 (8, 1), U(9, 1), G 3 (10, 1), U(11, 1), U(12, 1), U(13, 1), U(14, 1), U(15, 1), U(16, 1), U(17, 1), U(18, 1)],
-    [U(0, 2), U(1, 2), U(2, 2), U(3, 2), U(4, 2), U(5, 2), U(6, 2), G 4 (7, 2), U(8, 2), G 5 (9, 2), U(10, 2), G 6 (11, 2), U(12, 2), U(13, 2), U(14, 2), U(15, 2), U(16, 2), U(17, 2), U(18, 2)],
-    [B 7 (0, 3), U(1, 3), B 8 (2, 3), U(3, 3), B 9 (4, 3), U(5, 3), E 10 (6, 3), U(7, 3), E 11 (8, 3), U(9, 3), E 12 (10, 3), U(11, 3), E 13 (12, 3), U(13, 3), Y 14 (14, 3), U(15, 3), Y 15 (16, 3), U(17, 3), Y 16(18, 3)],
-    [U(0, 4), B 17 (1, 4), U(2, 4), B 18 (3, 4), U(4, 4), E 19 (5, 4), U(6, 4), E 20 (7, 4), U(8, 4), E 21 (9, 4), U(10, 4), E 22 (11, 4), U(12, 4), E 23 (13, 4), U(14, 4), Y 24 (15, 4), U(16, 4), Y 25 (17, 4), U(18, 4)],
-    [U(0, 5), U(1, 5), B 26 (2, 5), U(3, 5), E 27 (4, 5), U(5, 5), E 28 (6, 5), U(7, 5), E 29 (8, 5), U(9, 5), E 30 (10, 5), U(11, 5), E 31 (12, 5), U(13, 5), E 32 (14, 5), U(15, 5), Y 33 (16, 5), U(17, 5), U(18, 5)],
-    [U(0, 6), U(1, 6), U(2, 6), E 34 (3, 6), U(4, 6), E 35 (5, 6), U(6, 6), E 36 (7, 6), U(8, 6), E 37 (9, 6), U(10, 6), E 38 (11, 6), U(12, 6), E 39 (13, 6), U(14, 6), E 40 (15, 6), U(16, 6), U(17, 6), U(18, 6)],
-    [U(0, 7), U(1, 7), P 41 (2, 7), U(3, 7), E 42 (4, 7), U(5, 7), E 43 (6, 7), U(7, 7), E 44 (8, 7), U(9, 7), E 45 (10, 7), U(11, 7), E 46 (12, 7), U(13, 7), E 47 (14, 7), U(15, 7), O 48 (16, 7), U(17, 7), U(18, 7)],
-    [U(0, 8), P 49 (1, 8), U(2, 8), P 50 (3, 8), U(4, 8), E 51 (5, 8), U(6, 8), E 52 (7, 8), U(8, 8), E 53 (9, 8), U(10, 8), E 54 (11, 8), U(12, 8), E 55 (13, 8), U(14, 8), O 56 (15, 8), U(16, 8), O 57 (17, 8), U(18, 8)],
-    [P 58 (0, 9), U(1, 9), P 59 (2, 9), U(3, 9), P 60 (4, 9), U(5, 9), E 61 (6, 9), U(7, 9), E 62 (8, 9), U(9, 9), E 63 (10, 9), U(11, 9), E 64 (12, 9), U(13, 9), O 65 (14, 9), U(15, 9), O 66 (16, 9), U(17, 9), O 67(18, 9)],
-    [U(0, 10), U(1, 10), U(2, 10), U(3, 10), U(4, 10), U(5, 10), U(6, 10), R 68 (7, 10), U(8, 10), R 69 (9, 10), U(10, 10), R 70 (11, 10), U(12, 10), U(13, 10), U(14, 10), U(15, 10), U(16, 10), U(17, 10), U(18, 10)],
-    [U(0, 11), U(1, 11), U(2, 11), U(3, 11), U(4, 11), U(5, 11), U(6, 11), U(7, 11), R 71 (8, 11), U(9, 11), R 72 (10, 11), U(11, 11), U(12, 11), U(13, 11), U(14, 11), U(15, 11), U(16, 11), U(17, 11), U(18, 11)],
-    [U(0, 12), U(1, 12), U(2, 12), U(3, 12), U(4, 12), U(5, 12), U(6, 12), U(7, 12), U(8, 12), R 73 (9, 12), U(10, 12), U(11, 12), U(12, 12), U(13, 12), U(14, 12), U(15, 12), U(16, 12), U(17, 12), U(18, 12)]]
+    [U(0, 0), U(1, 0), U(2, 0), U(3, 0), U(4, 0), U(5, 0), U(6, 0), U(7, 0), U(8, 0), G(9, 0), U(10, 0), U(11, 0), U(12, 0), U(13, 0), U(14, 0), U(15, 0), U(16, 0), U(17, 0), U(18, 0)],
+    [U(0, 1), U(1, 1), U(2, 1), U(3, 1), U(4, 1), U(5, 1), U(6, 1), U(7, 1), G(8, 1), U(9, 1), G(10, 1), U(11, 1), U(12, 1), U(13, 1), U(14, 1), U(15, 1), U(16, 1), U(17, 1), U(18, 1)],
+    [U(0, 2), U(1, 2), U(2, 2), U(3, 2), U(4, 2), U(5, 2), U(6, 2), G(7, 2), U(8, 2), G(9, 2), U(10, 2), G(11, 2), U(12, 2), U(13, 2), U(14, 2), U(15, 2), U(16, 2), U(17, 2), U(18, 2)],
+    [B(0, 3), U(1, 3), B(2, 3), U(3, 3), B(4, 3), U(5, 3), E(6, 3), U(7, 3), E(8, 3), U(9, 3), E(10, 3), U(11, 3), E(12, 3), U(13, 3), K(14, 3), U(15, 3), K(16, 3), U(17, 3), K(18, 3)],
+    [U(0, 4), B(1, 4), U(2, 4), B(3, 4), U(4, 4), E(5, 4), U(6, 4), E(7, 4), U(8, 4), E(9, 4), U(10, 4), E(11, 4), U(12, 4), E(13, 4), U(14, 4), K(15, 4), U(16, 4), K(17, 4), U(18, 4)],
+    [U(0, 5), U(1, 5), B(2, 5), U(3, 5), E(4, 5), U(5, 5), E(6, 5), U(7, 5), E(8, 5), U(9, 5), E(10, 5), U(11, 5), E(12, 5), U(13, 5), E(14, 5), U(15, 5), K(16, 5), U(17, 5), U(18, 5)],
+    [U(0, 6), U(1, 6), U(2, 6), E(3, 6), U(4, 6), E(5, 6), U(6, 6), E(7, 6), U(8, 6), E(9, 6), U(10, 6), E(11, 6), U(12, 6), E(13, 6), U(14, 6), E(15, 6), U(16, 6), U(17, 6), U(18, 6)],
+    [U(0, 7), U(1, 7), P(2, 7), U(3, 7), E(4, 7), U(5, 7), E(6, 7), U(7, 7), E(8, 7), U(9, 7), E(10, 7), U(11, 7), E(12, 7), U(13, 7), E(14, 7), U(15, 7), O(16, 7), U(17, 7), U(18, 7)],
+    [U(0, 8), P(1, 8), U(2, 8), P(3, 8), U(4, 8), E(5, 8), U(6, 8), E(7, 8), U(8, 8), E(9, 8), U(10, 8), E(11, 8), U(12, 8), E(13, 8), U(14, 8), O(15, 8), U(16, 8), O(17, 8), U(18, 8)],
+    [P(0, 9), U(1, 9), P(2, 9), U(3, 9), P(4, 9), U(5, 9), E(6, 9), U(7, 9), E(8, 9), U(9, 9), E(10, 9), U(11, 9), E(12, 9), U(13, 9), O(14, 9), U(15, 9), O(16, 9), U(17, 9), O(18, 9)],
+    [U(0, 10), U(1, 10), U(2, 10), U(3, 10), U(4, 10), U(5, 10), U(6, 10), R(7, 10), U(8, 10), R(9, 10), U(10, 10), R(11, 10), U(12, 10), U(13, 10), U(14, 10), U(15, 10), U(16, 10), U(17, 10), U(18, 10)],
+    [U(0, 11), U(1, 11), U(2, 11), U(3, 11), U(4, 11), U(5, 11), U(6, 11), U(7, 11), R(8, 11), U(9, 11), R(10, 11), U(11, 11), U(12, 11), U(13, 11), U(14, 11), U(15, 11), U(16, 11), U(17, 11), U(18, 11)],
+    [U(0, 12), U(1, 12), U(2, 12), U(3, 12), U(4, 12), U(5, 12), U(6, 12), U(7, 12), U(8, 12), R(9, 12), U(10, 12), U(11, 12), U(12, 12), U(13, 12), U(14, 12), U(15, 12), U(16, 12), U(17, 12), U(18, 12)]]
 
 -- access element in a matrix 
 getElement :: Board -> Pos -> BoardType
@@ -180,8 +170,8 @@ repaintPath start end myBoard = let startColour = getColour start
                                         Just c  -> let tempBoard = changeBoardElement erase start myBoard
                                                    in  changeBoardElement (repaint c) end tempBoard
 
-testJumpValid :: Board -> BoardType -> BoardType -> Bool
-testJumpValid eBoard start end = end `elem` destinationList eBoard start
+-- testJumpValid :: Board -> BoardType -> BoardType -> Bool
+-- testJumpValid eBoard start end = end `elem` destinationList eBoard start
 
 destinationList :: Board -> BoardType -> [BoardType]
 destinationList eBoard b = nub $ findAvaliableNeighbors eBoard b ++ searchWithoutLooping eBoard [] b
@@ -282,11 +272,11 @@ emptyList = [
             [0, 0, 0, 0, 0, 0, 0]]
 
 -- for testing purpose
-getPosByIdx :: Int -> Int -> Int -> Pos
-getPosByIdx v x y
-  | getIndex (getElement externalBoard (x, y)) == v = (x, y)
-  | x == boardWidth - 1 = getPosByIdx v 0 (y+1)
-  | otherwise = getPosByIdx v (x+1) y
+-- getPosByIdx :: Int -> Int -> Int -> Pos
+-- getPosByIdx v x y
+--   | getIndex (getElement externalBoard (x, y)) == v = (x, y)
+--   | x == boardWidth - 1 = getPosByIdx v 0 (y+1)
+--   | otherwise = getPosByIdx v (x+1) y
 -- project the red pieces from the main board to internal board
 -- this is done through traversing the two boards
 project :: Board -> Colour -> [[Int]]
@@ -296,7 +286,7 @@ project myBoard Blue   = projectToBlue myBoard emptyList (6, 9)
 project myBoard Purple = projectToPurple myBoard emptyList (12, 9)
 project myBoard Red    = projectToRed myBoard emptyList (15, 6)
 project myBoard Orange = projectToOrange myBoard emptyList (12, 3)
-project myBoard Yellow = projectToYellow myBoard emptyList (6, 3)
+project myBoard Black = projectToBlack myBoard emptyList (6, 3)
 
 testColour :: Pos -> Board -> Maybe Colour
 testColour pos myBoard = getColour $ getElement myBoard pos
@@ -366,14 +356,14 @@ projectToOrange eboard (x:xs) pos = projectToRowOrange eboard x pos : projectToO
         moveLeft :: Pos -> Pos
         moveLeft (x, y) = (x-2, y)
 
-projectToYellow :: Board -> [[Int]] -> Pos -> [[Int]]
-projectToYellow _ [] _ = []
-projectToYellow eboard (x:xs) pos = projectToRowYellow eboard x pos : projectToYellow eboard xs (moveDown pos)
+projectToBlack :: Board -> [[Int]] -> Pos -> [[Int]]
+projectToBlack _ [] _ = []
+projectToBlack eboard (x:xs) pos = projectToRowBlack eboard x pos : projectToBlack eboard xs (moveDown pos)
     where
-        projectToRowYellow :: Board -> [Int] -> Pos -> [Int]
-        projectToRowYellow _ [] _ = []
-        projectToRowYellow eboard (x:xs) pos = if testColour pos eboard == Just Yellow then 1 : projectToRowYellow eboard xs (moveRight pos)
-                                               else x : projectToRowYellow eboard xs (moveRight pos)
+        projectToRowBlack :: Board -> [Int] -> Pos -> [Int]
+        projectToRowBlack _ [] _ = []
+        projectToRowBlack eboard (x:xs) pos = if testColour pos eboard == Just Black then 1 : projectToRowBlack eboard xs (moveRight pos)
+                                               else x : projectToRowBlack eboard xs (moveRight pos)
         moveRight :: Pos -> Pos
         moveRight (x, y) = (x+2, y)
         moveDown :: Pos -> Pos

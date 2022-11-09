@@ -14,8 +14,8 @@ getPiecePos b = S(getPos b, )
 getPieceColour :: BoardType -> SB Board (Maybe Colour)
 getPieceColour b = S(getColour b,)
 
-getPieceIndex :: BoardType -> SB sb Int
-getPieceIndex b = S(getIndex b,)
+-- getPieceIndex :: BoardType -> SB sb Int
+-- getPieceIndex b = S(getIndex b,)
 
 isPieceOccupied :: BoardType -> SB sb (Maybe Bool)
 isPieceOccupied b = S(isOccupied b,)
