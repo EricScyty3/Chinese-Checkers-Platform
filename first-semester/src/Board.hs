@@ -5,7 +5,7 @@ import Data.List
 -- the board type should be able to represent the unique identification, occupy state and the occupied piece's color
 data Colour = Green | Blue | Purple | Red | Orange | Yellow deriving (Eq, Show)
 type Pos = (Int, Int)
-data BoardType = G Int Pos | B Int Pos | P Int Pos | R Int Pos | O Int Pos | Y Int Pos | E Int Pos | U Pos deriving (Eq, Show)
+data BoardType = G Pos | B Pos | P Pos | R Pos | O Pos | Y Pos | E Pos | U Pos deriving (Eq, Show)
 type Board = [[BoardType]]
 
 boardWidth :: Int
@@ -122,7 +122,7 @@ erase b = E (getIndex b) (getPos b)
 -}
 externalBoard :: Board
 externalBoard = [
-    [U(0, 0), U(1, 0), U(2, 0), U(3, 0), U(4, 0), U(5, 0), U(6, 0), U(7, 0), U(8, 0), G 1 (9, 0), U(10, 0), U(11, 0), U(12, 0), U(13, 0), U(14, 0), U(15, 0), U(16, 0), U(17, 0), U(18, 0)],
+    [U(0, 0), U(1, 0), U(2, 0), U(3, 0), U(4, 0), U(5, 0), U(6, 0), U(7, 0), U(8, 0), G (9, 0), U(10, 0), U(11, 0), U(12, 0), U(13, 0), U(14, 0), U(15, 0), U(16, 0), U(17, 0), U(18, 0)],
     [U(0, 1), U(1, 1), U(2, 1), U(3, 1), U(4, 1), U(5, 1), U(6, 1), U(7, 1), G 2 (8, 1), U(9, 1), G 3 (10, 1), U(11, 1), U(12, 1), U(13, 1), U(14, 1), U(15, 1), U(16, 1), U(17, 1), U(18, 1)],
     [U(0, 2), U(1, 2), U(2, 2), U(3, 2), U(4, 2), U(5, 2), U(6, 2), G 4 (7, 2), U(8, 2), G 5 (9, 2), U(10, 2), G 6 (11, 2), U(12, 2), U(13, 2), U(14, 2), U(15, 2), U(16, 2), U(17, 2), U(18, 2)],
     [B 7 (0, 3), U(1, 3), B 8 (2, 3), U(3, 3), B 9 (4, 3), U(5, 3), E 10 (6, 3), U(7, 3), E 11 (8, 3), U(9, 3), E 12 (10, 3), U(11, 3), E 13 (12, 3), U(13, 3), Y 14 (14, 3), U(15, 3), Y 15 (16, 3), U(17, 3), Y 16(18, 3)],
