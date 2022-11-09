@@ -3,6 +3,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use if" #-}
 
 -- module Main where
 import Control.Lens
@@ -75,7 +77,9 @@ data AppModel = AppModel {
   _playersAmount :: Int,
   _fromPiece :: BoardType,
   _toPiece :: BoardType,
-  _errorMessage :: String
+  _errorMessage :: String,
+  _movesList :: [BoardType]
+  -- _computerPlayersAmount :: Int
 } deriving (Eq, Show)
 
 -- the event type, representing different action the handler could react to
@@ -123,26 +127,33 @@ ifInitial :: BoardType -> Bool
 ifInitial (U (-1, -1)) = True
 ifInitial _ = False
 
+-- borderColour :: AppModel -> Colour -> Colour
+-- borderColour model c = 
+
+-- buttonColour :: Colour 
+
 -- construct the user interface layout of the application
 buildUI
   :: WidgetEnv AppModel AppEvent
   -> AppModel
   -> WidgetNode AppModel AppEvent
 buildUI wenv model = widgetTree where
-
   -- render the color of different pieces on the board based on the labels
   colouredLabel :: BoardType -> WidgetNode s AppEvent
   colouredLabel ch
     | isNothing(isOccupied ch) = spacer
     | otherwise = button_ (T.pack $ show $ getIndex ch) (MoveCheck ch) [ellipsis]
-                  `styleBasic` [radius 45, bgColor white, {-border 2 white,-}
-                                styleIf (compareColour ch Red)(bgColor red),
-                                styleIf (compareColour ch Blue) (bgColor blue),
-                                styleIf (compareColour ch Green) (bgColor green),
-                                styleIf (compareColour ch Purple)(bgColor purple),
-                                styleIf (compareColour ch Orange) (bgColor orange),
-                                styleIf (compareColour ch Yellow) (bgColor yellow),
-                                styleIf (isOccupied ch == Just True && not (compareColour ch Yellow) && not (compareColour ch Orange))(textColor white)
+                  `styleBasic` [radius 45, bgColor white,
+                                styleIf (isRed ch)(bgColor red),
+                                styleIf (isBlue ch) (bgColor blue),
+                                styleIf (isGreen ch) (bgColor green),
+                                styleIf (isPurple ch)(bgColor purple),
+                                styleIf (isOrange ch) (bgColor orange),
+                                styleIf (isYellow ch) (bgColor yellow),
+                                styleIf (isJustTrue (isOccupied ch) 
+                                         && not (isYellow ch) 
+                                         {-&& not (isOrange ch)-})
+                                         (textColor white)
                                 ]
 
   -- -- display a row of elements on the board
@@ -203,13 +214,14 @@ handleEvent wenv node model evt = case evt of
     | model ^. playersAmount == 4 -> [Model $ model & startGame .~ True
                                                     & boardE .~ eraseBoard False fourPlayersSet externalBoard
                                                     & boardI .~ eraseBoard False fourPlayersSet externalBoard]
-    | otherwise -> [Model $ model & startGame .~ True 
+    | otherwise -> [Model $ model & startGame .~ True
                                   & boardE .~ externalBoard
                                   & boardI .~ externalBoard]
   CancelMove
     | model ^. ifWin -> []
     | not $ ifInitial $ model ^. toPiece -> [Model $ model & toPiece .~ U(-1, -1) & errorMessage .~ ""]
     | otherwise -> [Model $ model & fromPiece .~ U(-1, -1) & errorMessage .~ ""]
+  
   RenderMove
     | model ^. ifWin -> []
     -- if valid movement is set
@@ -218,13 +230,15 @@ handleEvent wenv node model evt = case evt of
                         & fromPiece .~ U(-1, -1)
                         & toPiece .~ U(-1,-1)]
     | otherwise -> []
+  
   EndGameButtonClick -> [Model $ model & turnS .~ 0
                                        & ifWin .~ False
                                        -- & playersAmount .~ 4
                                        & startGame .~ False
                                        & fromPiece .~ U (-1, -1)
                                        & toPiece .~ U (-1, -1)
-                                       & errorMessage .~ ""]
+                                       & errorMessage .~ ""
+                                       & movesList .~ []]
 
   -- first enter the "from position", and check for the correct input
   -- then enter the "to position", if no error is made then process normal turn change, otherwise, reset and print the error message 
@@ -232,14 +246,17 @@ handleEvent wenv node model evt = case evt of
                   True -> []
                   False -> case ifInitial $ model ^. fromPiece of
                               True  -> if Just (turnText model) == getColour b then [Model $ model & fromPiece .~ b & errorMessage .~ ""]
-                                      else [Model $ model & errorMessage .~ show (turnText model) ++ ": invalid start" & fromPiece .~ b]
+                                       else [Model $ model & errorMessage .~ show (turnText model) ++ ": invalid start" & fromPiece .~ b]
                               False -> case model ^. fromPiece == b of
                                           True  -> [Model $ model & errorMessage .~ show (turnText model) ++ ": no move made" & toPiece .~ b]
                                           False -> case isOccupied b of
                                                       Just False -> case testJumpValid (model ^. boardE) (model ^. fromPiece) b of
-                                                                        True  -> [Model $ model & toPiece .~ b & errorMessage .~ ""]
+                                                                        True  -> [Model $ model & toPiece .~ b 
+                                                                                                & errorMessage .~ "" 
+                                                                                                & movesList .~ destinationList (model ^. boardE) b]
                                                                         False -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination unreacbable" & toPiece .~ b]
                                                       _ -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination occupied" & toPiece .~ b]
+  
   WinStateDeclare
     | winStateDetect (model ^. boardE) (turnText model) (model ^. boardI) -> [Model $ model & ifWin .~ True]
     | null $ model ^. errorMessage -> [Model $ model & turnS .~ turnChange model]
@@ -281,9 +298,10 @@ main = do
       _ifWin = False,
       _boardE = externalBoard,
       _boardI = externalBoard,
-      _playersAmount = 3,
+      _playersAmount = 2,
       _startGame = False,
       _fromPiece = U (-1, -1),
       _toPiece = U (-1, -1),
-      _errorMessage = ""
+      _errorMessage = "",
+      _movesList = []
     }

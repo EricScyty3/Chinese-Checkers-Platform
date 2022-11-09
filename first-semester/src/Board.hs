@@ -1,7 +1,6 @@
 module Board where
 import Data.Maybe
 import Data.List
-import State
 
 -- the board type should be able to represent the unique identification, occupy state and the occupied piece's color
 data Colour = Green | Blue | Purple | Red | Orange | Yellow deriving (Eq, Show)
@@ -24,6 +23,24 @@ fourPlayersSet = [Blue, Purple, Orange, Yellow]
 sixPlayersSet :: [Colour]
 sixPlayersSet = [Green, Blue, Purple, Red, Orange, Yellow]
 -- determine the color state of a piece
+isRed :: BoardType -> Bool
+isRed (R _ _) = True
+isRed _ = False
+isGreen :: BoardType -> Bool
+isGreen (G _ _) = True
+isGreen _ = False
+isBlue :: BoardType -> Bool
+isBlue (B _ _) = True
+isBlue _ = False
+isOrange :: BoardType -> Bool
+isOrange (O _ _) = True
+isOrange _ = False
+isPurple :: BoardType -> Bool
+isPurple (P _ _) = True
+isPurple _ = False
+isYellow :: BoardType -> Bool
+isYellow (Y _ _) = True
+isYellow _ = False
 getColour :: BoardType -> Maybe Colour
 getColour (G _ _) = Just Green
 getColour (B _ _) = Just Blue
@@ -164,7 +181,10 @@ repaintPath start end myBoard = let startColour = getColour start
                                                    in  changeBoardElement (repaint c) end tempBoard
 
 testJumpValid :: Board -> BoardType -> BoardType -> Bool
-testJumpValid eBoard start end = end `elem` findAvaliableNeighbors eBoard start || end `elem` searchWithoutLooping eBoard [] start
+testJumpValid eBoard start end = end `elem` destinationList eBoard start
+
+destinationList :: Board -> BoardType -> [BoardType]
+destinationList eBoard b = nub $ findAvaliableNeighbors eBoard b ++ searchWithoutLooping eBoard [] b
 
 -- check if this can be reached by one jump
 -- One adjacent jump range
@@ -219,7 +239,7 @@ testCorners resultBoard color = sum (map sum (project resultBoard color)) == tot
 
 -- a win for a player can only be achieved at one's turn
 winStateDetect :: Board -> Colour -> Board -> Bool
-winStateDetect eBoard c iBoard = let projection1 = project eBoard c 
+winStateDetect eBoard c iBoard = let projection1 = project eBoard c
                                      projection2 = project iBoard c
                                  in  flipBoard projection2 == projection1
 {-
@@ -262,7 +282,7 @@ emptyList = [
             [0, 0, 0, 0, 0, 0, 0]]
 
 -- for testing purpose
-getPosByIdx :: Int -> Int -> Int -> (Int, Int)
+getPosByIdx :: Int -> Int -> Int -> Pos
 getPosByIdx v x y
   | getIndex (getElement externalBoard (x, y)) == v = (x, y)
   | x == boardWidth - 1 = getPosByIdx v 0 (y+1)
