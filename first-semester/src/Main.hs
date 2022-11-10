@@ -61,6 +61,7 @@ import qualified Monomer.Lens as L
 import Monomer.Widgets
 import Monomer.Main
 import Monomer.Graphics.ColorTable
+import Monomer.Core.Combinators
 
 -- the model representation that indicates the state of the application
 -- information could be stored here that models the subject
@@ -76,6 +77,7 @@ data AppModel = AppModel {
   _boardI :: Board,
   -- the players of the game
   _playersAmount :: Int,
+  _computerPlayersAmount :: Int,
   _fromPiece :: BoardType,
   _toPiece :: BoardType,
   _previousFromPos :: Pos,
@@ -95,6 +97,7 @@ data AppEvent
   | RenderMove
   | CancelMove
   | EndGameButtonClick
+  | ResetChoice Int
   deriving (Eq, Show)
 
 makeLenses 'AppModel
@@ -117,14 +120,6 @@ turnText model
   | otherwise = sixPlayersSet !! turn
   where turn = model ^. turnS
 
--- printHint :: AppModel -> String
--- printHint model
---   | null (model ^. errorMessage) = "From " ++ printIndex (model ^. fromPiece) ++ " to " ++ printIndex (model ^. toPiece)
---   | otherwise = "From " ++ printIndex (model ^. fromPiece) ++ " to " ++ printIndex (model ^. toPiece) ++ ", " ++ model ^. errorMessage
---     where
---       printIndex :: BoardType -> String
---       printIndex p = if ifInitial p then " " else show $ getIndex p
-
 ifInitialPiece :: BoardType -> Bool
 ifInitialPiece (U (-1, -1)) = True
 ifInitialPiece _ = False
@@ -133,11 +128,6 @@ ifInitialPos :: Pos -> Bool
 ifInitialPos (-1, -1) = True
 ifInitialPos _ = False
 
--- borderColour :: AppModel -> Colour -> Colour
--- borderColour model c = 
-
--- buttonColour :: Colour 
-
 -- construct the user interface layout of the application
 buildUI
   :: WidgetEnv AppModel AppEvent
@@ -145,11 +135,11 @@ buildUI
   -> WidgetNode AppModel AppEvent
 buildUI wenv model = widgetTree where
   -- render the color of different pieces on the board based on the labels
-  colouredLabel :: BoardType -> WidgetNode s AppEvent
+  colouredLabel :: BoardType -> WidgetNode AppModel AppEvent
   colouredLabel ch
     | isNothing(isOccupied ch) = spacer
     | otherwise = button_ {-(T.pack $ show $ getIndex ch)-} "" (MoveCheck ch) [onClick RenderMove]
-                  `styleBasic` [radius 45, bgColor white, border 2 white,
+                  `styleBasic` [radius 45, bgColor white, border 2 white, textSize 20,
                                 styleIf (isRed ch)(bgColor red),
                                 styleIf (isBlue ch) (bgColor blue),
                                 styleIf (isGreen ch) (bgColor green),
@@ -158,22 +148,25 @@ buildUI wenv model = widgetTree where
                                 styleIf (isBlack ch) (bgColor black),
                                 styleIf (ch == p || ch `elem` model ^. movesList) (border 2 pc)
                                 ]
-    where 
+    where
       p = model ^. fromPiece
 
-      pc 
+      pc
         | isRed p = red
         | isBlue p = blue
         | isGreen p = green
         | isPurple p = purple
         | isOrange p = darkOrange
         | isBlack p = black
-        | otherwise = white 
+        | otherwise = white
 
 
   -- -- display a row of elements on the board
-  makeRowState :: [BoardType] -> WidgetNode s AppEvent
+  makeRowState :: [BoardType] -> WidgetNode AppModel AppEvent
   makeRowState row = hgrid(colouredLabel <$> row) -- render the rows of button
+
+  computerPlayersChoices :: Int -> WidgetNode AppModel AppEvent
+  computerPlayersChoices amount = labeledRadio (showt amount) amount computerPlayersAmount `styleBasic`[textSize 30]
 
   -- call functions to render the application
   widgetTree = vstack [
@@ -182,26 +175,29 @@ buildUI wenv model = widgetTree where
       box $ label_ (T.pack $ model ^. errorMessage) [ellipsis] `styleBasic` [textFont "Italic", textSize 20] `nodeVisible` model ^. startGame,
       spacer,
       box $ hgrid[
-          button "Quit" EndGameButtonClick `styleBasic`[textSize 20],
-          -- filler,
-          -- button_ "Confirm" RenderMove [onClick WinStateDeclare] `styleBasic`[textSize 20],
           filler,
-          button "Cancel" CancelMove `styleBasic`[textSize 20]
+          button "Quit" EndGameButtonClick `styleBasic`[textSize 20],
+          filler,
+          button "Cancel" CancelMove `styleBasic`[textSize 20],
+          filler
       ]`nodeVisible` (model ^. startGame),
-     filler,
+      filler,
 
       box $ vstack[
+        label "Players Amount" `styleBasic`[textSize 30],
         hgrid[
-          labeledRadio "2" 2 playersAmount `styleBasic`[textSize 30],
-          spacer,
-          labeledRadio "3" 3 playersAmount `styleBasic`[textSize 30],
-          spacer,
-          labeledRadio "4" 4 playersAmount `styleBasic`[textSize 30],
-          spacer,
-          labeledRadio "6" 6 playersAmount `styleBasic`[textSize 30]
+          labeledRadio_ "2" 2 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
+          labeledRadio_ "3" 3 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
+          labeledRadio_ "4" 4 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
+          labeledRadio_ "6" 6 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30]
         ],
         spacer,
-        button "New Game" StartGameButtonClick `styleBasic`[textSize 50]
+
+        label "Computer Players Amount" `styleBasic`[textSize 30],
+        hgrid(computerPlayersChoices <$> [0..model ^. playersAmount]),
+        spacer,
+
+        button "Start Game" StartGameButtonClick `styleBasic`[textSize 50]
       ] `nodeVisible` not (model ^. startGame),
       spacer,
 
@@ -220,7 +216,7 @@ handleEvent
 handleEvent wenv node model evt = case evt of
   AppInit -> []
   StartGameButtonClick
-   | model ^. playersAmount == 2 ->  [Model $ model & startGame .~ True
+    | model ^. playersAmount == 2 -> [Model $ model & startGame .~ True
                                                     & boardE .~ eraseBoard False twoPlayersSet externalBoard
                                                     & boardI .~ eraseBoard False twoPlayersSet externalBoard]
     | model ^. playersAmount == 3 -> [Model $ model & startGame .~ True
@@ -245,24 +241,24 @@ handleEvent wenv node model evt = case evt of
       pf = getElement (model ^. boardE) pfp
       pt = getElement (model ^. boardE) ptp
       newBoard = repaintPath pt pf (model ^. boardE)
-  
+
   RenderMove
     | model ^. ifWin -> [] -- if already won then do nothing
-    | not (ifInitialPiece (model ^. toPiece)) && winStateDetect newBoard currentColour (model ^. boardI) -> 
-      [Model $ model & ifWin .~ True & boardE .~ newBoard] -- else then first determine the win state
+    | not (ifInitialPiece (model ^. toPiece)) && winStateDetect newBoard currentColour (model ^. boardI) ->
+      [Model $ model & ifWin .~ True & boardE .~ newBoard & movesList .~ []] -- else then first determine the win state
     -- otherwise just update the turn 
     | not (ifInitialPiece (model ^. toPiece)) -> [Model $ model & boardE .~ newBoard
-                                                           & turnS .~ turnChange model                         
-                                                           & previousFromPos .~ getPos(model ^. fromPiece) 
-                                                           & previousToPos .~ getPos(model ^. toPiece)
-                                                           & fromPiece .~ U(-1, -1)
-                                                           & toPiece .~ U(-1,-1)
-                                                           & movesList .~ []]
+                                                                & turnS .~ turnChange model
+                                                                & previousFromPos .~ getPos(model ^. fromPiece)
+                                                                & previousToPos .~ getPos(model ^. toPiece)
+                                                                & fromPiece .~ U(-1, -1)
+                                                                & toPiece .~ U(-1,-1)
+                                                                & movesList .~ []]
     | otherwise -> []
-      where 
+      where
         newBoard = repaintPath (model ^. fromPiece) (model ^. toPiece) (model ^. boardE)
         currentColour = turnText model
-  
+
   EndGameButtonClick -> [Model $ model & turnS .~ 0
                                        & ifWin .~ False
                                        & startGame .~ False
@@ -279,30 +275,32 @@ handleEvent wenv node model evt = case evt of
   MoveCheck b -> case model ^. ifWin of
                   True -> []
                   False -> case ifInitialPiece $ model ^. fromPiece of
-                              True  -> if Just (turnText model) == getColour b then [Model $ model & fromPiece .~ b 
+                              True  -> if Just (turnText model) == getColour b then [Model $ model & fromPiece .~ b
                                                                                                    & errorMessage .~ ""
                                                                                                    & movesList .~ destinationList (model ^. boardE) b]
-                                       else [Model $ model & errorMessage .~ show (turnText model) ++ ": invalid start" 
+                                       else [Model $ model & errorMessage .~ show (turnText model) ++ ": invalid start"
                                                             & fromPiece .~ U (-1, -1)]
                               False -> case model ^. fromPiece == b of
-                                          True  -> [Model $ model & errorMessage .~ show (turnText model) ++ ": no move made" 
+                                          True  -> [Model $ model & errorMessage .~ show (turnText model) ++ ": no move made"
                                                                   & fromPiece .~ U (-1, -1)]
                                           False -> case isOccupied b of
                                                       Just False -> case b `elem` model ^. movesList of
-                                                                        True  -> [Model $ model & toPiece .~ b 
+                                                                        True  -> [Model $ model & toPiece .~ b
                                                                                                 & errorMessage .~ ""]
-                                                                        False -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination unreacbable" 
+                                                                        False -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination unreacbable"
                                                                                                 & fromPiece .~ U (-1, -1)]
-                                                      _ -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination occupied" 
+                                                      _ -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination occupied"
                                                                           & fromPiece .~ U (-1, -1)]
-      
+  ResetChoice v
+    | v < c -> [Model $ model & computerPlayersAmount .~ v]
+    | otherwise -> []
+    where
+      c = model ^. computerPlayersAmount
 
 -- Check before a path is made and finally repainted to the board:
 -- 1. the first entered piece should be valid: correct colour
 -- 2. the second enter piece should be valid: no repeated click, no occupied position, reachabld position
 -- finally, settle the movement path and update the turn
-
-
 turnChange :: AppModel -> Int
 turnChange model
     | model ^. turnS == model ^. playersAmount - 1 = 0
@@ -337,6 +335,7 @@ main = do
       _boardE = externalBoard,
       _boardI = externalBoard,
       _playersAmount = 2,
+      _computerPlayersAmount = 0,
       _startGame = False,
       _fromPiece = U (-1, -1),
       _toPiece = U (-1, -1),
