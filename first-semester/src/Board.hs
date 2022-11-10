@@ -79,37 +79,6 @@ repaint Purple b = P (getPos b)
 erase :: BoardType -> BoardType
 erase b = E (getPos b)
 -- the overall board state for displaying and for movement changed determining
-{-
-    externalBoard :: Board
-    externalBoard = [
-                    [U, U, U, U, U, U, U, U, U, G 1, U, U, U, U, U, U, U, U, U],
-                    [U, U, U, U, U, U, U, U, G 2, U, G 3, U, U, U, U, U, U, U, U],
-                    [U, U, U, U, U, U, U, G 4, U, G 5, U, G 6 , U, U, U, U, U, U, U],
-                    [B 7, U, B 8, U, B 9, U, E 10, U, E 11, U, E 12, U, E 13, U, Y 14, U, Y 15, U, Y 16],
-                    [U, B 17, U, B 18, U, E 19, U, E 20, U, E 21, U, E 22, U, E 23, U, Y 24, U, Y 25, U],
-                    [U, U, B 26, U, E 27, U, E 28, U, E 29, U, E 30, U, E 31, U, E 32, U, Y 33, U, U],
-                    [U, U, U, E 34, U, E 35, U, E 36, U, E 37, U, E 38, U, E 39, U, E 40, U, U, U],
-                    [U, U, P 41, U, E 42, U, E 43, U, E 44, U, E 45, U, E 46, U, E 47, U, O 48, U, U],
-                    [U, P 49, U, P 50, U, E 51, U, E 52, U, E 53, U, E 54, U, E 55, U, O 56, U, O 57, U],
-                    [P 58, U, P 59, U, P 60, U, E 61, U, E 62, U, E 63, U, E 64, U, O 65, U, O 66, U, O 67],
-                    [U, U, U, U, U, U, U, R 68, U, R 69, U, R 70, U, U, U, U, U, U, U],
-                    [U, U, U, U, U, U, U, U, R 71, U, R 72, U, U, U, U, U, U, U, U],
-                    [U, U, U, U, U, U, U, U, U, R 73, U, U, U, U, U, U, U, U, U]
-                ]
-    transform :: [[BoardType]] -> Int -> IO ()
-    transform [] _ = putStrLn ""
-    transform [x] iy = printExternalBoardWithPos x 0 iy
-    transform (x:xs) iy = do printExternalBoardWithPos x 0 iy
-                            transform xs (iy+1)
-
-    printExternalBoardWithPos :: [BoardType] -> Int -> Int -> IO ()
-    printExternalBoardWithPos [] _ _ = putStrLn ""
-    printExternalBoardWithPos [x] ix fy = putStrLn (show x ++ "(" ++ show ix ++ ", " ++ show fy ++ ")")
-    printExternalBoardWithPos (x:xs) ix fy = do case isOccupied x of 
-                                                    Nothing -> putStr (show x ++ "(" ++ show ix ++ ", " ++ show fy ++ "), ")
-                                                    _       -> putStr (show x ++ " (" ++ show ix ++ ", " ++ show fy ++ "), ")
-                                                printExternalBoardWithPos xs (ix+1) fy
--}
 externalBoard :: Board
 externalBoard = [
     [U(0, 0), U(1, 0), U(2, 0), U(3, 0), U(4, 0), U(5, 0), U(6, 0), U(7, 0), U(8, 0), G(9, 0), U(10, 0), U(11, 0), U(12, 0), U(13, 0), U(14, 0), U(15, 0), U(16, 0), U(17, 0), U(18, 0)],

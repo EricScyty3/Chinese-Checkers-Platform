@@ -21,7 +21,9 @@ executable app
   other-modules:
       Board
       BoardState_test
+      RedBlack_Tree
       State
+      Zobrist
       Paths_monomer_starter
   hs-source-dirs:
       src
