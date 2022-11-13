@@ -35,6 +35,7 @@ executable app
     , data-default
     , lens
     , monomer
+    , random
     , text
     , text-show
   default-language: Haskell2010
