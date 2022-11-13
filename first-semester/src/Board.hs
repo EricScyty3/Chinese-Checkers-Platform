@@ -2,7 +2,6 @@ module Board where
 import Data.Maybe
 import Data.List
 
-
 -- the board type should be able to represent the unique identification, occupy state and the occupied piece's color
 data Colour = Green | Blue | Purple | Red | Orange | Black deriving (Eq, Show)
 type Pos = (Int, Int)
