@@ -2,11 +2,13 @@ module Board where
 import Data.Maybe
 import Data.List
 
+
 -- the board type should be able to represent the unique identification, occupy state and the occupied piece's color
 data Colour = Green | Blue | Purple | Red | Orange | Black deriving (Eq, Show)
 type Pos = (Int, Int)
 data BoardType = G Pos | B Pos | P Pos | R Pos | O Pos | K Pos | E Pos | U Pos deriving (Eq, Show)
 type Board = [[BoardType]]
+type OccupiedBoard = [[Int]]
 
 boardWidth :: Int
 boardWidth = 19
@@ -132,12 +134,9 @@ eraseBoard t cs = map (eraseRow t cs)
         f :: Bool -> Colour -> [Colour] -> Bool
         f t x xs = if t then x `elem` xs else x `notElem` xs
 
-repaintPath :: BoardType -> BoardType -> Board -> Board
-repaintPath start end myBoard = let startColour = getColour start
-                                in  case startColour of
-                                        Nothing -> myBoard
-                                        Just c  -> let tempBoard = changeBoardElement erase start myBoard
-                                                   in  changeBoardElement (repaint c) end tempBoard
+repaintPath :: BoardType -> BoardType -> Colour -> Board -> Board
+repaintPath start end c myBoard = let tempBoard = changeBoardElement erase start myBoard
+                                  in  changeBoardElement (repaint c) end tempBoard
 
 -- testJumpValid :: Board -> BoardType -> BoardType -> Bool
 -- testJumpValid eBoard start end = end `elem` destinationList eBoard start
@@ -191,155 +190,292 @@ determineValidJump myBoard pos f
 -- some rules allow jump to be chained as longer as the symmetric satisfied on a line, no neec to be one position in between
 
 -- an addition check should be transformed into square and tested
--- through counting the colored pieces, this is only for computer players to enable sufficient compute and shorter game
-testCorners :: Board -> Colour -> Bool
-testCorners resultBoard color = sum (map sum (project resultBoard color)) == totalPieces
--- bedies, computer is only allow frontward move
+-- this is only for computer players to enable sufficient compute and shorter game
+testCorners :: Pos -> Colour -> Bool
+testCorners (x, y) Green = withinBorder $ projectGreen (x, y)
+testCorners (x, y) Purple = withinBorder $ projectPurple (x, y)
+testCorners (x, y) Blue = withinBorder $ projectBlue (x, y)
+testCorners (x, y) Red = withinBorder $ projectRed (x, y)
+testCorners (x, y) Orange = withinBorder $ projectOrange (x, y)
+testCorners (x, y) Black = withinBorder $ projectBlack (x, y)
+
+withinBorder :: Pos -> Bool
+withinBorder (x, y) = x <= 6 && y <= 6 && x >= 0 && y >= 0
+-- bedies, computer is only allow frontward move, might need to added as movement rule
 
 -- a win for a player can only be achieved at one's turn
-winStateDetect :: Board -> Colour -> Board -> Bool
-winStateDetect eBoard c iBoard = let projection1 = project eBoard c
-                                     projection2 = project iBoard c
-                                 in  flipBoard projection2 == projection1
-{-
-    -- retrieve the occupy state of the board
-    returnOccupiedBoard :: Board -> [[Int]]
-    returnOccupiedBoard = map returnOccupiedRow
-        where
-            returnOccupiedRow :: RowBoardState -> [Int]
-            returnOccupiedRow [] = []
-            returnOccupiedRow (x:xs)
-                | isNothing (isOccupied x) = (-1):returnOccupiedRow xs
-                | isOccupied x == Just False = 0:returnOccupiedRow xs
-                | otherwise = 1:returnOccupiedRow xs
+winStateDetect :: OccupiedBoard -> OccupiedBoard -> Bool
+winStateDetect initial resulted = transpose initial == resulted
 
-    totalOccupied2 :: [[BoardType]] -> Int
-    totalOccupied2 rs = length $ concatMap totalOccupied rs
-        where
-            totalOccupied :: [BoardType] -> [BoardType]
-            totalOccupied [] = []
-            totalOccupied (x:xs) = if isOccupied x == Just True then x:totalOccupied xs else totalOccupied xs
-
-    replace :: Int -> a -> [a] -> [a]
-    replace idx v xs = front ++ [v] ++ end
-        where
-            (front, _:end) = splitAt idx xs
--}
-
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the internal single-agent board for a player with the top-right the starting point and botton-left the destination
 -- this is just for heuristic board evaluation 
 -- only need to know the occupy status for each position
--- three main conversions are needed, others can be done through flipping
-emptyList :: [[Int]]
-emptyList = [
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0]]
+-- In addition, the transformation between the external (display-purposed) board the internal (heuristi-purposed) board is needed
+-- furthermore, in experimental environment, the communication between each player should be done through internal board exchanging
+initialState :: OccupiedBoard
+initialState = [
+                [0, 0, 0, 0, 1, 1, 1],
+                [0, 0, 0, 0, 0, 1, 1],
+                [0, 0, 0, 0, 0, 0, 1],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0]]
 
--- for testing purpose
--- getPosByIdx :: Int -> Int -> Int -> Pos
--- getPosByIdx v x y
---   | getIndex (getElement externalBoard (x, y)) == v = (x, y)
---   | x == boardWidth - 1 = getPosByIdx v 0 (y+1)
---   | otherwise = getPosByIdx v (x+1) y
+
+flipBoardState :: Pos -> Pos -> OccupiedBoard -> OccupiedBoard
+flipBoardState (fx, fy) (tx, ty) b = let newRow1 = replace fx (flip $ getElem b (fx, fy)) (b !! fy)
+                                         newBoard1 = replace fy newRow1 b
+                                         newRow2 = replace tx (flip $ getElem newBoard1 (tx, ty)) (newBoard1 !! ty)
+                                     in  replace ty newRow2 newBoard1
+    where
+        flip :: Int -> Int
+        flip 0 = 1
+        flip _ = 0
+
+        getElem :: OccupiedBoard -> Pos -> Int
+        getElem b (x, y) = (b !! y) !! x
+{-
+-- test with projection board
+testBoard :: Int -> Board -> [[Int]]
+testBoard 7 _ = []
+testBoard y eBoard = testRow 0 y eBoard : testBoard (y+1) eBoard
+
+testRow :: Int -> Int -> Board -> [Int]
+testRow x y eBoard
+    | x == 7 = [] 
+    | getColour (getElement eBoard (px, py)) == Just Black = 1:testRow (x+1) y eBoard
+    | otherwise = 0:testRow (x+1) y eBoard
+    where
+        (px, py) = reverseBlack (x, y)
+-}
+projection :: Colour -> Pos -> Pos
+projection Green pos = projectGreen pos
+projection Blue pos = projectBlue pos
+projection Purple pos = projectPurple pos
+projection Red pos = projectRed pos
+projection Orange pos = projectOrange pos
+projection Black pos = projectBlack pos
+-- probability used most by the AI player
+reversion :: Colour -> Pos -> Pos
+reversion Green pos = reverseGreen pos
+reversion Blue pos = reverseBlue pos
+reversion Purple pos = reversePurple pos
+reversion Red pos = reverseRed pos
+reversion Orange pos = reverseOrange pos
+reversion Black pos = reverseBlack pos
+-- Below is the coordinate conversion of internal board state of each colour and the external display board state
+{-
+        (1,1)
+        (6,9) (7,8) (8,7) (9,6)
+        (5,8) (6,7) (7,6) (8,5)
+        (4,7) (5,6) (6,5) (7,4)
+(1,-1)  (3,6) (4,5) (5,4) (6,3)
+-}
+projectGreen :: Pos -> Pos
+projectGreen (x, y) = let disY = ((x - ix) + (y - iy)) `div` 2
+                          (ox, oy) = (ix + disY, iy + disY) -- move Y
+                      in  (x - ox, disY)
+    where
+        (ix, iy) = (3, 6)
+
+reverseGreen :: Pos -> Pos
+reverseGreen (x,y) = let (ox, oy) = (ix + x, iy - x) -- move x
+                     in  (ox + y, oy + y)            -- move y
+    where
+        (ix, iy) = (3, 6)
+{-
+         (2, 0)
+         (12,9) (11,8) (10,7) (9, 6)
+         (10,9) (9, 8) (8, 7) (7, 6)
+         (8, 9) (7, 8) (6, 7) (5, 6)
+(-1,-1)  (6, 9) (5, 8) (4, 7) (3, 6)
+-}
+projectBlue :: Pos -> Pos
+projectBlue (x, y) = let disX = iy - y
+                         (ox, oy) = (ix - disX, iy - disX) -- move x
+                     in  (disX, (x - ox) `div` 2)
+    where
+        (ix, iy) = (6, 9)
+
+reverseBlue :: Pos -> Pos
+reverseBlue (x, y) = let (ox, oy) = (ix - x, iy - x) -- move x
+                     in  (2*y + ox, oy)              -- move y
+    where
+        (ix, iy) = (6, 9)
+{-
+        (1,-1)
+        (15,6) (13,6) (11,6) (9, 6)
+        (14,7) (12,7) (10,7) (8, 7)
+        (13,8) (11,8) (9, 8) (7, 8)
+(-2,0)  (12,9) (10,9) (8, 9) (6, 9)
+-}
+projectPurple :: Pos -> Pos
+projectPurple (x, y) = let disY = iy - y
+                           (ox, oy) = (ix + disY, iy - disY) -- move y
+                       in  ((ox-x) `div` 2, disY)
+    where
+        (ix, iy) = (12, 9)
+
+reversePurple :: Pos -> Pos
+reversePurple (x, y) = let (ox, oy) = (ix - 2*x, iy) -- move x
+                       in  (ox + y, oy - y)          -- move y
+    where
+        (ix, iy) = (12, 9)
+{-
+        (-1,-1)
+        (12,3) (11,4) (10,5) (9, 6)
+        (13,4) (12,5) (11,6) (10,7)
+        (14,5) (13,6) (12,7) (11,8)
+(-1,1)  (15,6) (14,7) (13,8) (12,9)
+-}
+projectRed :: Pos -> Pos
+projectRed (x, y) = let disY = ((ix - x) + (iy - y)) `div` 2
+                        (ox, oy) = (ix - disY, iy - disY) -- move y
+                    in  (ox - x, disY)
+    where
+        (ix, iy) = (15, 6)
+
+reverseRed :: Pos -> Pos
+reverseRed (x, y) = let (ox, oy) = (ix - x, iy + x) -- move x
+                    in  (ox - y, oy - y)            -- move y
+    where
+        (ix, iy) = (15, 6)
+{-
+        (-2,0)
+        (6, 3) (7, 4) (8, 5) (9, 6)
+        (8, 3) (9, 4) (10,5) (11,6)
+        (10,3) (11,4) (12,5) (13,6)
+(1, 1)  (12,3) (13,4) (14,5) (15,6)
+-}
+projectOrange :: Pos -> Pos
+projectOrange (x, y) = let disX = y - iy
+                           (ox, oy) = (ix + disX, iy + disX) -- move x 
+                       in  (disX, (ox - x) `div` 2)
+    where
+        (ix, iy) = (12, 3)
+
+reverseOrange :: Pos -> Pos
+reverseOrange (x, y) = let (ox, oy) = (ix + x, iy + x) -- move x
+                       in  (ox - 2*y, oy)              -- move y
+    where
+        (ix, iy) = (12, 3)
+{-
+        (-1,1)
+        (3, 6) (5, 6) (7, 6) (9, 6)
+        (4, 5) (6, 5) (8, 5) (10,5)
+        (5, 4) (7, 4) (9, 4) (11,4)
+(2, 0)  (6, 3) (8, 3) (10,3) (12,3)
+-}
+projectBlack :: Pos -> Pos
+projectBlack (x, y) = let disY = y - iy
+                          (ox, oy) = (ix - disY, iy + disY) -- move Y
+                      in  ((x-ox) `div` 2, disY)
+    where
+        (ix, iy) = (6, 3)
+
+reverseBlack :: Pos -> Pos
+reverseBlack (x, y) = let (ox, oy) = (ix + 2 * x, iy) -- move x
+                      in  (ox - y, oy + y)            -- move y
+    where
+        (ix, iy) = (6, 3)
+
+
 -- project the red pieces from the main board to internal board
--- this is done through traversing the two boards
-project :: Board -> Colour -> [[Int]]
-project [] _ = []
-project myBoard Green  = projectToGreen myBoard emptyList (3, 6)
-project myBoard Blue   = projectToBlue myBoard emptyList (6, 9)
-project myBoard Purple = projectToPurple myBoard emptyList (12, 9)
-project myBoard Red    = projectToRed myBoard emptyList (15, 6)
-project myBoard Orange = projectToOrange myBoard emptyList (12, 3)
-project myBoard Black = projectToBlack myBoard emptyList (6, 3)
+-- this is done through traversing the two boards, but if the conversion is settled this will not be need
+-- but still need a method to convert pose between two boards
+{-
+    project :: Board -> Colour -> [[Int]]
+    project [] _ = []
+    project myBoard Green  = projectToGreen myBoard emptyList (3, 6)
+    project myBoard Blue   = projectToBlue myBoard emptyList (6, 9)
+    project myBoard Purple = projectToPurple myBoard emptyList (12, 9)
+    project myBoard Red    = projectToRed myBoard emptyList (15, 6)
+    project myBoard Orange = projectToOrange myBoard emptyList (12, 3)
+    project myBoard Black = projectToBlack myBoard emptyList (6, 3)
 
-testColour :: Pos -> Board -> Maybe Colour
-testColour pos myBoard = getColour $ getElement myBoard pos
+    testColour :: Pos -> Board -> Maybe Colour
+    testColour pos myBoard = getColour $ getElement myBoard pos
 
-projectToGreen :: Board -> [[Int]] -> Pos -> [[Int]]
-projectToGreen _ [] _ = []
-projectToGreen eboard (x:xs) pos = projectToRowGreen eboard x pos : projectToGreen eboard xs (moveDown pos)
-    where
-        projectToRowGreen :: Board -> [Int] -> Pos -> [Int]
-        projectToRowGreen _ [] _ = []
-        projectToRowGreen eboard (x:xs) pos = if testColour pos eboard == Just Green then 1 : projectToRowGreen eboard xs (moveUp pos)
-                                              else x : projectToRowGreen eboard xs (moveUp pos)
-        moveUp :: Pos -> Pos
-        moveUp (x, y) = (x+1, y-1)
-        moveDown :: Pos -> Pos
-        moveDown (x, y) = (x+1, y+1)
+    projectToGreen :: Board -> [[Int]] -> Pos -> [[Int]]
+    projectToGreen _ [] _ = []
+    projectToGreen eboard (x:xs) pos = projectToRowGreen eboard x pos : projectToGreen eboard xs (moveDown pos)
+        where
+            projectToRowGreen :: Board -> [Int] -> Pos -> [Int]
+            projectToRowGreen _ [] _ = []
+            projectToRowGreen eboard (x:xs) pos = if testColour pos eboard == Just Green then 1 : projectToRowGreen eboard xs (moveUp pos)
+                                                else x : projectToRowGreen eboard xs (moveUp pos)
+            moveUp :: Pos -> Pos
+            moveUp (x, y) = (x+1, y-1)
+            moveDown :: Pos -> Pos
+            moveDown (x, y) = (x+1, y+1)
 
-projectToBlue :: Board -> [[Int]] -> Pos -> [[Int]]
-projectToBlue _ [] _ = []
-projectToBlue eboard (x:xs) pos = projectToRowBlue eboard x pos : projectToBlue eboard xs (moveRight pos)
-    where
-        projectToRowBlue :: Board -> [Int] -> Pos -> [Int]
-        projectToRowBlue _ [] _ = []
-        projectToRowBlue eboard (x:xs) pos = if testColour pos eboard == Just Blue then 1 : projectToRowBlue eboard xs (moveUp pos)
-                                             else x : projectToRowBlue eboard xs (moveUp pos)
-        moveUp :: Pos -> Pos
-        moveUp (x, y) = (x-1, y-1)
-        moveRight :: Pos -> Pos
-        moveRight (x, y) = (x+2, y)
+    projectToBlue :: Board -> [[Int]] -> Pos -> [[Int]]
+    projectToBlue _ [] _ = []
+    projectToBlue eboard (x:xs) pos = projectToRowBlue eboard x pos : projectToBlue eboard xs (moveRight pos)
+        where
+            projectToRowBlue :: Board -> [Int] -> Pos -> [Int]
+            projectToRowBlue _ [] _ = []
+            projectToRowBlue eboard (x:xs) pos = if testColour pos eboard == Just Blue then 1 : projectToRowBlue eboard xs (moveUp pos)
+                                                else x : projectToRowBlue eboard xs (moveUp pos)
+            moveUp :: Pos -> Pos
+            moveUp (x, y) = (x-1, y-1)
+            moveRight :: Pos -> Pos
+            moveRight (x, y) = (x+2, y)
 
-projectToPurple :: Board -> [[Int]] -> Pos -> [[Int]]
-projectToPurple _ [] _ = []
-projectToPurple eboard (x:xs) pos = projectToRowPurple eboard x pos : projectToPurple eboard xs (moveUp pos)
-    where
-        projectToRowPurple :: Board -> [Int] -> Pos -> [Int]
-        projectToRowPurple _ [] _ = []
-        projectToRowPurple eboard (x:xs) pos = if testColour pos eboard == Just Purple then 1 : projectToRowPurple eboard xs (moveLeft pos)
-                                               else x : projectToRowPurple eboard xs (moveLeft pos)
-        moveUp :: Pos -> Pos
-        moveUp (x, y) = (x+1, y-1)
-        moveLeft :: Pos -> Pos
-        moveLeft (x, y) = (x-2, y)
+    projectToPurple :: Board -> [[Int]] -> Pos -> [[Int]]
+    projectToPurple _ [] _ = []
+    projectToPurple eboard (x:xs) pos = projectToRowPurple eboard x pos : projectToPurple eboard xs (moveUp pos)
+        where
+            projectToRowPurple :: Board -> [Int] -> Pos -> [Int]
+            projectToRowPurple _ [] _ = []
+            projectToRowPurple eboard (x:xs) pos = if testColour pos eboard == Just Purple then 1 : projectToRowPurple eboard xs (moveLeft pos)
+                                                else x : projectToRowPurple eboard xs (moveLeft pos)
+            moveUp :: Pos -> Pos
+            moveUp (x, y) = (x+1, y-1)
+            moveLeft :: Pos -> Pos
+            moveLeft (x, y) = (x-2, y)
 
-projectToRed :: Board -> [[Int]] -> Pos -> [[Int]]
-projectToRed _ [] _ = []
-projectToRed eboard (x:xs) pos = projectToRowRed eboard x pos : projectToRed eboard xs (moveUp pos)
-    where
-        projectToRowRed :: Board -> [Int] -> Pos -> [Int]
-        projectToRowRed _ [] _ = []
-        projectToRowRed eboard (x:xs) pos = if testColour pos eboard == Just Red then 1 : projectToRowRed eboard xs (moveDown pos)
-                                               else x : projectToRowRed eboard xs (moveDown pos)
-        moveDown :: Pos -> Pos
-        moveDown (x, y) = (x-1, y+1)
-        moveUp :: Pos -> Pos
-        moveUp (x, y) = (x-1, y-1)
+    projectToRed :: Board -> [[Int]] -> Pos -> [[Int]]
+    projectToRed _ [] _ = []
+    projectToRed eboard (x:xs) pos = projectToRowRed eboard x pos : projectToRed eboard xs (moveUp pos)
+        where
+            projectToRowRed :: Board -> [Int] -> Pos -> [Int]
+            projectToRowRed _ [] _ = []
+            projectToRowRed eboard (x:xs) pos = if testColour pos eboard == Just Red then 1 : projectToRowRed eboard xs (moveDown pos)
+                                                else x : projectToRowRed eboard xs (moveDown pos)
+            moveDown :: Pos -> Pos
+            moveDown (x, y) = (x-1, y+1)
+            moveUp :: Pos -> Pos
+            moveUp (x, y) = (x-1, y-1)
 
-projectToOrange :: Board -> [[Int]] -> Pos -> [[Int]]
-projectToOrange _ [] _ = []
-projectToOrange eboard (x:xs) pos = projectToRowOrange eboard x pos : projectToOrange eboard xs (moveLeft pos)
-    where
-        projectToRowOrange :: Board -> [Int] -> Pos -> [Int]
-        projectToRowOrange _ [] _ = []
-        projectToRowOrange eboard (x:xs) pos = if testColour pos eboard == Just Orange then 1 : projectToRowOrange eboard xs (moveDown pos)
-                                               else x : projectToRowOrange eboard xs (moveDown pos)
-        moveDown :: Pos -> Pos
-        moveDown (x, y) = (x+1, y+1)
-        moveLeft :: Pos -> Pos
-        moveLeft (x, y) = (x-2, y)
+    projectToOrange :: Board -> [[Int]] -> Pos -> [[Int]]
+    projectToOrange _ [] _ = []
+    projectToOrange eboard (x:xs) pos = projectToRowOrange eboard x pos : projectToOrange eboard xs (moveLeft pos)
+        where
+            projectToRowOrange :: Board -> [Int] -> Pos -> [Int]
+            projectToRowOrange _ [] _ = []
+            projectToRowOrange eboard (x:xs) pos = if testColour pos eboard == Just Orange then 1 : projectToRowOrange eboard xs (moveDown pos)
+                                                else x : projectToRowOrange eboard xs (moveDown pos)
+            moveDown :: Pos -> Pos
+            moveDown (x, y) = (x+1, y+1)
+            moveLeft :: Pos -> Pos
+            moveLeft (x, y) = (x-2, y)
 
-projectToBlack :: Board -> [[Int]] -> Pos -> [[Int]]
-projectToBlack _ [] _ = []
-projectToBlack eboard (x:xs) pos = projectToRowBlack eboard x pos : projectToBlack eboard xs (moveDown pos)
-    where
-        projectToRowBlack :: Board -> [Int] -> Pos -> [Int]
-        projectToRowBlack _ [] _ = []
-        projectToRowBlack eboard (x:xs) pos = if testColour pos eboard == Just Black then 1 : projectToRowBlack eboard xs (moveRight pos)
-                                               else x : projectToRowBlack eboard xs (moveRight pos)
-        moveRight :: Pos -> Pos
-        moveRight (x, y) = (x+2, y)
-        moveDown :: Pos -> Pos
-        moveDown (x, y) = (x-1, y+1)
-
-flipBoard :: [[Int]] -> [[Int]]
-flipBoard = transpose
+    projectToBlack :: Board -> [[Int]] -> Pos -> [[Int]]
+    projectToBlack _ [] _ = []
+    projectToBlack eboard (x:xs) pos = projectToRowBlack eboard x pos : projectToBlack eboard xs (moveDown pos)
+        where
+            projectToRowBlack :: Board -> [Int] -> Pos -> [Int]
+            projectToRowBlack _ [] _ = []
+            projectToRowBlack eboard (x:xs) pos = if testColour pos eboard == Just Black then 1 : projectToRowBlack eboard xs (moveRight pos)
+                                                else x : projectToRowBlack eboard xs (moveRight pos)
+            moveRight :: Pos -> Pos
+            moveRight (x, y) = (x+2, y)
+            moveDown :: Pos -> Pos
+            moveDown (x, y) = (x-1, y+1)
+-}
 
 printBoard :: Show a => [a] -> IO ()
 printBoard [] = putStr ""

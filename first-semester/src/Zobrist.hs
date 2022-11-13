@@ -22,7 +22,11 @@ testBoard = [
     [0,0,0,0,0,0,0],
     [0,0,0,0,0,0,0]]
 
--- hashChange (fx, fy) (tx, ty) bs                          
+hashChange :: (Int, Int) -> (Int, Int) -> StateTable -> Int -> Int
+hashChange (fx, fy) (tx, ty) bs xv = foldr myXOR 0 [xv, fo, fa, to, ta]
+    where
+        (fo, fa) = (bs !! fy) !! fx
+        (to, ta) = (bs !! ty) !! tx
 
 hashInital :: [[Int]] -> StateTable -> Int
 hashInital _ [] = 0

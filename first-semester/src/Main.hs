@@ -73,15 +73,15 @@ data AppModel = AppModel {
   -- the string that represents the winning player's color
   _ifWin :: Bool,
   -- the representation of the board
-  _boardE :: Board,
-  _boardI :: Board,
+  _displayBoard :: Board,
+  _internalStates :: [OccupiedBoard],
   -- the players of the game
   _playersAmount :: Int,
   _computerPlayersAmount :: Int,
   _fromPiece :: BoardType,
   _toPiece :: BoardType,
-  _previousFromPos :: Pos,
-  _previousToPos :: Pos,
+  _previousFromPiece:: BoardType,
+  _previousToPiece :: BoardType,
   _errorMessage :: String,
   _movesList :: [BoardType]
   -- _computerPlayersAmount :: Int
@@ -109,24 +109,20 @@ makeLenses 'AppModel
 titleText :: AppModel -> String
 titleText model
   | not (model ^. startGame) = "Haskell Chinese Checkers"
-  | model ^. ifWin = show (turnText model) ++ " wins"
-  | otherwise = show (turnText model) ++ "'s turn"
+  | model ^. ifWin = show (turnColour model turn) ++ " wins"
+  | otherwise = show (turnColour model turn) ++ "'s turn"
+  where turn = model ^. turnS
 
-turnText :: AppModel -> Colour
-turnText model
+turnColour :: AppModel -> Int -> Colour
+turnColour model turn
   | model ^. playersAmount == 2 = twoPlayersSet !! turn
   | model ^. playersAmount == 3 = threePlayersSet !! turn
   | model ^. playersAmount == 4 = fourPlayersSet !! turn
   | otherwise = sixPlayersSet !! turn
-  where turn = model ^. turnS
 
 ifInitialPiece :: BoardType -> Bool
 ifInitialPiece (U (-1, -1)) = True
 ifInitialPiece _ = False
-
-ifInitialPos :: Pos -> Bool
-ifInitialPos (-1, -1) = True
-ifInitialPos _ = False
 
 -- construct the user interface layout of the application
 buildUI
@@ -185,7 +181,7 @@ buildUI wenv model = widgetTree where
 
       box $ vstack[
         label "Players Amount" `styleBasic`[textSize 30],
-        hgrid[
+        hgrid_ [childSpacing_ 10][
           labeledRadio_ "2" 2 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
           labeledRadio_ "3" 3 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
           labeledRadio_ "4" 4 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
@@ -194,7 +190,7 @@ buildUI wenv model = widgetTree where
         spacer,
 
         label "Computer Players Amount" `styleBasic`[textSize 30],
-        hgrid(computerPlayersChoices <$> [0..model ^. playersAmount]),
+        hgrid_ [childSpacing_ 10](computerPlayersChoices <$> [0..model ^. playersAmount]),
         spacer,
 
         button "Start Game" StartGameButtonClick `styleBasic`[textSize 50]
@@ -202,7 +198,7 @@ buildUI wenv model = widgetTree where
       spacer,
 
       filler,
-      vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. boardE)) `nodeVisible` (model ^. startGame)--,
+      vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. displayBoard)) `nodeVisible` (model ^. startGame)--,
       -- filler
     ] `styleBasic` [padding 20]
 
@@ -217,80 +213,96 @@ handleEvent wenv node model evt = case evt of
   AppInit -> []
   StartGameButtonClick
     | model ^. playersAmount == 2 -> [Model $ model & startGame .~ True
-                                                    & boardE .~ eraseBoard False twoPlayersSet externalBoard
-                                                    & boardI .~ eraseBoard False twoPlayersSet externalBoard]
+                                                    & displayBoard .~ eraseBoard False twoPlayersSet externalBoard
+                                                    & internalStates .~ replicate 2 initialState]
     | model ^. playersAmount == 3 -> [Model $ model & startGame .~ True
-                                                    & boardE .~ eraseBoard False threePlayersSet externalBoard
-                                                    & boardI .~ eraseBoard False threePlayersSet externalBoard]
+                                                    & displayBoard .~ eraseBoard False threePlayersSet externalBoard
+                                                    & internalStates .~ replicate 3 initialState]
     | model ^. playersAmount == 4 -> [Model $ model & startGame .~ True
-                                                    & boardE .~ eraseBoard False fourPlayersSet externalBoard
-                                                    & boardI .~ eraseBoard False fourPlayersSet externalBoard]
+                                                    & displayBoard .~ eraseBoard False fourPlayersSet externalBoard
+                                                    & internalStates .~ replicate 4 initialState]
     | otherwise -> [Model $ model & startGame .~ True
-                                  & boardE .~ externalBoard
-                                  & boardI .~ externalBoard]
-  CancelMove
+                                  & displayBoard .~ externalBoard
+                                  & internalStates .~ replicate 6 initialState]
+  CancelMove -- modified
     | model ^. ifWin -> []
-    | not (ifInitialPos pfp) && not (ifInitialPos ptp) -> [Model $ model & boardE .~ newBoard
-                                                                 & previousFromPos .~ (-1, -1)
-                                                                 & previousToPos .~ (-1, -1)
-                                                                 & turnS .~ revertTurnChange model]
+    | not (ifInitialPiece pf) && not (ifInitialPiece pt) -> [Model $ model & displayBoard .~ newBoard
+                                                                           & internalStates .~ insertState
+                                                                           & previousFromPiece .~ U(-1, -1)
+                                                                           & previousToPiece .~ U(-1, -1)
+                                                                           & turnS .~ revertTurnChange model]
     | otherwise -> []
     where
-      pfp = model ^. previousFromPos
-      ptp = model ^. previousToPos
-      pf = getElement (model ^. boardE) pfp
-      pt = getElement (model ^. boardE) ptp
-      newBoard = repaintPath pt pf (model ^. boardE)
+      pf = model ^. previousFromPiece
+      pt = model ^. previousToPiece
+      newBoard = repaintPath pt pf lastTurnColour (model ^. displayBoard)
+      fromProjectPos = projection lastTurnColour (getPos pf)
+      toProjectPos = projection lastTurnColour (getPos pt)
+      lastTurnColour = turnColour model (revertTurnChange model)
+      newState = flipBoardState toProjectPos fromProjectPos ((model ^. internalStates) !! revertTurnChange model)
+      insertState = replace (revertTurnChange model) newState (model ^. internalStates)
 
-  RenderMove
+  RenderMove -- modified
     | model ^. ifWin -> [] -- if already won then do nothing
-    | not (ifInitialPiece (model ^. toPiece)) && winStateDetect newBoard currentColour (model ^. boardI) ->
-      [Model $ model & ifWin .~ True & boardE .~ newBoard & movesList .~ []] -- else then first determine the win state
+    | not (ifInitialPiece (model ^. toPiece)) && winStateDetect initialState newState ->
+      [Model $ model & ifWin .~ True
+                     & displayBoard .~ newBoard
+                     & internalStates .~ insertState
+                     & movesList .~ []] -- else then first determine the win state
     -- otherwise just update the turn 
-    | not (ifInitialPiece (model ^. toPiece)) -> [Model $ model & boardE .~ newBoard
+    | not (ifInitialPiece (model ^. toPiece)) -> [Model $ model & displayBoard .~ newBoard
+                                                                & internalStates .~ insertState
                                                                 & turnS .~ turnChange model
-                                                                & previousFromPos .~ getPos(model ^. fromPiece)
-                                                                & previousToPos .~ getPos(model ^. toPiece)
+                                                                & previousFromPiece .~ f
+                                                                & previousToPiece .~ t
                                                                 & fromPiece .~ U(-1, -1)
                                                                 & toPiece .~ U(-1,-1)
                                                                 & movesList .~ []]
     | otherwise -> []
       where
-        newBoard = repaintPath (model ^. fromPiece) (model ^. toPiece) (model ^. boardE)
-        currentColour = turnText model
+        f = model ^. fromPiece
+        t = model ^. toPiece
+        newBoard = repaintPath f t currentColour (model ^. displayBoard)
+        currentColour = turnColour model (model ^. turnS)
+        fromProjectPos = projection currentColour (getPos f)
+        toProjectPos = projection currentColour (getPos t)
+        newState = flipBoardState fromProjectPos toProjectPos ((model ^. internalStates) !! (model ^. turnS))
+        insertState = replace (model ^. turnS) newState (model ^. internalStates)
 
   EndGameButtonClick -> [Model $ model & turnS .~ 0
                                        & ifWin .~ False
                                        & startGame .~ False
                                        & fromPiece .~ U (-1, -1)
                                        & toPiece .~ U (-1, -1)
-                                       & previousFromPos .~ (-1, -1)
-                                       & previousToPos .~ (-1, -1)
+                                       & previousFromPiece .~ U(-1, -1)
+                                       & previousToPiece .~ U(-1, -1)
                                        & errorMessage .~ ""
                                        & movesList .~ []]
 
   -- first enter the "from position", and check for the correct input
   -- then enter the "to position", if no error is made then process normal turn change, otherwise, reset and print the error message 
   -- the error message appearing means the entered move will be discarded and need to be entered correctly
-  MoveCheck b -> case model ^. ifWin of
+  MoveCheck b -> case model ^. ifWin of -- addition check for computer player
                   True -> []
                   False -> case ifInitialPiece $ model ^. fromPiece of
-                              True  -> if Just (turnText model) == getColour b then [Model $ model & fromPiece .~ b
+                              True  -> if Just currentColour == getColour b then [Model $ model & fromPiece .~ b
                                                                                                    & errorMessage .~ ""
-                                                                                                   & movesList .~ destinationList (model ^. boardE) b]
-                                       else [Model $ model & errorMessage .~ show (turnText model) ++ ": invalid start"
-                                                            & fromPiece .~ U (-1, -1)]
+                                                                                                   & movesList .~ destinationList (model ^. displayBoard) b]
+                                       else [Model $ model & errorMessage .~ show currentColour ++ ": invalid start"
+                                                           & fromPiece .~ U (-1, -1)]
                               False -> case model ^. fromPiece == b of
-                                          True  -> [Model $ model & errorMessage .~ show (turnText model) ++ ": no move made"
+                                          True  -> [Model $ model & errorMessage .~ show currentColour ++ ": no move made"
                                                                   & fromPiece .~ U (-1, -1)]
                                           False -> case isOccupied b of
                                                       Just False -> case b `elem` model ^. movesList of
                                                                         True  -> [Model $ model & toPiece .~ b
                                                                                                 & errorMessage .~ ""]
-                                                                        False -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination unreacbable"
+                                                                        False -> [Model $ model & errorMessage .~ show currentColour ++ ": destination unreacbable"
                                                                                                 & fromPiece .~ U (-1, -1)]
-                                                      _ -> [Model $ model & errorMessage .~ show (turnText model) ++ ": destination occupied"
+                                                      _ -> [Model $ model & errorMessage .~ show currentColour ++ ": destination occupied"
                                                                           & fromPiece .~ U (-1, -1)]
+    where
+      currentColour = turnColour model (model ^. turnS)
   ResetChoice v
     | v < c -> [Model $ model & computerPlayersAmount .~ v]
     | otherwise -> []
@@ -332,15 +344,15 @@ main = do
     model = AppModel {
       _turnS = 0,
       _ifWin = False,
-      _boardE = externalBoard,
-      _boardI = externalBoard,
+      _displayBoard = externalBoard,
+      _internalStates = [],
       _playersAmount = 2,
       _computerPlayersAmount = 0,
       _startGame = False,
       _fromPiece = U (-1, -1),
       _toPiece = U (-1, -1),
-      _previousFromPos = (-1, -1),
-      _previousToPos = (-1, -1),
+      _previousFromPiece = U(-1, -1),
+      _previousToPiece = U(-1, -1),
       _errorMessage = "",
       _movesList = []
     }
