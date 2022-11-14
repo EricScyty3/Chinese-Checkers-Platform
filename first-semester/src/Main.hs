@@ -55,6 +55,7 @@ import Monomer
       EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline), CmbPaddingB (paddingB), CmbOnClick (onClick), CmbBorder (border), black, gray )
 import TextShow
 import Board
+import Zobrist
 
 import qualified Data.Text as T
 import qualified Monomer.Lens as L
@@ -74,7 +75,7 @@ data AppModel = AppModel {
   _ifWin :: Bool,
   -- the representation of the board
   _displayBoard :: Board,
-  _internalStates :: [OccupiedBoard],
+  _internalStates :: [Int], -- only applied hashed state rather than occupied board
   -- the players of the game
   _playersAmount :: Int,
   _computerPlayersAmount :: Int,
@@ -214,16 +215,16 @@ handleEvent wenv node model evt = case evt of
   StartGameButtonClick
     | model ^. playersAmount == 2 -> [Model $ model & startGame .~ True
                                                     & displayBoard .~ eraseBoard False twoPlayersSet externalBoard
-                                                    & internalStates .~ replicate 2 initialState]
+                                                    & internalStates .~ replicate 2 hashInitial]
     | model ^. playersAmount == 3 -> [Model $ model & startGame .~ True
                                                     & displayBoard .~ eraseBoard False threePlayersSet externalBoard
-                                                    & internalStates .~ replicate 3 initialState]
+                                                    & internalStates .~ replicate 3 hashInitial]
     | model ^. playersAmount == 4 -> [Model $ model & startGame .~ True
                                                     & displayBoard .~ eraseBoard False fourPlayersSet externalBoard
-                                                    & internalStates .~ replicate 4 initialState]
+                                                    & internalStates .~ replicate 4 hashInitial]
     | otherwise -> [Model $ model & startGame .~ True
                                   & displayBoard .~ externalBoard
-                                  & internalStates .~ replicate 6 initialState]
+                                  & internalStates .~ replicate 6 hashInitial]
   CancelMove -- modified
     | model ^. ifWin -> []
     | not (ifInitialPiece pf) && not (ifInitialPiece pt) -> [Model $ model & displayBoard .~ newBoard
@@ -239,12 +240,14 @@ handleEvent wenv node model evt = case evt of
       fromProjectPos = projection lastTurnColour (getPos pf)
       toProjectPos = projection lastTurnColour (getPos pt)
       lastTurnColour = turnColour model (revertTurnChange model)
-      newState = flipBoardState toProjectPos fromProjectPos ((model ^. internalStates) !! revertTurnChange model)
+      lastTurnState = (model ^. internalStates) !! revertTurnChange model
+      -- newState = flipBoardState toProjectPos fromProjectPos ((model ^. internalStates) !! revertTurnChange model)
+      newState = hashChange toProjectPos fromProjectPos lastTurnState
       insertState = replace (revertTurnChange model) newState (model ^. internalStates)
 
   RenderMove -- modified
     | model ^. ifWin -> [] -- if already won then do nothing
-    | not (ifInitialPiece (model ^. toPiece)) && winStateDetect initialState newState ->
+    | not (ifInitialPiece (model ^. toPiece)) && winStateDetect newState ->
       [Model $ model & ifWin .~ True
                      & displayBoard .~ newBoard
                      & internalStates .~ insertState
@@ -264,9 +267,11 @@ handleEvent wenv node model evt = case evt of
         t = model ^. toPiece
         newBoard = repaintPath f t currentColour (model ^. displayBoard)
         currentColour = turnColour model (model ^. turnS)
+        currentState = (model ^. internalStates) !! (model ^. turnS)
         fromProjectPos = projection currentColour (getPos f)
         toProjectPos = projection currentColour (getPos t)
-        newState = flipBoardState fromProjectPos toProjectPos ((model ^. internalStates) !! (model ^. turnS))
+        -- newState = flipBoardState fromProjectPos toProjectPos ((model ^. internalStates) !! (model ^. turnS))
+        newState = hashChange fromProjectPos toProjectPos currentState
         insertState = replace (model ^. turnS) newState (model ^. internalStates)
 
   EndGameButtonClick -> [Model $ model & turnS .~ 0
@@ -287,7 +292,7 @@ handleEvent wenv node model evt = case evt of
                   False -> case ifInitialPiece $ model ^. fromPiece of
                               True  -> if Just currentColour == getColour b then [Model $ model & fromPiece .~ b
                                                                                                    & errorMessage .~ ""
-                                                                                                   & movesList .~ destinationList (model ^. displayBoard) b]
+                                                                                                   & movesList .~ destinationListFilter (model ^. displayBoard) b]
                                        else [Model $ model & errorMessage .~ show currentColour ++ ": invalid start"
                                                            & fromPiece .~ U (-1, -1)]
                               False -> case model ^. fromPiece == b of

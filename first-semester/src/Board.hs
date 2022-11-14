@@ -7,7 +7,7 @@ data Colour = Green | Blue | Purple | Red | Orange | Black deriving (Eq, Show)
 type Pos = (Int, Int)
 data BoardType = G Pos | B Pos | P Pos | R Pos | O Pos | K Pos | E Pos | U Pos deriving (Eq, Show)
 type Board = [[BoardType]]
-type OccupiedBoard = [[Int]]
+
 
 boardWidth :: Int
 boardWidth = 19
@@ -139,6 +139,10 @@ repaintPath start end c myBoard = let tempBoard = changeBoardElement erase start
 
 -- testJumpValid :: Board -> BoardType -> BoardType -> Bool
 -- testJumpValid eBoard start end = end `elem` destinationList eBoard start
+destinationListFilter :: Board -> BoardType -> [BoardType]
+destinationListFilter eBoard b = case getColour b of
+                                    Nothing -> []
+                                    Just c -> filter (testCorners c) (destinationList eBoard b)
 
 destinationList :: Board -> BoardType -> [BoardType]
 destinationList eBoard b = nub $ findAvaliableNeighbors eBoard b ++ searchWithoutLooping eBoard [] b
@@ -190,64 +194,31 @@ determineValidJump myBoard pos f
 
 -- an addition check should be transformed into square and tested
 -- this is only for computer players to enable sufficient compute and shorter game
-testCorners :: Pos -> Colour -> Bool
-testCorners (x, y) Green = withinBorder $ projectGreen (x, y)
-testCorners (x, y) Purple = withinBorder $ projectPurple (x, y)
-testCorners (x, y) Blue = withinBorder $ projectBlue (x, y)
-testCorners (x, y) Red = withinBorder $ projectRed (x, y)
-testCorners (x, y) Orange = withinBorder $ projectOrange (x, y)
-testCorners (x, y) Black = withinBorder $ projectBlack (x, y)
+testCorners :: Colour -> BoardType -> Bool
+testCorners Green b = withinBorder $ projectGreen (getPos b)
+testCorners Purple b = withinBorder $ projectPurple (getPos b)
+testCorners Blue b = withinBorder $ projectBlue (getPos b)
+testCorners Red b = withinBorder $ projectRed (getPos b)
+testCorners Orange b = withinBorder $ projectOrange (getPos b)
+testCorners Black b = withinBorder $ projectBlack (getPos b)
 
 withinBorder :: Pos -> Bool
 withinBorder (x, y) = x <= 6 && y <= 6 && x >= 0 && y >= 0
 -- bedies, computer is only allow frontward move, might need to added as movement rule
 
--- a win for a player can only be achieved at one's turn
-winStateDetect :: OccupiedBoard -> OccupiedBoard -> Bool
-winStateDetect initial resulted = transpose initial == resulted
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- the internal single-agent board for a player with the top-right the starting point and botton-left the destination
--- this is just for heuristic board evaluation 
--- only need to know the occupy status for each position
--- In addition, the transformation between the external (display-purposed) board the internal (heuristi-purposed) board is needed
--- furthermore, in experimental environment, the communication between each player should be done through internal board exchanging
-initialState :: OccupiedBoard
-initialState = [
-                [0, 0, 0, 0, 1, 1, 1],
-                [0, 0, 0, 0, 0, 1, 1],
-                [0, 0, 0, 0, 0, 0, 1],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0]]
-
-
-flipBoardState :: Pos -> Pos -> OccupiedBoard -> OccupiedBoard
-flipBoardState (fx, fy) (tx, ty) b = let newRow1 = replace fx (flip $ getElem b (fx, fy)) (b !! fy)
-                                         newBoard1 = replace fy newRow1 b
-                                         newRow2 = replace tx (flip $ getElem newBoard1 (tx, ty)) (newBoard1 !! ty)
-                                     in  replace ty newRow2 newBoard1
-    where
-        flip :: Int -> Int
-        flip 0 = 1
-        flip _ = 0
-
-        getElem :: OccupiedBoard -> Pos -> Int
-        getElem b (x, y) = (b !! y) !! x
 {-
--- test with projection board
-testBoard :: Int -> Board -> [[Int]]
-testBoard 7 _ = []
-testBoard y eBoard = testRow 0 y eBoard : testBoard (y+1) eBoard
+    -- test with projection board
+    testBoard :: Int -> Board -> [[Int]]
+    testBoard 7 _ = []
+    testBoard y eBoard = testRow 0 y eBoard : testBoard (y+1) eBoard
 
-testRow :: Int -> Int -> Board -> [Int]
-testRow x y eBoard
-    | x == 7 = [] 
-    | getColour (getElement eBoard (px, py)) == Just Black = 1:testRow (x+1) y eBoard
-    | otherwise = 0:testRow (x+1) y eBoard
-    where
-        (px, py) = reverseBlack (x, y)
+    testRow :: Int -> Int -> Board -> [Int]
+    testRow x y eBoard
+        | x == 7 = [] 
+        | getColour (getElement eBoard (px, py)) == Just Black = 1:testRow (x+1) y eBoard
+        | otherwise = 0:testRow (x+1) y eBoard
+        where
+            (px, py) = reverseBlack (x, y)
 -}
 projection :: Colour -> Pos -> Pos
 projection Green pos = projectGreen pos
