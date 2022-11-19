@@ -1,37 +1,25 @@
-module Zobrist where
 
+module Zobrist where
 import System.Random
 import Data.List
 import Board
 
-type StateTable = [[(Int, Int)]]
+type StateTable = [[Int]]
 type OccupiedBoard = [[Int]]
 
--- board state matrix: each position has two states, Occupied and Avaliable, and each state has its own value
-{-
-    [(49,152),(96,16),(209,211),(146,24),(140,245),(51,188),(134,143)]
-    [(42,249),(95,93),(92,238),(128,67),(10,76),(156,123),(25,225)]
-    [(75,163),(227,236),(32,169),(220,35),(190,73),(108,241),(126,151)]
-    [(185,120),(160,246),(39,4),(98,87),(81,179),(78,66),(204,167)]
-    [(59,132),(251,136),(133,106),(30,237),(14,159),(221,28),(184,186)]
-    [(19,193),(196,201),(45,29),(99,70),(116,147),(41,84),(218,174)]
-    [(240,137),(83,208),(63,207),(46,107),(242,248),(47,130),(52,64)]
--}
-randomBoardState :: [[(Int, Int)]]
-randomBoardState = randomBoardColumn randomList
+-- board state matrix: each position has one state: Occupied with its own value
+randomBoardState :: StateTable
+randomBoardState = randomBoardColumn randomList 0
     where
-        randomBoardColumn :: [Int] -> [[(Int, Int)]]
-        randomBoardColumn [] = []
-        randomBoardColumn xs = randomRowState (take 14 xs) : randomBoardColumn (drop 14 xs)
-
-        randomRowState :: [Int] -> [(Int, Int)]
-        randomRowState [] = [] 
-        randomRowState [_] = []
-        randomRowState (x:y:ss) = (x, y):randomRowState ss
-
+        -- construct the matrix 
+        randomBoardColumn :: [Int] -> Int -> StateTable
+        randomBoardColumn _  7 = []
+        randomBoardColumn [] _ = []
+        randomBoardColumn xs i = take 7 xs : randomBoardColumn (drop 7 xs) (i+1)
+        
         -- static random list without duplicate values
         randomList :: [Int]
-        randomList = take 98 $ nub $ randomRs (1, 256) (mkStdGen 42)
+        randomList = nub $ randomRs (1, 2^32) (mkStdGen 42)
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the internal single-agent board for a player with the top-right the starting point and botton-left the destination
@@ -53,20 +41,6 @@ initialState = [
 winStateDetect :: Int -> Bool
 winStateDetect rh = hashEnd == rh
 
-{-
--- exchange two pieces' states on the occupied board
-flipBoardState :: (Int, Int) -> (Int, Int) -> OccupiedBoard -> OccupiedBoard
-flipBoardState (fx, fy) (tx, ty) b = let newRow1 = replace fx (flip $ getElem b (fx, fy)) (b !! fy)
-                                         newBoard1 = replace fy newRow1 b
-                                         newRow2 = replace tx (flip $ getElem newBoard1 (tx, ty)) (newBoard1 !! ty)
-                                     in  replace ty newRow2 newBoard1
-    where
-        flip :: Int -> Int
-        flip 0 = 1
-        flip _ = 0
-        getElem :: OccupiedBoard -> (Int, Int) -> Int
-        getElem b (x, y) = (b !! y) !! x   
--}
 -- the hashed values for two states
 hashInitial :: Int
 hashInitial = hashState initialState randomBoardState
@@ -75,10 +49,10 @@ hashEnd = hashState (transpose initialState) randomBoardState
 
 -- after the first construct, each change only need to add the changed hashes
 hashChange :: (Int, Int) -> (Int, Int) -> Int -> Int
-hashChange (fx, fy) (tx, ty) xv = foldr myXOR 0 [xv, fo, fa, to, ta]
+hashChange (fx, fy) (tx, ty) xv = foldr myXOR 0 [xv, f, t]
     where
-        (fo, fa) = (bs !! fy) !! fx
-        (to, ta) = (bs !! ty) !! tx
+        f = (bs !! fy) !! fx
+        t = (bs !! ty) !! tx
         bs = randomBoardState
 
 -- construct the hashed board state of the given occupied board state
@@ -87,14 +61,12 @@ hashState _ [] = 0
 hashState [] _ = 0
 hashState (x:xs) (s:ss) = myXOR (hashOneRow x s) (hashState xs ss)
     where
-        hashOneRow :: [Int] -> [(Int, Int)] -> Int
+        hashOneRow :: [Int] -> [Int] -> Int
         hashOneRow [] _ = 0
         hashOneRow _ [] = 0
         hashOneRow (x:xs) (s:ss)
-            | x == 1 = myXOR o (hashOneRow xs ss)
-            | otherwise = myXOR a (hashOneRow xs ss)
-            where
-                (o, a) = s
+            | x == 1 = myXOR s (hashOneRow xs ss) -- only XOR the occupied position's state value
+            | otherwise = hashOneRow xs ss
 
 -- transform a decimal integer into binary list
 toBinary :: Int -> [Int]

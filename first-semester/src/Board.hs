@@ -1,3 +1,4 @@
+
 module Board where
 import Data.Maybe
 import Data.List
@@ -97,7 +98,7 @@ externalBoard = [
     [U(0, 12), U(1, 12), U(2, 12), U(3, 12), U(4, 12), U(5, 12), U(6, 12), U(7, 12), U(8, 12), R(9, 12), U(10, 12), U(11, 12), U(12, 12), U(13, 12), U(14, 12), U(15, 12), U(16, 12), U(17, 12), U(18, 12)]]
 
 -- access element in a matrix 
-getElement :: Board -> Pos -> BoardType
+getElement :: [[a]] -> Pos -> a
 getElement m (x, y) = m !! y !! x
 -- repalce a content with a new one
 replace :: Int -> a -> [a] -> [a]
@@ -106,10 +107,10 @@ replace idx v xs = front ++ [v] ++ end
         (front, _:end) = splitAt idx xs
 -- update the new board with modifications
 changeBoardElement :: (BoardType -> BoardType) -> BoardType -> Board -> Board
-changeBoardElement f bt myBoard = let newElement = f bt
-                                      (x, y) = getPos newElement
-                                      newRow = replace x newElement (myBoard !! y)
-                                  in  replace y newRow myBoard
+changeBoardElement f bt eBoard = let newElement = f bt
+                                     (x, y) = getPos newElement
+                                     newRow = replace x newElement (eBoard !! y)
+                                 in  replace y newRow eBoard
 
 isJustFalse :: Maybe Bool -> Bool
 isJustFalse (Just False) = True
@@ -134,7 +135,7 @@ eraseBoard t cs = map (eraseRow t cs)
         f t x xs = if t then x `elem` xs else x `notElem` xs
 
 repaintPath :: BoardType -> BoardType -> Colour -> Board -> Board
-repaintPath start end c myBoard = let tempBoard = changeBoardElement erase start myBoard
+repaintPath start end c eBoard = let tempBoard = changeBoardElement erase start eBoard
                                   in  changeBoardElement (repaint c) end tempBoard
 
 -- testJumpValid :: Board -> BoardType -> BoardType -> Bool
@@ -151,31 +152,31 @@ destinationList eBoard b = nub $ findAvaliableNeighbors eBoard b ++ searchWithou
 -- One adjacent jump range
 -- search for all neighbor positions around that are not occupied
 findAvaliableNeighbors :: Board -> BoardType -> [BoardType]
-findAvaliableNeighbors myBoard b = filter (isJustFalse . isOccupied) (findValidNeighbors (getPos b) myBoard)
+findAvaliableNeighbors eBoard b = filter (isJustFalse . isOccupied) (findValidNeighbors (getPos b) eBoard)
 
 -- findTureNeighbors :: Pos -> Board -> Bool
 -- findTureNeighbors :: [BoardType] -> [BoardType]
 -- findTureNeighbors = filter (isJust . isOccupied)
 -- search for all piece positions inside the board around
 findValidNeighbors :: Pos -> Board -> [BoardType]
-findValidNeighbors (x, y) myBoard = map (getElement myBoard) (filter testValidPos [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)])
+findValidNeighbors (x, y) eBoard = map (getElement eBoard) (filter testValidPos [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)])
 -- test if a piece's position is out of boarder
 testValidPos :: Pos -> Bool
-testValidPos (x, y) = (x >= 0 && y >= 0) && x <= boardWidth - 1 && y <= boardHeight - 1
+testValidPos (x, y) = x >= 0 && y >= 0 && x <= boardWidth - 1 && y <= boardHeight - 1
 
 -- chained jump range
 -- one over hop
 searchWithoutLooping :: Board -> [BoardType] -> BoardType ->  [BoardType]
-searchWithoutLooping myBoard l b = let s = recursiveSearch myBoard b
-                                       renewList = filter (`notElem` l) s
-                                       recordList = renewList ++ l
-                                   in  concatMap (searchWithoutLooping myBoard recordList) renewList ++ renewList
+searchWithoutLooping eBoard l b = let s = recursiveSearch eBoard b
+                                      renewList = filter (`notElem` l) s
+                                      recordList = renewList ++ l
+                                  in  concatMap (searchWithoutLooping eBoard recordList) renewList ++ renewList
 
 recursiveSearch :: Board -> BoardType -> [BoardType]
 recursiveSearch eBoard b = map (getElement eBoard) (jumpToAllDirections eBoard (getPos b))
 -- one piece dor all six driections checked
 jumpToAllDirections :: Board -> Pos -> [Pos]
-jumpToAllDirections myBoard pos = filter (/= pos) (jumpToOneDirection myBoard pos [(-1, -1), (-2, 0), (-1, 1), (1, 1), (2, 0), (1, -1)])
+jumpToAllDirections eBoard pos = filter (/= pos) (jumpToOneDirection eBoard pos [(-1, -1), (-2, 0), (-1, 1), (1, 1), (2, 0), (1, -1)])
 
 jumpToOneDirection :: Board -> Pos -> [Pos] -> [Pos]
 jumpToOneDirection _ _ [] = []
@@ -184,10 +185,10 @@ jumpToOneDirection eBoard pos (a:as) = determineValidJump eBoard pos (f a): jump
         f (a, b) (x, y) = (a+x, b+y)
 
 determineValidJump :: Board -> Pos -> (Pos -> Pos) -> Pos
-determineValidJump myBoard pos f
+determineValidJump eBoard pos f
     | not (testValidPos (f pos)) || not (testValidPos ((f . f) pos)) = pos -- invalid ones
-    | isJustTrue (isOccupied $ getElement myBoard $ f pos) &&
-      isJustFalse (isOccupied $ getElement myBoard $ (f . f) pos) = (f . f) pos
+    | isJustTrue (isOccupied $ getElement eBoard $ f pos) &&
+      isJustFalse (isOccupied $ getElement eBoard $ (f . f) pos) = (f . f) pos
     | otherwise = pos -- no ways found
 
 -- some rules allow jump to be chained as longer as the symmetric satisfied on a line, no neec to be one position in between
@@ -358,15 +359,15 @@ reverseBlack (x, y) = let (ox, oy) = (ix + 2 * x, iy) -- move x
 {-
     project :: Board -> Colour -> [[Int]]
     project [] _ = []
-    project myBoard Green  = projectToGreen myBoard emptyList (3, 6)
-    project myBoard Blue   = projectToBlue myBoard emptyList (6, 9)
-    project myBoard Purple = projectToPurple myBoard emptyList (12, 9)
-    project myBoard Red    = projectToRed myBoard emptyList (15, 6)
-    project myBoard Orange = projectToOrange myBoard emptyList (12, 3)
-    project myBoard Black = projectToBlack myBoard emptyList (6, 3)
+    project eBoard Green  = projectToGreen eBoard emptyList (3, 6)
+    project eBoard Blue   = projectToBlue eBoard emptyList (6, 9)
+    project eBoard Purple = projectToPurple eBoard emptyList (12, 9)
+    project eBoard Red    = projectToRed eBoard emptyList (15, 6)
+    project eBoard Orange = projectToOrange eBoard emptyList (12, 3)
+    project eBoard Black = projectToBlack eBoard emptyList (6, 3)
 
     testColour :: Pos -> Board -> Maybe Colour
-    testColour pos myBoard = getColour $ getElement myBoard pos
+    testColour pos eBoard = getColour $ getElement eBoard pos
 
     projectToGreen :: Board -> [[Int]] -> Pos -> [[Int]]
     projectToGreen _ [] _ = []

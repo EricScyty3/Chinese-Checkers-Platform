@@ -181,7 +181,7 @@ buildUI wenv model = widgetTree where
       filler,
 
       box $ vstack[
-        label "Players Amount" `styleBasic`[textSize 30],
+        label "Number of Players" `styleBasic`[textSize 30],
         hgrid_ [childSpacing_ 10][
           labeledRadio_ "2" 2 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
           labeledRadio_ "3" 3 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
@@ -190,7 +190,7 @@ buildUI wenv model = widgetTree where
         ],
         spacer,
 
-        label "Computer Players Amount" `styleBasic`[textSize 30],
+        label "Number of Computer Players" `styleBasic`[textSize 30],
         hgrid_ [childSpacing_ 10](computerPlayersChoices <$> [0..model ^. playersAmount]),
         spacer,
 

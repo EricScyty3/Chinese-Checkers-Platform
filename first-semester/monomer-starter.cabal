@@ -21,7 +21,9 @@ executable app
   other-modules:
       Board
       BoardState_test
+      Configuration
       RedBlack_Tree
+      ShortestPath
       State
       Zobrist
       Paths_monomer_starter
