@@ -74,23 +74,22 @@ tableElementsRecord bs = do filePath <- openFile "lookup_table.txt" WriteMode
         convertToString [] = ""
         convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
 
--- -- load the stored lookup table data from the file
--- loadTableElements :: [(Int, Int)]
--- {-# NOINLINE loadTableElements #-}
--- loadTableElements = unsafePerformIO loadRecord
---     where
---         loadRecord :: IO [(Int, Int)]
---         loadRecord = do filePath <- openFile "lookup_table.txt" ReadMode
---                         contents <- hGetContents filePath
---                         -- hClose filePath
---                         return $ convertToElement (lines contents)
+-- load the stored lookup table data from the file
+loadTableElements :: [(Hash, StoredData)]
+{-# NOINLINE loadTableElements #-}
+loadTableElements = unsafePerformIO loadRecord
+    where
+        loadRecord :: IO [(Hash, StoredData)]
+        loadRecord = do filePath <- openFile "lookup_table.txt" ReadMode
+                        contents <- hGetContents filePath
+                        -- hClose filePath
+                        return $ convertToElement (lines contents)
 
---         convertToElement :: [String] -> [(Int, Int)]
---         convertToElement = concatMap read
+        convertToElement :: [String] -> [(Hash, StoredData)]
+        convertToElement s = map (\(x, y, z) -> (x, (y, z))) (concatMap read s)
 
--- buildLookupTable :: RBTree
--- buildLookupTable = createTree loadTableElements
-
+buildLookupTable :: RBTree
+buildLookupTable = createTree loadTableElements
 
 -- `lp 49 6 = 13983816`
 lp u d = lm u (u-d+1) `div` lc d

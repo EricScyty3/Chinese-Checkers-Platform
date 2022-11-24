@@ -4,57 +4,75 @@ import Data.List
 import Data.Maybe
 import Zobrist
 import ShortestPath
+import RBTree
+import Board
+import State
 
 
--- Normal MCTS is divided into four phases: selection, expansion, playout and backpropagation
--- the first phase is to select one resulting board with the maximum profit
+type Wins    = Int
+type Visits  = Int
+type Transform = (Pos, Pos) -- the conversion between two adjacent boards, known the positions pair could transform the board state as well as its hash
 
--- the whole structure requires a state monad that stores the constructed game tree
--- the score is calculated based on different strategies: UCT for MCTS selection or move-based evaluation of minimax algorithm
-type WinRate = Double
-type Score = Int
-type Counts = Int
-data GameTree = GLeaf Score OccupiedBoard | GNode Score OccupiedBoard [GameTree] deriving (Eq, Show)
 -- the game tree contains two main types: leaf and internal node with at least one child
+-- the root node can be represented individually as it does not need the board value
+data GameTree = GRoot (OccupiedBoard, Hash) [GameTree] |
+                GLeaf (OccupiedBoard, Hash) Transform Wins Visits|
+                GNode (OccupiedBoard, Hash) Transform Wins Visits [GameTree]
+                deriving (Eq, Show)
 
-estimate :: OccupiedBoard -> Int
-estimate = centroid
+type HistoryTree = RBTree
+type Trace = [Hash]
 
--- requires average score/win rate, 
--- uct :: WinRate -> Counts -> Counts -> 
+push :: Hash -> Trace -> Trace
+push x xs = x:xs
 
--- initially setup a node (leaf)
-makeNode :: OccupiedBoard -> GameTree
-makeNode = GLeaf 0
+pop :: Trace -> (Hash, Trace)
+pop xs = (last xs, init xs)
+
+hashBoard :: OccupiedBoard -> Hash
+hashBoard b = hashState b randomBoardState
+
+expandHashBoard :: Hash -> (Pos, Pos) -> Int
+expandHashBoard h (f, t) = hashChange f t h
 
 getChildren :: GameTree -> [GameTree]
-getChildren (GLeaf _ _) = []
-getChildren (GNode _ _ t) = t
+getChildren (GRoot _ t) = t
+getChildren (GNode _ _ _ _ t) = t
+getChildren _ = []
 
-getBoard :: GameTree -> OccupiedBoard
-getBoard (GLeaf _ b) = b
-getBoard (GNode _ b _) = b
+getBoardState :: GameTree -> (OccupiedBoard, Hash)
+getBoardState (GRoot bs _) = bs
+getBoardState (GLeaf bs _ _ _) = bs
+getBoardState (GNode bs _ _ _ _) = bs
 
-getScore :: GameTree -> Int
-getScore (GLeaf s _) = s
-getScore (GNode s _ _) = s
+getWins :: GameTree -> Wins
+getWins (GLeaf _ _ w _) = w
+getWins (GNode _ _ w _ _) = w
+getWins _ = 0
 
--- might have different definitions of profits
-selectNode :: GameTree -> GameTree
-selectNode t@(GLeaf _ b) = let newNode = expandNode t
-                           in  selectNode newNode
-selectNode (GNode _ _ ts) = let maxScore = maximum (map getScore ts)
-                                idx = head (elemIndices maxScore (map getScore ts))
-                            in  ts !! idx
--- might have restriction of expanded nodes
-expandNode :: GameTree -> GameTree
-expandNode (GLeaf score board) = let boardCentroid = centroid board
-                                     moveList = dListForBoard board
-                                     boardList = flipLists board boardCentroid moveList -- [(O, C)]
-                                     frontwardList = filter ((>= boardCentroid) . snd) boardList -- remove the non-frontward moves
-                                 in  GNode score board (map (makeNode . fst) frontwardList)
-expandNode (GNode score board t) = GNode score board t
--- random simulation, but could add some strategies
--- playoutNode :: GameTree -> Int
--- playoutNode (GNode s _ ts) = s
--- playoutNode (GLeaf )
+getVisits :: GameTree -> Visits
+getVisits (GLeaf _ _ _ v) = v
+getVisits (GNode _ _ _ v _) = v
+getVisits _ = 0
+
+maxIndex :: [Int] -> Int
+maxIndex ns = head (elemIndices (maximum ns) ns)
+
+-- edit the wins and visits for a node
+editNode :: (Wins, Visits) -> GameTree -> GameTree
+editNode _ r@(GRoot _ _) = r
+editNode (w, v) (GLeaf b ps _ _) = GLeaf b ps w v
+editNode (w, v) (GNode b ps _ _ ts) = GNode b ps w v ts
+
+
+updateGameTreeWithTrace :: (Int, Int) -> Trace -> GameTree -> GameTree -- done by updating the node's children
+updateGameTreeWithTrace (a, b) xs (GRoot s ts) = let (h, ys) = pop xs
+                                                     idx = fromMaybe 0 (elemIndex h (map (snd . getBoardState) ts))
+                                                     node = ts !! idx
+                                                     newN = updateGameTreeWithTrace (a, b) ys (editNode (getWins node + a, getVisits node + b) node) 
+                                                     newL = replace idx newN ts
+                                                 in  GRoot s newL
+
+
+
+                                           

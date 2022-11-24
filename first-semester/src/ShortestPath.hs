@@ -21,11 +21,11 @@ test :: OccupiedBoard
 test = [
         [0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
         [1, 0, 0, 0, 0, 0, 0],
-        [1, 1, 0, 1, 0, 0, 0],
-        [1, 1, 0, 0, 0, 0, 0]]
+        [0, 1, 1, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0, 0],
+        [1, 0, 0, 0, 0, 0, 0]]
 
 --combine with 
 
@@ -118,8 +118,6 @@ flipBoardState b c (fx, fy) (tx, ty) = let newRow1 = replace fx (flip $ getEleme
         flip :: Int -> Int
         flip 0 = 1
         flip _ = 0
-
-
 
 -- provide the available pieces and their movements
 dListForBoard :: OccupiedBoard -> [(Pos, [Pos])]
