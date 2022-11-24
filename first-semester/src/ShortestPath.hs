@@ -9,9 +9,6 @@ import Data.Maybe
 -- level 0 means the initial positions
 -- level 1 means a step or jump performed by each piece from the initial positions, might have duplicate moves
 
-breadthWidth :: Int
-breadthWidth = 200
-
 -- Count iterations: moves needed to reaching goal state
 -- Copy all the "new" board positions to the "old" board positions: level plus
 --      For each of the "old" board positions
@@ -19,47 +16,52 @@ breadthWidth = 200
 --              For each possible move of each of these marbles
 --                  Calculate the "Score" for the resulting new positions and update the new positions list
 
-shortestMoves :: OccupiedBoard -> Int
-shortestMoves o = mSearchS 0 [] [] [(o, centroid o)]
+-- another search that counts the moves needed for reaching the goal state, mostly used for 
+test :: OccupiedBoard
+test = [
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [1, 0, 0, 0, 0, 0, 0],
+        [1, 1, 0, 1, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0, 0]]
+
+--combine with 
+
+-- breadth-first search
+shortestMoves :: OccupiedBoard -> Int -> Int
+shortestMoves b bw = bSearchS 0 bw [(b, centroid b)] []
 
 -- for a list of board states, process each new state for each state 
 -- update the new positions based on the old one
-mSearchS :: Int -> [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)] -> Int
+bSearchS :: Int -> Int -> [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)] -> Int
 -- clear the new position list and start searching on them, and update the last level positions
-mSearchS i np op [] = case elemIndex 28 (map snd np) of
-                      Nothing -> mSearchS (i+1) [] np np
-                      Just idx -> i -- np !! idx
-mSearchS i np op (b:bs) = let ls = mSearch np b
-                          in  mSearchS i ls op bs
-
--- check if any board state's mirror image match other set of board states, if so, then a shortest path exist
-terminateCheck :: [(OccupiedBoard, Int)] -> Bool
-terminateCheck ns = 28 `elem` map snd ns
+bSearchS i bw np [] = bSearchS (i+1) bw [] np -- start searching at the next level
+bSearchS i bw np (b:bs) = case bSearch np b bw of
+                             [(_, 100)] -> i  -- indicate that the goal state is reached, return the level
+                             ls -> bSearchS i bw ls bs -- otherwise, keep searching
 
 -- breath-first search, where each level is move that requires certain moves before can be performed
 -- for each pieces on a board, return the resulting board states
-mSearch :: [(OccupiedBoard, Int)] -> (OccupiedBoard, Int) -> [(OccupiedBoard, Int)]
-mSearch np (b, s) = let ps = dListForBoard b -- then search for from-to pair for each piece
-                        nb = mirrorCheck $ flipLists b s ps -- retrieve the resulting new board states
-                    in  updateList np nb -- return the updated new positions list
+bSearch :: [(OccupiedBoard, Int)] -> (OccupiedBoard, Int) -> Int -> [(OccupiedBoard, Int)]
+bSearch np (b, s) bw = let ps = dListForBoard b -- then search for from-to pair for each piece
+                           nb = mirrorCheck $ flipLists b s ps -- retrieve the resulting new board states containing no mirror images
+                       in  updateList np nb bw -- return the updated new positions list
 
--- update the new position list with better positions
-updateList :: [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)]
-updateList os [] = os
-updateList os (n:ns)
-  | n `elem` os = updateList os ns -- skip if already exists
-  | length os < breadthWidth = updateList (n:os) ns -- just add if the breadth is not wide enough
-  | otherwise = let (idx, min) = miniIndex os
+-- update the new position list with better positions of fixed length
+updateList :: [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)] -> Int -> [(OccupiedBoard, Int)]
+updateList os [] _ = os
+updateList os (n:ns) bw
+  | snd n == 28 = [(fst n, 100)] -- if reach the goal then just return the result 
+  | n `elem` os = updateList os ns bw -- skip if already exists
+  | length os < bw = updateList (n:os) ns bw -- just add if the breadth is not wide enough
+  | otherwise = let minScore = minimum (map snd os)
                     (_, score) = n
-                in  if score > min then updateList (replace idx n os) ns -- compare the minimum score in the list and the current score
-                    else updateList os ns
+                in  if score > minScore then let idx = fromMaybe 0 (elemIndex minScore (map snd os))
+                                             in  updateList (replace idx n os) ns bw -- replace the element with the current board state
+                    else updateList os ns bw -- if the board state is not better then skip 
 
-
--- return the minimum element in the list and its index
-miniIndex ::  [(OccupiedBoard, Int)] -> (Int, Int)
-miniIndex [] = (0, 0)
-miniIndex xs = let sL = map snd xs
-               in  (fromMaybe 0 (elemIndex (minimum sL) sL), minimum sL)
 
 -- to tend the movement from right-top to left-bottom, the centroid of the position can be set as: y-x
 -- such that the the closer to the homebase, the larger the centroid is
@@ -116,6 +118,8 @@ flipBoardState b c (fx, fy) (tx, ty) = let newRow1 = replace fx (flip $ getEleme
         flip :: Int -> Int
         flip 0 = 1
         flip _ = 0
+
+
 
 -- provide the available pieces and their movements
 dListForBoard :: OccupiedBoard -> [(Pos, [Pos])]

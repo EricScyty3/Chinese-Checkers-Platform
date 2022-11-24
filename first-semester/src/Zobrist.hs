@@ -1,15 +1,13 @@
-
 module Zobrist where
-import System.Random
+-- import System.Random
 import Data.List
-import Board
 
 type StateTable = [[Int]]
 type OccupiedBoard = [[Int]]
 
 -- board state matrix: each position has one state: Occupied with its own value
 randomBoardState :: StateTable
-randomBoardState = randomBoardColumn randomList 0
+randomBoardState = {- randomBoardColumn randomList 0
     where
         -- construct the matrix 
         randomBoardColumn :: [Int] -> Int -> StateTable
@@ -19,7 +17,15 @@ randomBoardState = randomBoardColumn randomList 0
         
         -- static random list without duplicate values
         randomList :: [Int]
-        randomList = nub $ randomRs (1, 2^32) (mkStdGen 42)
+        randomList = nub $ randomRs (1, 2^32) (mkStdGen 42)-}
+
+        [[3292324401,233489048,2624610400,1597242128,1980104913,1321694675,3441975186],
+        [1130700312,1305326220,2205018208,2326285813,2296381747,3769793212,2531570566],
+        [3207055759,1137426218,2956685049,4256428639,724082013,2138168924,2728019182],
+        [2087020672,2189657155,903285258,1992067404,2726019740,1298665595,1408913945],
+        [2990988946,3063264481,149517643,1100318883,2752873187,3781215980,2792287776],
+        [977698729,118633436,2784537123,1886397907,1695135422,92683337,2971222636],
+        [1857154033,3253362046,1756536471,2064999353,510226296,402957728,3185258486]]
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the internal single-agent board for a player with the top-right the starting point and botton-left the destination

@@ -1,38 +1,103 @@
 module Configuration where
 
 import Data.List
+import System.IO
 import Zobrist
-import Board
 import ShortestPath
+import RBTree
+import GHC.IO
 
--- list the all configurations of the board states, could be large but also possible to decrease the size
-validBoards :: [OccupiedBoard]
-validBoards = let bs = listAllBoards (listAllRows 7) 7
-              in  filter ((==6) . mySum) bs
+-- result the sufficient amount of board states with identical effect
+sufficientBoards :: [OccupiedBoard]
+sufficientBoards = mirrorBoardCheck (validBoards $ listBoards $ listRows 0 7) []
 
-mySum :: [[Int]] -> Int
-mySum rs = sum (map sum rs)
+-- ensure the boards that are unique, can reduce a factor close to 2
+mirrorBoardCheck :: [OccupiedBoard] -> [OccupiedBoard] -> [OccupiedBoard]
+mirrorBoardCheck [] as = as
+mirrorBoardCheck (b:bs) as = if symmetric1 b `notElem` as then mirrorBoardCheck bs (b:as)
+                             else mirrorBoardCheck bs as
 
-doubleMirrorCheck :: [OccupiedBoard] -> [OccupiedBoard] -> [OccupiedBoard]
-doubleMirrorCheck [] as = as
-doubleMirrorCheck (b:bs) as = if symmetric1 b `notElem` as && symmetric2 b `notElem` as then doubleMirrorCheck bs (b:as)
-                              else doubleMirrorCheck bs as
+-- omit the boards with less than 6 pieces
+validBoards :: [OccupiedBoard] -> [OccupiedBoard]
+validBoards = filter ((==6) . piecesCount)
+  where
+    piecesCount :: [[Int]] -> Int
+    piecesCount rs = sum (map sum rs)
 
-listAllBoards :: [[Int]] -> Int -> [OccupiedBoard]
-listAllBoards _  0 = [[]]
-listAllBoards rs l = [x:xs | x <- rs, xs <- listAllBoards rs (l - 1)]
+-- arrange the board state with different row states
+listBoards :: [[[Int]]] -> [OccupiedBoard]
+listBoards [] = [[]]
+listBoards (r:rs) = [x:xs | x <- r, xs <- listBoards rs]
 
-listAllRows :: Int -> [[Int]]
-listAllRows 0 = [[]]
-listAllRows l = [x:xs | x <- [0..1], xs <- listAllRows (l - 1)]
+-- compute different rows with different pieces allowed
+listRows :: Int -> Int -> [[[Int]]]
+listRows i w
+    | i /= w = map (replicate (i+1) 0 ++ ) (permutation (w - (i+1))):listRows (i+1) w
+    | otherwise = []
+
+-- arrange a binary list with certain length
+permutation :: Int -> [[Int]]
+permutation 0 = [[]]
+permutation l = [x:xs | x <- [0..1], xs <- permutation (l - 1)]
+
+{-
+The needed configurations will be shown as folllowing, ignoring the middle-game stage becuase the lookup table is quite weak for this,
+alternative will be apply instead, hence, the size of the table could also be reduced
+Besides, according to the mirror states sharing the same shortest paths, these can be eliminated
+
+    [0, 1, 1, 1, 1, 1, 1]
+    [0, 0, 1, 1, 1, 1, 1]
+    [0, 0, 0, 1, 1, 1, 1]
+    [0, 0, 0, 0, 1, 1, 1]
+    [0, 0, 0, 0, 0, 1, 1]
+    [0, 0, 0, 0, 0, 0, 1]
+    [0, 0, 0, 0, 0, 0, 0]                
+-}
+
+-- transform the board state into hashed value and calculate the corresponding shortest moves need to reach the goal state, 
+-- as well as the minimum moves of its mirror
+tableElementsConstruct :: [OccupiedBoard] -> [(Int, Int, Int)]
+tableElementsConstruct [] = []
+tableElementsConstruct (b:bs) = newElement:tableElementsConstruct bs
+    where
+        newElement = (hashState b randomBoardState, shortestMoves b 200, shortestMoves (symmetric2 b) 200)
+
+
+-- record the board state into hashed state as well as the corresponding minimum moves
+tableElementsRecord :: [OccupiedBoard] -> IO()
+tableElementsRecord bs = do filePath <- openFile "lookup_table.txt" WriteMode
+                            let tableElements = tableElementsConstruct bs
+                            hPutStr filePath (convertToString tableElements)
+                            hClose filePath
+    where
+        convertToString :: [(Int, Int, Int)] -> String
+        convertToString [] = ""
+        convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
+
+-- -- load the stored lookup table data from the file
+-- loadTableElements :: [(Int, Int)]
+-- {-# NOINLINE loadTableElements #-}
+-- loadTableElements = unsafePerformIO loadRecord
+--     where
+--         loadRecord :: IO [(Int, Int)]
+--         loadRecord = do filePath <- openFile "lookup_table.txt" ReadMode
+--                         contents <- hGetContents filePath
+--                         -- hClose filePath
+--                         return $ convertToElement (lines contents)
+
+--         convertToElement :: [String] -> [(Int, Int)]
+--         convertToElement = concatMap read
+
+-- buildLookupTable :: RBTree
+-- buildLookupTable = createTree loadTableElements
 
 
 -- `lp 49 6 = 13983816`
--- lp u d = lm u (u-d+1) `div` lc d
+lp u d = lm u (u-d+1) `div` lc d
 
--- lc 1 = 1
--- lc x = x * lc (x-1)
+lc 1 = 1
+lc x = x * lc (x-1)
 
--- lm x m
---     | x == m = m
---     | otherwise = x * lm (x-1) m
+lm x m
+    | x == m = m
+    | otherwise = x * lm (x-1) m
