@@ -19,10 +19,13 @@ extra-source-files:
 executable app
   main-is: Main.hs
   other-modules:
+      AStar
       Board
       BoardState_test
       Configuration
-      RedBlack_Tree
+      GameTree
+      MCTS
+      RBTree
       ShortestPath
       State
       Zobrist

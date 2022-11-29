@@ -86,7 +86,7 @@ loadTableElements = unsafePerformIO loadRecord
                         return $ convertToElement (lines contents)
 
         convertToElement :: [String] -> [(Hash, StoredData)]
-        convertToElement s = map (\(x, y, z) -> (x, (y, z))) (concatMap read s)
+        convertToElement s = map (\(x, y, z) -> (x, [y, z])) (concatMap read s)
 
 buildLookupTable :: RBTree
 buildLookupTable = createTree loadTableElements

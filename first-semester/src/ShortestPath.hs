@@ -21,11 +21,11 @@ test :: OccupiedBoard
 test = [
         [0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0],
-        [1, 0, 0, 0, 0, 0, 0],
-        [0, 1, 1, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0],
         [1, 1, 0, 0, 0, 0, 0],
-        [1, 0, 0, 0, 0, 0, 0]]
+        [1, 1, 0, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0, 0]]
 
 --combine with 
 
@@ -88,11 +88,6 @@ symmetric1 = reverse . transpose . reverse
 symmetric2 :: OccupiedBoard -> OccupiedBoard
 symmetric2 = transpose
 
--- transform the board state into hashed value
--- hashFlipLists (flipLists test (centroid test) (dListForBoard test))
-hashFlipLists :: [(OccupiedBoard, Int)] -> [(Int, Int)]
-hashFlipLists = map (\ x -> (hashState (fst x) randomBoardState, snd x))
-
 -- should avoid implementing mirror/symmetric state to reduce the search space
 -- diagonal line from top right to left bottom
 mirrorCheck :: [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)]
@@ -107,14 +102,16 @@ flipLists :: OccupiedBoard -> Int -> [(Pos, [Pos])] -> [(OccupiedBoard, Int)]
 flipLists _ _ [] = []
 flipLists b c (x:xs) = let (p, ps) = x
                        in  map (flipBoardState b c p) ps ++ flipLists b c xs
-
--- exchange two pieces' states on the occupied board
-flipBoardState :: OccupiedBoard -> Int -> Pos -> Pos -> (OccupiedBoard, Int)
-flipBoardState b c (fx, fy) (tx, ty) = let newRow1 = replace fx (flip $ getElement b (fx, fy)) (b !! fy)
-                                           newBoard1 = replace fy newRow1 b
-                                           newRow2 = replace tx (flip $ getElement newBoard1 (tx, ty)) (newBoard1 !! ty)
-                                       in  (replace ty newRow2 newBoard1, c - centroidPos (fx, fy) + centroidPos (tx, ty))
     where
+        -- exchange two pieces' states on the occupied board
+        flipBoardState :: OccupiedBoard -> Int -> Pos -> Pos -> (OccupiedBoard, Int)
+        flipBoardState b c f t = let new1 = replace2 f (flip $ getElement b f) b
+                                     new2 = replace2 t (flip $ getElement new1 t) new1
+                                 in  (new2, c - centroidPos f + centroidPos t)
+                                            {-let newRow1 = replace fx (flip $ getElement b (fx, fy)) (b !! fy)
+                                                newBoard1 = replace fy newRow1 b
+                                                newRow2 = replace tx (flip $ getElement newBoard1 (tx, ty)) (newBoard1 !! ty)
+                                            in  (replace ty newRow2 newBoard1, c - centroidPos (fx, fy) + centroidPos (tx, ty))-}
         flip :: Int -> Int
         flip 0 = 1
         flip _ = 0

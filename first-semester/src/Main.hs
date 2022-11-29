@@ -55,7 +55,6 @@ import Monomer
       EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline), CmbPaddingB (paddingB), CmbOnClick (onClick), CmbBorder (border), black, gray )
 import TextShow
 import Board
-import Zobrist
 
 import qualified Data.Text as T
 import qualified Monomer.Lens as L
@@ -63,6 +62,7 @@ import Monomer.Widgets
 import Monomer.Main
 import Monomer.Graphics.ColorTable
 import Monomer.Core.Combinators
+import Zobrist
 
 -- the model representation that indicates the state of the application
 -- information could be stored here that models the subject
@@ -236,7 +236,7 @@ handleEvent wenv node model evt = case evt of
     where
       pf = model ^. previousFromPiece
       pt = model ^. previousToPiece
-      newBoard = repaintPath pt pf lastTurnColour (model ^. displayBoard)
+      newBoard = repaintPath lastTurnColour (model ^. displayBoard) pt pf 
       fromProjectPos = projection lastTurnColour (getPos pf)
       toProjectPos = projection lastTurnColour (getPos pt)
       lastTurnColour = turnColour model (revertTurnChange model)
@@ -265,7 +265,7 @@ handleEvent wenv node model evt = case evt of
       where
         f = model ^. fromPiece
         t = model ^. toPiece
-        newBoard = repaintPath f t currentColour (model ^. displayBoard)
+        newBoard = repaintPath currentColour (model ^. displayBoard) f t 
         currentColour = turnColour model (model ^. turnS)
         currentState = (model ^. internalStates) !! (model ^. turnS)
         fromProjectPos = projection currentColour (getPos f)

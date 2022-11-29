@@ -1,6 +1,7 @@
 module Zobrist where
 -- import System.Random
 import Data.List
+import Board
 
 type StateTable = [[Int]]
 type OccupiedBoard = [[Int]]
@@ -33,6 +34,16 @@ randomBoardState = {- randomBoardColumn randomList 0
 -- only need to know the occupy status for each position
 -- In addition, the transformation between the external (display-purposed) board the internal (heuristi-purposed) board is needed
 -- furthermore, in experimental environment, the communication between each player should be done through internal board exchanging
+empty :: OccupiedBoard
+empty = [
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0]]
+
 initialState :: OccupiedBoard
 initialState = [
                 [0, 0, 0, 0, 1, 1, 1],
@@ -47,19 +58,23 @@ initialState = [
 winStateDetect :: Int -> Bool
 winStateDetect rh = hashEnd == rh
 
--- the hashed values for two states
 hashInitial :: Int
 hashInitial = hashState initialState randomBoardState
 hashEnd :: Int
 hashEnd = hashState (transpose initialState) randomBoardState
 
+-- convert the occupiedBoard to hashed value, but based on given pieces' positions
+-- hashBoardWithPos :: [Pos] -> StateTable -> Int
+-- hashBoardWithPos [] _ = 0
+-- hashBoardWithPos (p:ps) st = myXOR (getElement st p) (hashBoardWithPos ps st)
+
 -- after the first construct, each change only need to add the changed hashes
 hashChange :: (Int, Int) -> (Int, Int) -> Int -> Int
 hashChange (fx, fy) (tx, ty) xv = foldr myXOR 0 [xv, f, t]
     where
-        f = (bs !! fy) !! fx
-        t = (bs !! ty) !! tx
-        bs = randomBoardState
+        f = getElement st (fx, fy)
+        t = getElement st (tx, ty)
+        st = randomBoardState
 
 -- construct the hashed board state of the given occupied board state
 hashState :: OccupiedBoard -> StateTable -> Int

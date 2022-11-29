@@ -99,17 +99,25 @@ externalBoard = [
 -- access element in a matrix 
 getElement :: [[a]] -> Pos -> a
 getElement m (x, y) = m !! y !! x
+
+-- replace version of 2d list
+replace2 :: Pos -> a -> [[a]] -> [[a]]
+replace2 (x, y) n as = let newRow = replace x n (as !! y)
+                       in  replace y newRow as
+
 -- repalce a content with a new one
 replace :: Int -> a -> [a] -> [a]
 replace idx v xs = front ++ [v] ++ end
     where
         (front, _:end) = splitAt idx xs
+
 -- update the new board with modifications
 changeBoardElement :: (BoardType -> BoardType) -> BoardType -> Board -> Board
 changeBoardElement f bt eBoard = let newElement = f bt
-                                     (x, y) = getPos newElement
-                                     newRow = replace x newElement (eBoard !! y)
-                                 in  replace y newRow eBoard
+                                     pos = getPos newElement
+                                 in  replace2 pos newElement eBoard
+                                --      newRow = replace x newElement (eBoard !! y)
+                                --  in  replace y newRow eBoard
 
 isJustFalse :: Maybe Bool -> Bool
 isJustFalse (Just False) = True
@@ -133,12 +141,10 @@ eraseBoard t cs = map (eraseRow t cs)
         f :: Bool -> Colour -> [Colour] -> Bool
         f t x xs = if t then x `elem` xs else x `notElem` xs
 
-repaintPath :: BoardType -> BoardType -> Colour -> Board -> Board
-repaintPath start end c eBoard = let tempBoard = changeBoardElement erase start eBoard
+repaintPath :: Colour -> Board -> BoardType -> BoardType -> Board
+repaintPath c eBoard start end  = let tempBoard = changeBoardElement erase start eBoard
                                   in  changeBoardElement (repaint c) end tempBoard
 
--- testJumpValid :: Board -> BoardType -> BoardType -> Bool
--- testJumpValid eBoard start end = end `elem` destinationList eBoard start
 destinationListFilter :: Board -> BoardType -> [BoardType]
 destinationListFilter eBoard b = case getColour b of
                                     Nothing -> []
@@ -218,6 +224,10 @@ reversion Purple pos = reversePurple pos
 reversion Red pos = reverseRed pos
 reversion Orange pos = reverseOrange pos
 reversion Black pos = reverseBlack pos
+-- communication between different players' boards
+-- first reverse to the main board coordinate system then convert to the player's occupied board system
+conversion :: Pos -> Colour -> Colour -> Pos
+conversion fp fc tc = projection tc (reversion fc fp)
 -- Below is the coordinate conversion of internal board state of each colour and the external display board state
 {-
         (1,1)
@@ -338,3 +348,29 @@ printBoard :: Show a => [a] -> IO ()
 printBoard [] = putStr ""
 printBoard (x:xs) = do print x
                        printBoard xs
+
+printEoard :: Board -> IO ()
+printEoard b = printEoard' $ testDisplay b
+    where
+        printEoard' :: Show a => [a] -> IO ()
+        printEoard' [] = putStr ""
+        printEoard' (x:xs) = do let str = map skipZero (show x)
+                                putStrLn str
+                                printEoard' xs
+
+        skipZero :: Char -> Char
+        skipZero '0' = ' '
+        skipZero ',' = ' '
+        skipZero a = a
+
+testDisplay :: Board -> [[Int]]
+testDisplay = map testDisplay'
+    where
+        testDisplay' :: [BoardType] -> [Int]
+        testDisplay' [] = []
+        testDisplay' (x:xs) = case getColour x of
+                                Just c -> colourToIndex c + 1:testDisplay' xs
+                                _ -> 0:testDisplay' xs
+
+        colourToIndex :: Colour -> Int
+        colourToIndex colour = fromMaybe 0 (elemIndex colour sixPlayersSet)

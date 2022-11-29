@@ -3,9 +3,9 @@ module RBTree where
 -- the node index of the Reb Black tree, representing a board state
 type Hash = Int
 -- the score of the represented board state for lookup table or the history heuristic
-type StoredData = (Int, Int)
+type StoredData = [Int]
 -- the colour of the node, either red or black 
-data TColour = Red | Black deriving (Eq, Show)
+data TColour = Red | Black deriving (Eq, Show) 
 -- the Red Black tree contains the colour of node, the node value, left subtree, node index, right rubtree  
 data RBTree = RBLeaf | RBNode TColour StoredData RBTree Hash RBTree deriving (Eq, Show)
 
@@ -35,14 +35,6 @@ getValue (RBNode _ n _ _ _) = Just n
 getIndex :: RBTree -> Maybe Hash
 getIndex RBLeaf = Nothing
 getIndex (RBNode _ _ _ i _) = Just i
-
--- edit a node with certain hashed index in the tree
-rbEdit :: Hash -> StoredData -> RBTree -> RBTree
-rbEdit h n RBLeaf = RBLeaf
-rbEdit h n (RBNode c v t1 x t2)
-    | h > x = RBNode c v t1 x (rbEdit h n t2)
-    | h < x = RBNode c v (rbEdit h n t1) x t2
-    | otherwise = RBNode c n t1 x t2
 
 -- searches a node with certain hashed index in the tree
 -- returns the node value if found, otherwise, nothing
