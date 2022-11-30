@@ -134,7 +134,7 @@ buildUI wenv model = widgetTree where
   -- render the color of different pieces on the board based on the labels
   colouredLabel :: BoardType -> WidgetNode AppModel AppEvent
   colouredLabel ch
-    | isNothing(isOccupied ch) = spacer
+    | isSpacer ch = spacer
     | otherwise = button_ {-(T.pack $ show $ getIndex ch)-} "" (MoveCheck ch) [onClick RenderMove]
                   `styleBasic` [radius 45, bgColor white, border 2 white, textSize 20,
                                 styleIf (isRed ch)(bgColor red),
@@ -214,13 +214,13 @@ handleEvent wenv node model evt = case evt of
   AppInit -> []
   StartGameButtonClick
     | model ^. playersAmount == 2 -> [Model $ model & startGame .~ True
-                                                    & displayBoard .~ eraseBoard False twoPlayersSet externalBoard
+                                                    & displayBoard .~ eraseBoard twoPlayersSet externalBoard
                                                     & internalStates .~ replicate 2 hashInitial]
     | model ^. playersAmount == 3 -> [Model $ model & startGame .~ True
-                                                    & displayBoard .~ eraseBoard False threePlayersSet externalBoard
+                                                    & displayBoard .~ eraseBoard threePlayersSet externalBoard
                                                     & internalStates .~ replicate 3 hashInitial]
     | model ^. playersAmount == 4 -> [Model $ model & startGame .~ True
-                                                    & displayBoard .~ eraseBoard False fourPlayersSet externalBoard
+                                                    & displayBoard .~ eraseBoard fourPlayersSet externalBoard
                                                     & internalStates .~ replicate 4 hashInitial]
     | otherwise -> [Model $ model & startGame .~ True
                                   & displayBoard .~ externalBoard
@@ -299,12 +299,12 @@ handleEvent wenv node model evt = case evt of
                                           True  -> [Model $ model & errorMessage .~ show currentColour ++ ": no move made"
                                                                   & fromPiece .~ U (-1, -1)]
                                           False -> case isOccupied b of
-                                                      Just False -> case b `elem` model ^. movesList of
+                                                      False -> case b `elem` model ^. movesList of
                                                                         True  -> [Model $ model & toPiece .~ b
                                                                                                 & errorMessage .~ ""]
                                                                         False -> [Model $ model & errorMessage .~ show currentColour ++ ": destination unreacbable"
                                                                                                 & fromPiece .~ U (-1, -1)]
-                                                      _ -> [Model $ model & errorMessage .~ show currentColour ++ ": destination occupied"
+                                                      True -> [Model $ model & errorMessage .~ show currentColour ++ ": destination occupied"
                                                                           & fromPiece .~ U (-1, -1)]
     where
       currentColour = turnColour model (model ^. turnS)

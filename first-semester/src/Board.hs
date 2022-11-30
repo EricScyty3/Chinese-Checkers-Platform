@@ -8,13 +8,15 @@ type Pos = (Int, Int)
 data BoardType = G Pos | B Pos | P Pos | R Pos | O Pos | K Pos | E Pos | U Pos deriving (Eq, Show)
 type Board = [[BoardType]]
 
-
+-- the board setting for displaying
 boardWidth :: Int
 boardWidth = 19
 boardHeight :: Int
 boardHeight = 13
 totalPieces :: Int
 totalPieces = 6
+
+-- the colour list corresponding to each players with different amounts
 twoPlayersSet :: [Colour]
 twoPlayersSet = [Green, Red]
 threePlayersSet :: [Colour]
@@ -23,6 +25,7 @@ fourPlayersSet :: [Colour]
 fourPlayersSet = [Blue, Purple, Orange, Black]
 sixPlayersSet :: [Colour]
 sixPlayersSet = [Green, Blue, Purple, Red, Orange, Black]
+
 -- determine the color state of a piece
 isRed :: BoardType -> Bool
 isRed (R _) = True
@@ -54,11 +57,19 @@ compareColour :: BoardType -> Colour -> Bool
 compareColour b c = case getColour b of
                         Just bc -> bc == c
                         Nothing -> False
--- identify if a position on the board is occupied
-isOccupied :: BoardType -> Maybe Bool
-isOccupied (U _) = Nothing
-isOccupied (E _) = Just False
-isOccupied _ = Just True
+
+-- identify if a position on the board is empty or occupied
+isEmpty :: BoardType -> Bool
+isEmpty (E _) = True
+isEmpty _ = False
+isOccupied :: BoardType -> Bool
+isOccupied b = case getColour b of
+                    Just _ -> True
+                    _      -> False
+isSpacer :: BoardType -> Bool
+isSpacer (U _) = True
+isSpacer _ = False
+
 -- get the assoicated position for the piece
 getPos :: BoardType -> Pos
 getPos (U p) = p
@@ -69,6 +80,7 @@ getPos (R p) = p
 getPos (B p) = p
 getPos (G p) = p
 getPos (E p) = p
+
 -- update the new colour state for a board position
 repaint :: Colour -> BoardType -> BoardType
 repaint Green b = G (getPos b)
@@ -79,6 +91,7 @@ repaint Blue b = B (getPos b)
 repaint Purple b = P (getPos b)
 erase :: BoardType -> BoardType
 erase b = E (getPos b)
+
 -- the overall board state for displaying and for movement changed determining
 externalBoard :: Board
 externalBoard = [
@@ -104,62 +117,47 @@ getElement m (x, y) = m !! y !! x
 replace2 :: Pos -> a -> [[a]] -> [[a]]
 replace2 (x, y) n as = let newRow = replace x n (as !! y)
                        in  replace y newRow as
-
--- repalce a content with a new one
+-- repalce a content with a new one in a list
 replace :: Int -> a -> [a] -> [a]
 replace idx v xs = front ++ [v] ++ end
     where
         (front, _:end) = splitAt idx xs
-
--- update the new board with modifications
+-- update the new board with a modified piece
 changeBoardElement :: (BoardType -> BoardType) -> BoardType -> Board -> Board
 changeBoardElement f bt eBoard = let newElement = f bt
                                      pos = getPos newElement
                                  in  replace2 pos newElement eBoard
-                                --      newRow = replace x newElement (eBoard !! y)
-                                --  in  replace y newRow eBoard
 
-isJustFalse :: Maybe Bool -> Bool
-isJustFalse (Just False) = True
-isJustFalse _ = False
-
-isJustTrue :: Maybe Bool -> Bool
-isJustTrue (Just True) = True
-isJustTrue _ = False
-
--- erase the board sections according to the colours, whether to keep (True) or remove (False)
-eraseBoard :: Bool -> [Colour] -> Board -> Board
-eraseBoard t cs = map (eraseRow t cs)
+-- erase the pieces on the board and keep certain coloured pieces
+eraseBoard :: [Colour] -> Board -> Board
+eraseBoard cs = map (eraseRow cs)
     where
-        eraseRow :: Bool -> [Colour] -> [BoardType] -> [BoardType]
-        eraseRow t _ [] = []
-        eraseRow t cs (x:xs) = case getColour x of
-                                Nothing -> x:eraseRow t cs xs
-                                Just c  -> if f t c cs then erase x:eraseRow t cs xs
-                                           else x:eraseRow t cs xs
+        eraseRow :: [Colour] -> [BoardType] -> [BoardType]
+        eraseRow _ [] = []
+        eraseRow cs (x:xs) = case getColour x of
+                                Nothing -> x:eraseRow cs xs
+                                Just c  -> if c `notElem` cs then erase x:eraseRow cs xs
+                                           else x:eraseRow cs xs
 
-        f :: Bool -> Colour -> [Colour] -> Bool
-        f t x xs = if t then x `elem` xs else x `notElem` xs
-
+-- given two pieces, exchange their colours
 repaintPath :: Colour -> Board -> BoardType -> BoardType -> Board
 repaintPath c eBoard start end  = let tempBoard = changeBoardElement erase start eBoard
                                   in  changeBoardElement (repaint c) end tempBoard
 
+-- return the valid movable positions from a piece 
 destinationListFilter :: Board -> BoardType -> [BoardType]
 destinationListFilter eBoard b = case getColour b of
                                     Nothing -> []
                                     Just c -> filter (testCorners c) (destinationList eBoard b)
-
+-- return the reachable positions of adjacent jumps and the hops
 destinationList :: Board -> BoardType -> [BoardType]
 destinationList eBoard b = nub $ findAvaliableNeighbors eBoard b ++ searchWithoutLooping eBoard [] b
 
--- check if this can be reached by one jump
 -- One adjacent jump range
 -- search for all neighbor positions around that are not occupied
 findAvaliableNeighbors :: Board -> BoardType -> [BoardType]
-findAvaliableNeighbors eBoard b = filter (isJustFalse . isOccupied) (findValidNeighbors (getPos b) eBoard)
-
--- search for all piece positions inside the board around
+findAvaliableNeighbors eBoard b = filter isEmpty (findValidNeighbors (getPos b) eBoard)
+-- search for all surrounding piece positions based on hex movement
 findValidNeighbors :: Pos -> Board -> [BoardType]
 findValidNeighbors (x, y) eBoard = map (getElement eBoard) (filter testValidPos [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)])
 -- test if a piece's position is out of boarder
@@ -168,34 +166,33 @@ testValidPos (x, y) = x >= 0 && y >= 0 && x <= boardWidth - 1 && y <= boardHeigh
 
 -- chained jump range
 -- one over hop
+-- recursively search for the reachable positions of multiple chained hops
 searchWithoutLooping :: Board -> [BoardType] -> BoardType ->  [BoardType]
-searchWithoutLooping eBoard l b = let s = recursiveSearch eBoard b
-                                      renewList = filter (`notElem` l) s
-                                      recordList = renewList ++ l
+searchWithoutLooping eBoard l b = let s = recursiveSearch eBoard b          -- the first round of search
+                                      renewList = filter (`notElem` l) s    -- filter the already found pieces
+                                      recordList = renewList ++ l           -- save these to avoid duplicate results
                                   in  concatMap (searchWithoutLooping eBoard recordList) renewList ++ renewList
-
+-- expands the piece's positions to the surronding positions with one pieces placing between
 recursiveSearch :: Board -> BoardType -> [BoardType]
 recursiveSearch eBoard b = map (getElement eBoard) (jumpToAllDirections eBoard (getPos b))
--- one piece dor all six driections checked
+-- check all six driections
 jumpToAllDirections :: Board -> Pos -> [Pos]
 jumpToAllDirections eBoard pos = filter (/= pos) (jumpToOneDirection eBoard pos [(-1, -1), (-2, 0), (-1, 1), (1, 1), (2, 0), (1, -1)])
-
+-- only check for opne direction
 jumpToOneDirection :: Board -> Pos -> [Pos] -> [Pos]
 jumpToOneDirection _ _ [] = []
 jumpToOneDirection eBoard pos (a:as) = determineValidJump eBoard pos (f a): jumpToOneDirection eBoard pos as
     where
         f (a, b) (x, y) = (a+x, b+y)
-
+-- check the validity of the hop 
 determineValidJump :: Board -> Pos -> (Pos -> Pos) -> Pos
 determineValidJump eBoard pos f
     | not (testValidPos (f pos)) || not (testValidPos ((f . f) pos)) = pos -- invalid ones
-    | isJustTrue (isOccupied $ getElement eBoard $ f pos) &&
-      isJustFalse (isOccupied $ getElement eBoard $ (f . f) pos) = (f . f) pos
+    | isOccupied (getElement eBoard $ f pos) &&
+      isEmpty (getElement eBoard $ (f . f) pos) = (f . f) pos
     | otherwise = pos -- no ways found
 
--- some rules allow jump to be chained as longer as the symmetric satisfied on a line, no neec to be one position in between
-
--- an addition check should be transformed into square and tested
+-- an addition check should be transformed into a square cooupied board and tested whether it exists in that board
 -- this is only for computer players to enable sufficient compute and shorter game
 testCorners :: Colour -> BoardType -> Bool
 testCorners Green b = withinBorder $ projectGreen (getPos b)
@@ -204,11 +201,9 @@ testCorners Blue b = withinBorder $ projectBlue (getPos b)
 testCorners Red b = withinBorder $ projectRed (getPos b)
 testCorners Orange b = withinBorder $ projectOrange (getPos b)
 testCorners Black b = withinBorder $ projectBlack (getPos b)
-
 withinBorder :: Pos -> Bool
-withinBorder (x, y) = x <= 6 && y <= 6 && x >= 0 && y >= 0
--- bedies, computer is only allow frontward move, might need to added as movement rule
-
+withinBorder (x, y) = x <= totalPieces && y <= totalPieces && x >= 0 && y >= 0
+-- the projection of the main (display) board to the sub occupied board for each player
 projection :: Colour -> Pos -> Pos
 projection Green pos = projectGreen pos
 projection Blue pos = projectBlue pos
@@ -216,7 +211,7 @@ projection Purple pos = projectPurple pos
 projection Red pos = projectRed pos
 projection Orange pos = projectOrange pos
 projection Black pos = projectBlack pos
--- probability used most by the AI player
+-- the projection of the sub occupied board of certain player to the main display board 
 reversion :: Colour -> Pos -> Pos
 reversion Green pos = reverseGreen pos
 reversion Blue pos = reverseBlue pos
@@ -224,10 +219,10 @@ reversion Purple pos = reversePurple pos
 reversion Red pos = reverseRed pos
 reversion Orange pos = reverseOrange pos
 reversion Black pos = reverseBlack pos
--- communication between different players' boards
+-- communication between different players' sub-boards
 -- first reverse to the main board coordinate system then convert to the player's occupied board system
 conversion :: Pos -> Colour -> Colour -> Pos
-conversion fp fc tc = projection tc (reversion fc fp)
+conversion p c1 c2 = projection c2 (reversion c1 p)
 -- Below is the coordinate conversion of internal board state of each colour and the external display board state
 {-
         (1,1)
@@ -344,11 +339,13 @@ reverseBlack (x, y) = let (ox, oy) = (ix + 2 * x, iy) -- move x
     where
         (ix, iy) = (6, 3)
 
+-- the board printing for occupied board
 printBoard :: Show a => [a] -> IO ()
 printBoard [] = putStr ""
 printBoard (x:xs) = do print x
                        printBoard xs
 
+-- the board printing for the main board
 printEoard :: Board -> IO ()
 printEoard b = printEoard' $ testDisplay b
     where
@@ -363,6 +360,7 @@ printEoard b = printEoard' $ testDisplay b
         skipZero ',' = ' '
         skipZero a = a
 
+-- transform the board types into numerical values
 testDisplay :: Board -> [[Int]]
 testDisplay = map testDisplay'
     where

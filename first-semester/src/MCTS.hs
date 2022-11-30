@@ -11,7 +11,7 @@ import Zobrist
 type Trace = [BoardIndex]
 
 testBoard :: Board
-testBoard = eraseBoard False threePlayersSet externalBoard
+testBoard = eraseBoard twoPlayersSet externalBoard
 
 turnBase :: Int -> PlayerIndex -> PlayerIndex
 turnBase player idx = if idx == player - 1 then 0 else idx + 1
@@ -134,15 +134,15 @@ randomPercentage n = unsafePerformIO (randomRIO (0, 100)) <= n
 randomMove :: Int -> Int
 randomMove l = unsafePerformIO (randomRIO (0, l-1))
 
-playout :: Board -> Int -> SB PlayerIndex Board
-playout b p = do idx <- stState
-                 let c = currentPlayerColour idx p
-                     s = centroid $ projectCOB c b
-                 if  s == 28 then return b
-                 else do let bs = expandingBoards c b
-                             nb = randomPolicy c s bs
-                         stUpdate (turnBase p idx)
-                         playout nb p
+playout :: Board -> Int -> Int -> SB PlayerIndex (Board, Int)
+playout b p count  = do idx <- stState
+                        let c = currentPlayerColour idx p
+                            s = centroid $ projectCOB c b
+                        if  s == 28 then return (b, count)
+                        else do let bs = expandingBoards c b
+                                    nb = randomPolicy c s bs
+                                stUpdate (turnBase p idx)
+                                playout nb p (count+1)
 
 randomPolicy :: Colour -> Int -> [(Board, Transform)] -> Board
 randomPolicy c s xs = if randomPercentage 95 then bestBoard c s xs else fst (xs !! randomMove (length xs)) -- either return the best board or randomly

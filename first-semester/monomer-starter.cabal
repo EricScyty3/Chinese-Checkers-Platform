@@ -19,9 +19,7 @@ extra-source-files:
 executable app
   main-is: Main.hs
   other-modules:
-      AStar
       Board
-      BoardState_test
       Configuration
       GameTree
       MCTS
