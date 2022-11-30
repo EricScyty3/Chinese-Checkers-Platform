@@ -1,5 +1,5 @@
 module Zobrist where
--- import System.Random
+import System.Random
 import Data.List
 import Board
 
@@ -32,18 +32,9 @@ randomBoardState = {- randomBoardColumn randomList 0
 -- the internal single-agent board for a player with the top-right the starting point and botton-left the destination
 -- this is just for heuristic board evaluation 
 -- only need to know the occupy status for each position
--- In addition, the transformation between the external (display-purposed) board the internal (heuristi-purposed) board is needed
--- furthermore, in experimental environment, the communication between each player should be done through internal board exchanging
+-- the sample occupied board state
 empty :: OccupiedBoard
-empty = [
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0]]
-
+empty = replicate 7 (replicate 7 0)
 initialState :: OccupiedBoard
 initialState = [
                 [0, 0, 0, 0, 1, 1, 1],
@@ -56,38 +47,37 @@ initialState = [
 
 -- a win for a player can only be achieved at one's turn
 winStateDetect :: Int -> Bool
-winStateDetect rh = hashEnd == rh
-
+winStateDetect h = hashEnd == h
 hashInitial :: Int
 hashInitial = hashState initialState randomBoardState
 hashEnd :: Int
 hashEnd = hashState (transpose initialState) randomBoardState
 
 -- convert the occupiedBoard to hashed value, but based on given pieces' positions
--- hashBoardWithPos :: [Pos] -> StateTable -> Int
--- hashBoardWithPos [] _ = 0
--- hashBoardWithPos (p:ps) st = myXOR (getElement st p) (hashBoardWithPos ps st)
+hashBoardWithPos :: [Pos] -> StateTable -> Int
+hashBoardWithPos [] _ = 0
+hashBoardWithPos (p:ps) st = myXOR (getElement st p) (hashBoardWithPos ps st)
 
--- after the first construct, each change only need to add the changed hashes
+-- after the first construct, each changed hash does not need to recalculate, just applys the two changed points
 hashChange :: (Int, Int) -> (Int, Int) -> Int -> Int
-hashChange (fx, fy) (tx, ty) xv = foldr myXOR 0 [xv, f, t]
+hashChange fp tp xv = foldr myXOR 0 [xv, f, t]
     where
-        f = getElement st (fx, fy)
-        t = getElement st (tx, ty)
+        f = getElement st fp
+        t = getElement st tp
         st = randomBoardState
 
--- construct the hashed board state of the given occupied board state
-hashState :: OccupiedBoard -> StateTable -> Int
-hashState _ [] = 0
-hashState [] _ = 0
-hashState (x:xs) (s:ss) = myXOR (hashOneRow x s) (hashState xs ss)
-    where
-        hashOneRow :: [Int] -> [Int] -> Int
-        hashOneRow [] _ = 0
-        hashOneRow _ [] = 0
-        hashOneRow (x:xs) (s:ss)
-            | x == 1 = myXOR s (hashOneRow xs ss) -- only XOR the occupied position's state value
-            | otherwise = hashOneRow xs ss
+-- -- construct the hashed board state of the given occupied board state
+-- hashState :: OccupiedBoard -> StateTable -> Int
+-- hashState _ [] = 0
+-- hashState [] _ = 0
+-- hashState (x:xs) (s:ss) = myXOR (hashOneRow x s) (hashState xs ss)
+--     where
+--         hashOneRow :: [Int] -> [Int] -> Int
+--         hashOneRow [] _ = 0
+--         hashOneRow _ [] = 0
+--         hashOneRow (x:xs) (s:ss)
+--             | x == 1 = myXOR s (hashOneRow xs ss) -- only XOR the occupied position's state value
+--             | otherwise = hashOneRow xs ss
 
 -- transform a decimal integer into binary list
 toBinary :: Int -> [Int]
