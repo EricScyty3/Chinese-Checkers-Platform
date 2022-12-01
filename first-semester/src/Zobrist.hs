@@ -6,6 +6,9 @@ import Board
 type StateTable = [[Int]]
 type OccupiedBoard = [[Int]]
 
+occupiedBoardSize :: Int
+occupiedBoardSize = 7
+
 -- board state matrix: each position has one state: Occupied with its own value
 randomBoardState :: StateTable
 randomBoardState = {- randomBoardColumn randomList 0
@@ -45,18 +48,22 @@ initialState = [
                 [0, 0, 0, 0, 0, 0, 0],
                 [0, 0, 0, 0, 0, 0, 0]]
 
+homeBase :: [Pos]
+homeBase = [(0,4),(0,5),(1,5),(0,6),(1,6),(2,6)]
+startBase :: [Pos]
+startBase = [(4,0),(5,0),(6,0),(5,1),(6,1),(6,2)]
+
 -- a win for a player can only be achieved at one's turn
 winStateDetect :: Int -> Bool
 winStateDetect h = hashEnd == h
 hashInitial :: Int
-hashInitial = hashState initialState randomBoardState
+hashInitial = hashBoardWithPos startBase
 hashEnd :: Int
-hashEnd = hashState (transpose initialState) randomBoardState
+hashEnd = hashBoardWithPos homeBase
 
 -- convert the occupiedBoard to hashed value, but based on given pieces' positions
-hashBoardWithPos :: [Pos] -> StateTable -> Int
-hashBoardWithPos [] _ = 0
-hashBoardWithPos (p:ps) st = myXOR (getElement st p) (hashBoardWithPos ps st)
+hashBoardWithPos :: [Pos] -> Int
+hashBoardWithPos = foldr (myXOR . getElement randomBoardState) 0
 
 -- after the first construct, each changed hash does not need to recalculate, just applys the two changed points
 hashChange :: (Int, Int) -> (Int, Int) -> Int -> Int
@@ -66,18 +73,18 @@ hashChange fp tp xv = foldr myXOR 0 [xv, f, t]
         t = getElement st tp
         st = randomBoardState
 
--- -- construct the hashed board state of the given occupied board state
--- hashState :: OccupiedBoard -> StateTable -> Int
--- hashState _ [] = 0
--- hashState [] _ = 0
--- hashState (x:xs) (s:ss) = myXOR (hashOneRow x s) (hashState xs ss)
---     where
---         hashOneRow :: [Int] -> [Int] -> Int
---         hashOneRow [] _ = 0
---         hashOneRow _ [] = 0
---         hashOneRow (x:xs) (s:ss)
---             | x == 1 = myXOR s (hashOneRow xs ss) -- only XOR the occupied position's state value
---             | otherwise = hashOneRow xs ss
+-- construct the hashed board state of the given occupied board state
+hashState :: OccupiedBoard -> StateTable -> Int
+hashState _ [] = 0
+hashState [] _ = 0
+hashState (x:xs) (s:ss) = myXOR (hashOneRow x s) (hashState xs ss)
+    where
+        hashOneRow :: [Int] -> [Int] -> Int
+        hashOneRow [] _ = 0
+        hashOneRow _ [] = 0
+        hashOneRow (x:xs) (s:ss)
+            | x == 1 = myXOR s (hashOneRow xs ss) -- only XOR the occupied position's state value
+            | otherwise = hashOneRow xs ss
 
 -- transform a decimal integer into binary list
 toBinary :: Int -> [Int]

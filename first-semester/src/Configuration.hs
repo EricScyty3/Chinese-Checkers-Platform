@@ -6,20 +6,21 @@ import Zobrist
 import ShortestPath
 import RBTree
 import GHC.IO
+import Board (totalPieces)
 
 -- result the sufficient amount of board states with identical effect
 sufficientBoards :: [OccupiedBoard]
-sufficientBoards = mirrorBoardCheck (validBoards $ listBoards $ listRows 0 7) []
+sufficientBoards = mirrorBoardCheck (validBoards $ listBoards $ listRows 0 7)
 
 -- ensure the boards that are unique, can reduce a factor close to 2
-mirrorBoardCheck :: [OccupiedBoard] -> [OccupiedBoard] -> [OccupiedBoard]
-mirrorBoardCheck [] as = as
-mirrorBoardCheck (b:bs) as = if symmetric1 b `notElem` as then mirrorBoardCheck bs (b:as)
-                             else mirrorBoardCheck bs as
+mirrorBoardCheck :: [OccupiedBoard] -> [OccupiedBoard]
+mirrorBoardCheck [] = []
+mirrorBoardCheck (b:bs) = if symmetric1 b `notElem` bs then b:mirrorBoardCheck bs
+                          else mirrorBoardCheck bs
 
 -- omit the boards with less than 6 pieces
 validBoards :: [OccupiedBoard] -> [OccupiedBoard]
-validBoards = filter ((==6) . piecesCount)
+validBoards = filter ((== totalPieces) . piecesCount)
   where
     piecesCount :: [[Int]] -> Int
     piecesCount rs = sum (map sum rs)
@@ -61,7 +62,6 @@ tableElementsConstruct [] = []
 tableElementsConstruct (b:bs) = newElement:tableElementsConstruct bs
     where
         newElement = (hashState b randomBoardState, shortestMoves b 200, shortestMoves (symmetric2 b) 200)
-
 
 -- record the board state into hashed state as well as the corresponding minimum moves
 tableElementsRecord :: [OccupiedBoard] -> IO()

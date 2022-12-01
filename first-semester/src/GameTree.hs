@@ -24,6 +24,7 @@ printGameTree :: GameTree -> IO ()
 printGameTree gt = do printEoard (getBoard gt)
                       putStrLn ("Index: " ++ show (getBoardIndex gt))
                       putStrLn  ("Win List: " ++ show(getWins gt))
+                      putStrLn  ("Children: " ++ show(length $ getChildren gt))
 
 getBoardIndex :: GameTree -> BoardIndex
 getBoardIndex (GRoot idx _ _ _) = idx
@@ -69,7 +70,6 @@ projectCOB colour eboard = let ps = map getPos (findColouredPieces colour eboard
 expandingBoards :: Colour -> Board -> [(Board, Transform)]
 expandingBoards colour eboard = let ml = colouredMoveList colour eboard
                                 in  repaintPaths eboard colour ml
-
 -- render a list of movements and return a list of boards and the transformed position pairs
 repaintPaths :: Board -> Colour -> [(BoardType, [BoardType])] -> [(Board, Transform)]
 repaintPaths _ _ [] = []
@@ -79,7 +79,6 @@ repaintPaths eboard colour (x:xs) = let (b, bs) = x
         repaintPath :: Colour -> Board -> BoardType -> BoardType -> (Board, Transform)
         repaintPath c eBoard start end  = let tempBoard = changeBoardElement erase start eBoard
                                           in  (changeBoardElement (repaint c) end tempBoard, (start, end))
-
 -- find the pieces' positions on the board based on the colour
 findColouredPieces :: Colour -> Board -> [BoardType]
 findColouredPieces c = concatMap (findColouredPieces' c)
@@ -87,12 +86,10 @@ findColouredPieces c = concatMap (findColouredPieces' c)
         findColouredPieces' :: Colour -> [BoardType] -> [BoardType]
         findColouredPieces' _ [] = []
         findColouredPieces' c (x:xs) = if compareColour x c then x : findColouredPieces' c xs else findColouredPieces' c xs
-
 -- provide the available pieces and their movement pairs
 colouredMoveList :: Colour -> Board -> [(BoardType, [BoardType])]
 colouredMoveList colour eboard = let bs = findColouredPieces colour eboard
                                  in  zip bs (map (destinationListFilter eboard) bs) -- zip the from and to destinations
-
 -- return the current player's colour based on the number of players
 currentPlayerColour :: PlayerIndex -> Int -> Colour
 currentPlayerColour idx number
@@ -100,8 +97,7 @@ currentPlayerColour idx number
     | number == 3 = threePlayersSet !! idx
     | number == 4 = fourPlayersSet !! idx
     | otherwise = sixPlayersSet !! idx
-
--- edit the wins and visits for a node
+-- edit a certain win for a node
 editNodeValue :: PlayerIndex -> GameTree -> GameTree
 editNodeValue pi (GRoot i b ws ts) = let nws = replace pi ((ws!!pi)+1) ws
                                      in  GRoot i b nws ts
@@ -109,32 +105,22 @@ editNodeValue pi (GLeaf i b ft ws) = let nws = replace pi ((ws!!pi)+1) ws
                                      in  GLeaf i b ft nws
 editNodeValue pi (GNode i b ft ws ts) = let nws = replace pi ((ws!!pi)+1) ws
                                         in  GNode i b ft nws ts
-
+-- change the children node list for a node
 editNodeChildren :: [GameTree] -> GameTree -> GameTree
 editNodeChildren [] t = t
 editNodeChildren ts (GRoot i b ws _) = GRoot i b ws ts
 editNodeChildren ts (GNode i b ft ws _) = GNode i b ft ws ts
-editNodeChildren ts (GLeaf i b ft ws) = GNode i b ft ws ts
-
--- search for a certain child node of the current node based on the index
-findChildNode :: BoardIndex -> [GameTree] -> (GameTree, Int)
-findChildNode i ts = findChildNode' i ts 0
-    where
-        findChildNode' :: BoardIndex -> [GameTree] -> Int -> (GameTree, Int)
-        findChildNode' _ [] _ = error "Cannot find the backpropagated node"
-        findChildNode' i (t:ts) idx = if getBoardIndex t == i then (t, idx) else findChildNode' i ts (idx + 1)
-
-maxIndex :: [Int] -> Int
+editNodeChildren ts (GLeaf i b ft ws) = GNode i b ft ws ts -- a leaf becomes internal node when having children nodes 
+-- search for a certain child node and return the index of the list
+findChildNode :: BoardIndex -> GameTree -> Maybe Int
+findChildNode i t = let cs = getChildren t
+                    in  elemIndex i (map getBoardIndex cs)
+-- return the maximum value's index
+maxIndex :: Ord a => [a] -> Int
 maxIndex [] = error "Cannot find the node with the maximum score"
 maxIndex ns = head (elemIndices (maximum ns) ns)
 
-
-
-
-
 {-
-
-
 -- start with easy estimation
 -- retrieve a score of an internal node for selection, hence, root does not needed
 -- estimateNode :: PlayerIndex -> HistoryTree -> Visits -> GameTree -> Double
@@ -158,37 +144,6 @@ estimateNode gt = centroid (getOccupiedBoard gt)
         calculatePH i t x w v = case rbSearch x t of
                                     Just ws -> (fromIntegral (ws !! i) / fromIntegral (sum ws)) * (5 / fromIntegral (v - w + 1))
                                     Nothing -> 0 -- if this node is not played before
-
-
-
-
-
--- implement the list of movements and the resulting board states
-flipListsH :: OccupiedBoard -> Hash -> [(Pos, [Pos])] -> [(OccupiedBoard, Hash, Pos, Pos)]
-flipListsH _ _ [] = []
-flipListsH b h (x:xs) = let (p, ps) = x
-                        in  map (flipBoardStateH b h p) ps ++ flipListsH b h xs
-    where
-        -- exchange two pieces' states on the occupied board
-        flipBoardStateH :: OccupiedBoard -> Hash -> Pos -> Pos -> (OccupiedBoard, Hash, Pos, Pos)
-        flipBoardStateH b h f@(fx, fy) t@(tx, ty) = let newRow1 = replace fx (flip $ getElement b (fx, fy)) (b !! fy)
-                                                        newBoard1 = replace fy newRow1 b
-                                                        newRow2 = replace tx (flip $ getElement newBoard1 (tx, ty)) (newBoard1 !! ty)
-                                                    in  (replace ty newRow2 newBoard1, hashChange f t h, f, t)
-        flip :: Int -> Int
-        flip 0 = 1
-        flip _ = 0
--}
-{-
-
-
-
-
-updateTuple :: PlayerIndex -> Tuple -> Tuple
-updateTuple i ws = let w = ws !! i
-                   in  replace i (w+1) ws
-
-
 
 -- bedies, the history tree is also needed to be update
 updateHistoryTree :: PlayerIndex -> HistoryTree -> Trace -> HistoryTree

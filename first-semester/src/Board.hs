@@ -162,7 +162,7 @@ findValidNeighbors :: Pos -> Board -> [BoardType]
 findValidNeighbors (x, y) eBoard = map (getElement eBoard) (filter testValidPos [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)])
 -- test if a piece's position is out of boarder
 testValidPos :: Pos -> Bool
-testValidPos (x, y) = x >= 0 && y >= 0 && x <= boardWidth - 1 && y <= boardHeight - 1
+testValidPos (x, y) = x >= 0 && y >= 0 && x < boardWidth && y < boardHeight
 
 -- chained jump range
 -- one over hop
@@ -175,10 +175,10 @@ searchWithoutLooping eBoard l b = let s = recursiveSearch eBoard b          -- t
 -- expands the piece's positions to the surronding positions with one pieces placing between
 recursiveSearch :: Board -> BoardType -> [BoardType]
 recursiveSearch eBoard b = map (getElement eBoard) (jumpToAllDirections eBoard (getPos b))
--- check all six driections
+-- check all six driections' hops
 jumpToAllDirections :: Board -> Pos -> [Pos]
 jumpToAllDirections eBoard pos = filter (/= pos) (jumpToOneDirection eBoard pos [(-1, -1), (-2, 0), (-1, 1), (1, 1), (2, 0), (1, -1)])
--- only check for opne direction
+-- only check for one direction's hop
 jumpToOneDirection :: Board -> Pos -> [Pos] -> [Pos]
 jumpToOneDirection _ _ [] = []
 jumpToOneDirection eBoard pos (a:as) = determineValidJump eBoard pos (f a): jumpToOneDirection eBoard pos as
