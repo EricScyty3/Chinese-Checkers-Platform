@@ -7,7 +7,7 @@ import Board
 import GHC.IO
 import System.Random
 import Zobrist
-import Data.List (elemIndex)
+import Data.List
 
 type Trace = [BoardIndex]
 
@@ -43,10 +43,21 @@ makeLeaf players (b, ft) = do idx <- stState
                               stUpdate (idx +1)
                               return (GLeaf idx b ft (replicate players 0))
 
--- determine a node's profits based on how well it wins
-estimateNode :: PlayerIndex -> GameTree -> Double
-estimateNode i t = if getVisits t == 0 then 0
-                   else fromIntegral (getWins t !! i) / fromIntegral (getVisits t)
+-- generate a random value from 0 to 100, for certain percentage check
+--randomPercentage :: Int -> BoardIndex -> Bool
+randomPercentage :: Int -> Bool
+randomPercentage n  = unsafePerformIO (randomRIO (0, 100)) <= n
+-- generate a random index given a length
+--randomMove :: Int -> BoardIndex -> Int
+randomMove :: Int -> Int
+randomMove l  = unsafePerformIO $ randomRIO (0, l-1)
+-- handle the situation where exists more than one maximum values
+randomSelection :: [Wins] -> Int
+randomSelection []  = error "Selection: no node for selecting"
+randomSelection xs  = let is = elemIndices (maximum xs) xs
+                      in  if length is == 1 then head is
+                          else let ri = randomMove (length is)  -- random index of the maximum values' indices
+                               in  is !! ri
 
 -- prepend the root node to the trace 
 -- select the nodes based on the strategy, and finally produce a list of traversed node
@@ -56,8 +67,8 @@ selection :: PlayerIndex -> GameTree -> SB Trace (GameTree, PlayerIndex)
 selection pi n = let ts = getChildren n
                  in  if null ts then return (n, pi) -- return the next node and player index for the expansion
                      else let pn = getPlayers n
-                              sl = map (estimateNode pi) ts
-                              sn = ts !! maxIndex sl -- select the child with the maximum estimation 
+                              wl = map (estimateNode pi) ts
+                              sn = ts !! randomSelection wl  -- select the child with the maximum estimation 
                           in  do st <- stState
                                  stUpdate (push (getBoardIndex sn) st)      -- update the selection record
                                  selection (turnBase pn pi) sn  -- start the next selection at the selected node
@@ -72,85 +83,93 @@ expansion pi n = let cs = getChildren n
                              co = currentPlayerColour pi pn
                              bs = expandingBoards co (getBoard n)
                          nc <- mapM (makeLeaf pn) (expandPolicy bs)
-                         return (editNodeChildren nc n) -- add all resulting boards as the leaf children node
+                         return (editNodeChildren nc n) -- add resulting boards as the leaf children nodes
     where
-        expandPolicy bs = bs
+        expandPolicy bs = take 5 bs
 
 -- start with updating the root's state
 mainBackpropagation :: PlayerIndex -> Trace -> GameTree -> GameTree -> GameTree
-mainBackpropagation pi xs r new = let newRoot = editNodeValue pi r
-                                  in  backpropagation pi xs newRoot new
+mainBackpropagation pi xs r new = head (backpropagation pi xs [r] new)
 -- update the game tree stored wins for each player, as well as replacing the new expanded node
-backpropagation :: PlayerIndex -> Trace -> GameTree -> GameTree -> GameTree
-backpropagation _ [] t _ = t
-backpropagation pi xs t new = let (idx, ys) = pop xs
-                                  cs = getChildren t
-                              in  case findChildNode idx t of
+backpropagation :: PlayerIndex -> Trace -> [GameTree] -> GameTree -> [GameTree]
+backpropagation _ [] ts _ = ts
+backpropagation pi xs ts new = let (bi, ys) = pop xs
+                               in  case elemIndex bi (map getBoardIndex ts) of
                                         Nothing -> error "Trace incorrect"
-                                        Just ci -> let cn = cs !! ci
-                                                   in  if getBoardIndex cn == getBoardIndex new
-                                                       then let n1 = backpropagation pi ys (editNodeValue pi new) new
-                                                            in  editNodeChildren (replace ci n1 cs) t
-                                                       else let n2 = backpropagation pi ys (editNodeValue pi cn) new
-                                                            in  editNodeChildren (replace ci n2 cs) t
+                                        Just li -> let ln = ts !! li
+                                                   in  if getBoardIndex ln == getBoardIndex new
+                                                       then let n1 = editNodeValue pi new
+                                                                n2 = backpropagation pi ys (getChildren n1) new
+                                                                n3 = editNodeChildren n2 n1
+                                                            in  replace li n3 ts
+                                                       else let n1 = editNodeValue pi ln
+                                                                n2 = backpropagation pi ys (getChildren n1) new
+                                                                n3 = editNodeChildren n2 n1
+                                                            in  replace li n3 ts
 
--- generate a random value from 0 to 100, for certain percentage check
-randomPercentage :: Int -> Bool
-randomPercentage n = unsafePerformIO (randomRIO (0, 100)) <= n
--- generate a random index given a length
-randomMove :: Int -> Int
-randomMove l = unsafePerformIO (randomRIO (0, l-1))
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice
-randomPolicy :: Colour -> Int -> [(Board, Transform)] -> Board
-randomPolicy c s xs = if randomPercentage 95 then bestBoard c s xs else fst (xs !! randomMove (length xs)) -- either return the best board or randomly
 -- get the best heuristic estimated board from all expanded boards 
-bestBoard :: Colour -> Int -> [(Board, Transform)] -> Board
-bestBoard c s xs = let ps = map ((\(x, y) -> (projection c (getPos x), projection c (getPos y))) . snd) xs -- convert the positions for the boards
-                       sl = map (flipBoardState s) ps -- calculate the heuristic scores for the possible expanded boards
-                   in  fst (xs !! maxIndex sl) -- return the maximum board
+playoutPolicy :: Colour -> Int -> [(Board, Transform)] -> (Board, Int)
+playoutPolicy c s xs = let ps = map ((\(x, y) -> (projection c (getPos x), projection c (getPos y))) . snd) xs -- convert the positions for the boards
+                           sl = map (flipBoardStateEvaluation s) ps -- calculate the heuristic scores for the possible expanded boards
+                       in  if randomPercentage 95  then let idx = maxIndex sl -- get the best performed board
+                                                       in  (fst (xs !! idx), sl !! idx)
+                           else let idx = randomMove (length xs)  -- just choose a random board
+                                in  (fst (xs !! idx), sl !! idx)
     where
-        flipBoardState :: Int -> (Pos, Pos) -> Int
-        flipBoardState c (f, t) = c - centroidPos f + centroidPos t
+        flipBoardStateEvaluation :: Int -> (Pos, Pos) -> Int
+        flipBoardStateEvaluation c (f, t) = c - centroidPos f + centroidPos t
+-- game simulation from a certain board state 
+playout :: Board -> SB (PlayerIndex, Int) Board
+playout b = do (pi, pn) <- stState
+               let c = currentPlayerColour pi pn
+                   s = centroid $ projectCOB c b
+                   bs = expandingBoards c b
+                   (nb, bv) = playoutPolicy c s bs
+               if bv == 28 then return nb
+               else do stUpdate (turnBase pn pi, pn)
+                       playout nb
 
-playout :: Board -> Int -> SB PlayerIndex Board
-playout b p = do idx <- stState
-                 let c = currentPlayerColour idx p
-                     s = centroid $ projectCOB c b
-                 if  s == 28 then return b
-                 else do let bs = expandingBoards c b
-                             nb = randomPolicy c s bs
-                         stUpdate (turnBase p idx)
-                         playout nb p
+-- myTree :: Int -> SB BoardIndex GameTree
+-- myTree p = do root <- makeRoot p testBoard
+--               newRoot <- expansion 0 root
+--               let c:cs = getChildren newRoot
+--               newChild <- expansion 1 c
+--               return (editNodeChildren (newChild:cs) newRoot)
+--     where
+--         testBoard
+--             | p == 2 = eraseBoard twoPlayersSet externalBoard
+--             | p == 3 = eraseBoard threePlayersSet externalBoard
+--             | p == 4 = eraseBoard fourPlayersSet externalBoard
+--             | otherwise = externalBoard
 
-myTree :: Int -> SB BoardIndex GameTree
-myTree p = do root <- makeRoot p testBoard
-              newRoot <- expansion 0 root
-              let c:cs = getChildren newRoot
-              newChild <- expansion 1 c
-              return (editNodeChildren (newChild:cs) newRoot)
-    where
-        testBoard
-            | p == 2 = eraseBoard twoPlayersSet externalBoard
-            | p == 3 = eraseBoard threePlayersSet externalBoard
-            | p == 4 = eraseBoard fourPlayersSet externalBoard
-            | otherwise = externalBoard
 
 -- the MCTS structure that first selects the node with largest profits, then expands it, 
 -- and play simulations on the expanded node, and finally update the reviewed nodes
 mcts :: (GameTree, BoardIndex) -> Int -> (GameTree, BoardIndex)
-mcts (tree, bi) pi = let ((lastNode, pi2), trace) = runState (selection pi tree) []
+mcts (tree, bi) pi = let ((lastNode, pi2), trace) = runState (selection pi tree) [getBoardIndex tree]
                          (expandedNode, bi2) = runState (expansion pi2 lastNode) bi -- ignore the threshold, just expand fully
                          ((playNode, pi3), trace1) = runState (selection pi2 expandedNode) trace -- select the best expanded child
-                         (_, winIdx) = runState (playout (getBoard playNode) (getPlayers playNode)) pi3
-                         newGameTree = mainBackpropagation winIdx trace1 tree expandedNode -- update the wins for each traversed node-}
+                         (_, (winIdx, _)) = runState (playout (getBoard playNode)) (pi3, getPlayers playNode)
+                         newGameTree = mainBackpropagation winIdx trace1 tree expandedNode -- update the wins for each traversed node
                      in  (newGameTree, bi2)
-
-iteration :: Int -> (GameTree, BoardIndex) -> PlayerIndex -> GameTree
-iteration 0 (t, i)_  = t
-iteration counts state playerIndex = let newState = mcts state playerIndex
-                                     in  iteration (counts - 1) newState playerIndex
-
+-- call multiple times of the four stages in order
+-- iteration :: Int -> (GameTree, BoardIndex) -> PlayerIndex -> (GameTree, BoardIndex)
+-- iteration 0 state = return state
+-- iteration counts state = do let newState = mcts state 0
+--                             printGameTree (fst newState)
+--                             iteration (counts - 1) newState
+iteration 0 state = state
+iteration counts state = iteration (counts - 1) (mcts state 0)
+{-
 finalSelection :: (GameTree, BoardIndex) -> PlayerIndex -> GameTree
-finalSelection state playerIndex = let tree = iteration 100 state playerIndex
+finalSelection state playerIndex = let tree = iteration 3 state playerIndex
                                        sl = map ((!! playerIndex) . getWins) (getChildren tree)
-                                   in  getChildren tree !! maxIndex sl
+                                   in  tree -- getChildren tree !! maxIndex sl
+
+runTest :: GameTree
+runTest = let ts = runState (makeRoot 3 (eraseBoard threePlayersSet externalBoard)) 0
+              ft = finalSelection ts 0
+          in  ft
+-}
+

@@ -74,6 +74,8 @@ tableElementsRecord bs = do filePath <- openFile "lookup_table.txt" WriteMode
         convertToString [] = ""
         convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
 
+-- parallel calculation might be taken
+
 -- load the stored lookup table data from the file
 loadTableElements :: [(Hash, StoredData)]
 {-# NOINLINE loadTableElements #-}

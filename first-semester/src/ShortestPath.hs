@@ -19,11 +19,11 @@ import Data.Maybe
 -- another search that counts the moves needed for reaching the goal state, mostly used for 
 test :: OccupiedBoard
 test = [
-        [0, 0, 1, 1, 1, 0, 0],
+        [0, 0, 0, 0, 1, 1, 1],
+        [0, 0, 0, 0, 0, 1, 1],
+        [0, 0, 0, 0, 0, 0, 1],
         [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1],
-        [0, 0, 0, 0, 0, 0, 1],
-        [0, 0, 0, 0, 0, 0, 1],
+        [0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0]]
 -- breadth-first search

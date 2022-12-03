@@ -23,8 +23,14 @@ data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
 printGameTree :: GameTree -> IO ()
 printGameTree gt = do printEoard (getBoard gt)
                       putStrLn ("Index: " ++ show (getBoardIndex gt))
-                      putStrLn  ("Win List: " ++ show(getWins gt))
-                      putStrLn  ("Children: " ++ show(length $ getChildren gt))
+                      putStrLn ("Tyep: " ++ getNodeType gt)
+                      putStrLn ("Win List: " ++ show(getWins gt))
+                      putStrLn ("Children: " ++ show(length $ getChildren gt))
+
+getNodeType :: GameTree -> String
+getNodeType GRoot {} = "Root"
+getNodeType GNode {} = "Node"
+getNodeType GLeaf {} = "Leaf"
 
 getBoardIndex :: GameTree -> BoardIndex
 getBoardIndex (GRoot idx _ _ _) = idx
@@ -111,14 +117,31 @@ editNodeChildren [] t = t
 editNodeChildren ts (GRoot i b ws _) = GRoot i b ws ts
 editNodeChildren ts (GNode i b ft ws _) = GNode i b ft ws ts
 editNodeChildren ts (GLeaf i b ft ws) = GNode i b ft ws ts -- a leaf becomes internal node when having children nodes 
--- search for a certain child node and return the index of the list
-findChildNode :: BoardIndex -> GameTree -> Maybe Int
-findChildNode i t = let cs = getChildren t
-                    in  elemIndex i (map getBoardIndex cs)
 -- return the maximum value's index
 maxIndex :: Ord a => [a] -> Int
 maxIndex [] = error "Cannot find the node with the maximum score"
 maxIndex ns = head (elemIndices (maximum ns) ns)
+              
+
+-- determine a node's profits simply based on how well it wins
+estimateNode :: PlayerIndex -> GameTree -> Int
+estimateNode i t = getWins t !! i {-if getVisits t == 0 then 0
+                   else fromIntegral (getWins t !! i) / fromIntegral (getVisits t)-}
+
+-- determine a node's profits accroding to the UCT formula
+estimateNodeUCT :: PlayerIndex -> GameTree -> GameTree -> Double
+estimateNodeUCT i p n = averageWins n + constant * exploration n p
+    where
+        constant :: Double
+        constant = 0.5
+
+        averageWins :: GameTree -> Double
+        averageWins n = if getVisits n == 0 then 0
+                        else fromIntegral (getWins n !! i) / fromIntegral (getVisits n)
+
+        exploration :: GameTree -> GameTree -> Double
+        exploration n p = if getVisits n == 0 then 0
+                          else sqrt (log (fromIntegral (getVisits p)) / fromIntegral (getVisits n))
 
 {-
 -- start with easy estimation
