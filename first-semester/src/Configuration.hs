@@ -1,4 +1,4 @@
-module Configuration where
+-- module Configuration where
 
 import Data.List
 import System.IO
@@ -7,7 +7,8 @@ import ShortestPath
 import RBTree
 import GHC.IO
 import Board (totalPieces)
--- import Control.Parallel
+import Control.Monad.State
+import Control.Parallel
 
 -- result the sufficient amount of board states with identical effect
 sufficientBoards :: [OccupiedBoard]
@@ -62,7 +63,10 @@ tableElementsConstruct :: [OccupiedBoard] -> [(Int, Int, Int)]
 tableElementsConstruct [] = []
 tableElementsConstruct (b:bs) = newElement:tableElementsConstruct bs
     where
-        newElement = (hashState b randomBoardState, shortestMoves b 200, shortestMoves (symmetric2 b) 200)
+        x = shortestMoves b 200
+        y = shortestMoves (symmetric2 b) 200
+        newElement = x `par` y `pseq` (hashState b, x, y)
+        hashState board = evalState (hashBoardWithPos (findPieces board)) randomBoardState
 
 -- record the board state into hashed state as well as the corresponding minimum moves
 tableElementsRecord :: [OccupiedBoard] -> IO()
@@ -75,31 +79,31 @@ tableElementsRecord bs = do filePath <- openFile "lookup_table.txt" WriteMode
         convertToString [] = ""
         convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
 
--- parallel calculation might be taken
+main = print (length sufficientBoards)
 
--- load the stored lookup table data from the file
-loadTableElements :: [(Hash, StoredData)]
-{-# NOINLINE loadTableElements #-}
-loadTableElements = unsafePerformIO loadRecord
-    where
-        loadRecord :: IO [(Hash, StoredData)]
-        loadRecord = do filePath <- openFile "lookup_table.txt" ReadMode
-                        contents <- hGetContents filePath
-                        -- hClose filePath
-                        return $ convertToElement (lines contents)
+-- -- load the stored lookup table data from the file
+-- loadTableElements :: [(Hash, StoredData)]
+-- {-# NOINLINE loadTableElements #-}
+-- loadTableElements = unsafePerformIO loadRecord
+--     where
+--         loadRecord :: IO [(Hash, StoredData)]
+--         loadRecord = do filePath <- openFile "lookup_table.txt" ReadMode
+--                         contents <- hGetContents filePath
+--                         -- hClose filePath
+--                         return $ convertToElement (lines contents)
 
-        convertToElement :: [String] -> [(Hash, StoredData)]
-        convertToElement s = map (\(x, y, z) -> (x, [y, z])) (concatMap read s)
+--         convertToElement :: [String] -> [(Hash, StoredData)]
+--         convertToElement s = map (\(x, y, z) -> (x, [y, z])) (concatMap read s)
 
-buildLookupTable :: RBTree
-buildLookupTable = createTree loadTableElements
+-- buildLookupTable :: RBTree
+-- buildLookupTable = createTree loadTableElements
 
 -- `lp 49 6 = 13983816`
-lp u d = lm u (u-d+1) `div` lc d
+-- lp u d = lm u (u-d+1) `div` lc d
 
-lc 1 = 1
-lc x = x * lc (x-1)
+-- lc 1 = 1
+-- lc x = x * lc (x-1)
 
-lm x m
-    | x == m = m
-    | otherwise = x * lm (x-1) m
+-- lm x m
+--     | x == m = m
+--     | otherwise = x * lm (x-1) m
