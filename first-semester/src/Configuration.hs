@@ -4,8 +4,6 @@ import Data.List
 import System.IO
 import Zobrist
 import ShortestPath
-import RBTree
-import GHC.IO
 import Board (totalPieces)
 import Control.Monad.State
 import Control.Parallel
@@ -78,8 +76,10 @@ tableElementsRecord bs = do filePath <- openFile "lookup_table.txt" WriteMode
         convertToString :: [(Int, Int, Int)] -> String
         convertToString [] = ""
         convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
-
-main = print (length sufficientBoards)
+-- ghc Configuration.hs -O2 -fllvm -outputdir dist
+-- rm -rf dist/
+-- rm Configuration
+main = tableElementsRecord (take 200 sufficientBoards)
 
 -- -- load the stored lookup table data from the file
 -- loadTableElements :: [(Hash, StoredData)]

@@ -55,7 +55,7 @@ bSearch :: [(OccupiedBoard, Int)] -> Int -> State (OccupiedBoard, Int) [(Occupie
 bSearch np wd = do (board, score) <- get
                    let ps = evalState dListForBoard board
                        bs = evalState (flipLists score ps) board
-                   let uniqueList = bs `pseq` mirrorCheck bs
+                   let uniqueList = mirrorCheck bs
                    return (updateList np uniqueList wd)
 
 -- update the new positions list with better positions of fixed length
@@ -111,7 +111,7 @@ flipLists _ [] = return []
 flipLists c (x:xs) = do let (p, ps) = x
                         resultingBoards <- mapM (flipBoardState c p) ps
                         otherResultingBoards <- flipLists c xs
-                        return (resultingBoards ++ otherResultingBoards)
+                        return(resultingBoards `par` otherResultingBoards `pseq` (resultingBoards ++ otherResultingBoards))
     where
         -- exchange two pieces' states on the occupied board
         -- flipBoardState :: OccupiedBoard -> Int -> Pos -> Pos -> (OccupiedBoard, Int)

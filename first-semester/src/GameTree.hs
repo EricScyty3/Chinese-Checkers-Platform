@@ -4,6 +4,9 @@ import Data.List
 import Data.Maybe
 import Zobrist
 import Board
+import Control.Monad.State
+import Control.Monad.ST
+import Data.STRef
 
 type Wins = Int
 type PlayerIndex = Int
@@ -20,12 +23,31 @@ data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
                 GNode BoardIndex Transform [Wins] [GameTree]
                 deriving (Eq, Show)
 
-printGameTree :: GameTree -> IO ()
-printGameTree gt = do printEoard (getBoard gt)
-                      putStrLn ("Index: " ++ show (getBoardIndex gt))
-                      putStrLn ("Tyep: " ++ getNodeType gt)
-                      putStrLn ("Win List: " ++ show(getWins gt))
-                      putStrLn ("Children: " ++ show(length $ getChildren gt))
+-- printGameTree :: GameTree -> IO ()
+-- printGameTree gt = do printEoard (getBoard gt)
+--                       putStrLn ("Index: " ++ show (getBoardIndex gt))
+--                       putStrLn ("Tyep: " ++ getNodeType gt)
+--                       putStrLn ("Win List: " ++ show(getWins gt))
+--                       putStrLn ("Children: " ++ show(length $ getChildren gt))
+
+-- repaintPaths :: Board -> Colour -> [(BoardType, [BoardType])] -> [(Board, Transform)]
+-- repaintPaths _ _ [] = []
+-- repaintPaths eboard colour (x:xs) = let (b, bs) = x
+--                                     in  map (repaintPath colour eboard b) bs ++ repaintPaths eboard colour xs
+--     where
+        -- repaintPath :: Colour -> Board -> BoardType -> BoardType -> (Board, Transform)
+        -- repaintPath c eBoard start end  = let tempBoard = changeBoardElement erase start eBoard
+        --                                   in  (changeBoardElement (repaint c) end tempBoard, (start, end))
+
+-- given two pieces, exchange their colours
+repaintBoard :: BoardType -> BoardType -> State Board Board
+repaintBoard start end  = do board <- get
+                             let colour = getColour start
+                                 resultedBoard = runST $ do n <- newSTRef board
+                                                            modifySTRef n (changeBoardElement erase start)
+                                                            modifySTRef n (changeBoardElement (repaint colour) end)
+                                                            readSTRef n
+                             return resultedBoard
 
 getNodeType :: GameTree -> String
 getNodeType GRoot {} = "Root"
@@ -34,14 +56,19 @@ getNodeType GLeaf {} = "Leaf"
 
 getBoardIndex :: GameTree -> BoardIndex
 getBoardIndex (GRoot idx _ _ _) = idx
-getBoardIndex (GNode idx _ _ _ _) = idx
-getBoardIndex (GLeaf idx _ _ _) = idx
+getBoardIndex (GNode idx _ _ _) = idx
+getBoardIndex (GLeaf idx _ _) = idx
 
-getBoard :: GameTree -> Board
-getBoard (GRoot _ b _ _) = b
-getBoard (GNode _ b _ _ _) = b
-getBoard (GLeaf _ b _ _) = b
+getBoard :: GameTree -> State Board Board
+getBoard (GRoot _ b _ _) = return b
+getBoard (GNode _ (f, t) _ _) = do repaintBoard f t
+getBoard (GLeaf _ (f, t) _) = do repaintBoard f t
+                                   
+                                   
+-- getBoard (GNode _ b _ _ _) = b
+-- getBoard (GLeaf _ b _ _) = b
 
+{-
 getChildren :: GameTree -> [GameTree]
 getChildren (GRoot _ _ _ ts) = ts
 getChildren (GNode _ _ _ _ ts) = ts
@@ -142,7 +169,7 @@ estimateNodeUCT i p n = averageWins n + constant * exploration n p
         exploration :: GameTree -> GameTree -> Double
         exploration n p = if getVisits n == 0 then 0
                           else sqrt (log (fromIntegral (getVisits p)) / fromIntegral (getVisits n))
-
+-}
 {-
 -- start with easy estimation
 -- retrieve a score of an internal node for selection, hence, root does not needed
