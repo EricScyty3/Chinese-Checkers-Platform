@@ -50,7 +50,7 @@ randomPercentage n  = unsafePerformIO (randomRIO (0, 100)) <= n
 -- generate a random index given a length
 --randomMove :: Int -> BoardIndex -> Int
 randomMove :: Int -> Int
-randomMove l  = unsafePerformIO $ randomRIO (0, l-1)
+randomMove l  = unsafePerformIO (randomRIO (0, l-1))
 -- handle the situation where exists more than one maximum values
 randomSelection :: [Wins] -> Int
 randomSelection []  = error "Selection: no node for selecting"
@@ -130,20 +130,6 @@ playout b = do (pi, pn) <- stState
                else do stUpdate (turnBase pn pi, pn)
                        playout nb
 
--- myTree :: Int -> SB BoardIndex GameTree
--- myTree p = do root <- makeRoot p testBoard
---               newRoot <- expansion 0 root
---               let c:cs = getChildren newRoot
---               newChild <- expansion 1 c
---               return (editNodeChildren (newChild:cs) newRoot)
---     where
---         testBoard
---             | p == 2 = eraseBoard twoPlayersSet externalBoard
---             | p == 3 = eraseBoard threePlayersSet externalBoard
---             | p == 4 = eraseBoard fourPlayersSet externalBoard
---             | otherwise = externalBoard
-
-
 -- the MCTS structure that first selects the node with largest profits, then expands it, 
 -- and play simulations on the expanded node, and finally update the reviewed nodes
 mcts :: (GameTree, BoardIndex) -> Int -> (GameTree, BoardIndex)
@@ -154,22 +140,15 @@ mcts (tree, bi) pi = let ((lastNode, pi2), trace) = runState (selection pi tree)
                          newGameTree = mainBackpropagation winIdx trace1 tree expandedNode -- update the wins for each traversed node
                      in  (newGameTree, bi2)
 -- call multiple times of the four stages in order
--- iteration :: Int -> (GameTree, BoardIndex) -> PlayerIndex -> (GameTree, BoardIndex)
--- iteration 0 state = return state
--- iteration counts state = do let newState = mcts state 0
---                             printGameTree (fst newState)
---                             iteration (counts - 1) newState
-iteration 0 state = state
-iteration counts state = iteration (counts - 1) (mcts state 0)
-{-
-finalSelection :: (GameTree, BoardIndex) -> PlayerIndex -> GameTree
-finalSelection state playerIndex = let tree = iteration 3 state playerIndex
-                                       sl = map ((!! playerIndex) . getWins) (getChildren tree)
-                                   in  tree -- getChildren tree !! maxIndex sl
+iteration :: Int -> (GameTree, BoardIndex) -> PlayerIndex -> (GameTree, BoardIndex)
+iteration 0 state _ = state
+iteration counts state i = let newState = mcts state i
+                           in iteration (counts - 1) newState i
 
-runTest :: GameTree
-runTest = let ts = runState (makeRoot 3 (eraseBoard threePlayersSet externalBoard)) 0
-              ft = finalSelection ts 0
-          in  ft
--}
+-- ts = runState (makeRoot 3 (eraseBoard threePlayersSet externalBoard)) 0
+finalSelection :: (GameTree, BoardIndex) -> PlayerIndex -> Board
+finalSelection state playerIndex = let (tree, boardIdx) = iteration 3 state playerIndex
+                                       sl = map ((!! playerIndex) . getWins) (getChildren tree)
+                                   in  getBoard (getChildren tree !! maxIndex sl)
+
 

@@ -7,6 +7,7 @@ import ShortestPath
 import RBTree
 import GHC.IO
 import Board (totalPieces)
+import Control.Parallel
 
 -- result the sufficient amount of board states with identical effect
 sufficientBoards :: [OccupiedBoard]
