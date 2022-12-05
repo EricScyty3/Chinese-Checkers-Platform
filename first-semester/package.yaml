@@ -22,6 +22,9 @@ dependencies:
   - text
   - text-show
   - random
+  - mtl
+  - extra
+  - parallel
 
 executables:
   app:

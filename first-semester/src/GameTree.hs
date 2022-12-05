@@ -16,8 +16,8 @@ type Transform = (BoardType, BoardType) -- the conversion between two adjacent b
 -- and the piece change is delivered through projecting to the main board system and to another sub-board system 
 
 data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
-                GLeaf BoardIndex Board Transform [Wins]  |
-                GNode BoardIndex Board Transform [Wins] [GameTree]
+                GLeaf BoardIndex Transform [Wins]  |
+                GNode BoardIndex Transform [Wins] [GameTree]
                 deriving (Eq, Show)
 
 printGameTree :: GameTree -> IO ()
@@ -95,7 +95,7 @@ findColouredPieces c = concatMap (findColouredPieces' c)
 -- provide the available pieces and their movement pairs
 colouredMoveList :: Colour -> Board -> [(BoardType, [BoardType])]
 colouredMoveList colour eboard = let bs = findColouredPieces colour eboard
-                                 in  zip bs (map (destinationListFilter eboard) bs) -- zip the from and to destinations
+                                 in  zip bs (map (destinationListS eboard) bs) -- zip the from and to destinations
 -- return the current player's colour based on the number of players
 currentPlayerColour :: PlayerIndex -> Int -> Colour
 currentPlayerColour idx number

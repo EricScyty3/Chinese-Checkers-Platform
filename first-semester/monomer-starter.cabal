@@ -36,8 +36,11 @@ executable app
   build-depends:
       base >=4.7 && <5
     , data-default
+    , extra
     , lens
     , monomer
+    , mtl
+    , parallel
     , random
     , text
     , text-show

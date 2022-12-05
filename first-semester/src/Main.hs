@@ -214,13 +214,13 @@ handleEvent wenv node model evt = case evt of
   AppInit -> []
   StartGameButtonClick
     | model ^. playersAmount == 2 -> [Model $ model & startGame .~ True
-                                                    & displayBoard .~ eraseBoard twoPlayersSet externalBoard
+                                                    & displayBoard .~ eraseBoard twoPlayersSet
                                                     & internalStates .~ replicate 2 hashInitial]
     | model ^. playersAmount == 3 -> [Model $ model & startGame .~ True
-                                                    & displayBoard .~ eraseBoard threePlayersSet externalBoard
+                                                    & displayBoard .~ eraseBoard threePlayersSet
                                                     & internalStates .~ replicate 3 hashInitial]
     | model ^. playersAmount == 4 -> [Model $ model & startGame .~ True
-                                                    & displayBoard .~ eraseBoard fourPlayersSet externalBoard
+                                                    & displayBoard .~ eraseBoard fourPlayersSet
                                                     & internalStates .~ replicate 4 hashInitial]
     | otherwise -> [Model $ model & startGame .~ True
                                   & displayBoard .~ externalBoard
@@ -292,7 +292,7 @@ handleEvent wenv node model evt = case evt of
                   False -> case ifInitialPiece $ model ^. fromPiece of
                               True  -> if Just currentColour == getColour b then [Model $ model & fromPiece .~ b
                                                                                                    & errorMessage .~ ""
-                                                                                                   & movesList .~ destinationListFilter (model ^. displayBoard) b]
+                                                                                                   & movesList .~ destinationListS (model ^. displayBoard) b]
                                        else [Model $ model & errorMessage .~ show currentColour ++ ": invalid start"
                                                            & fromPiece .~ U (-1, -1)]
                               False -> case model ^. fromPiece == b of
