@@ -133,14 +133,13 @@ replace idx new ls = front ++ [new] ++ end
     where
         (front, _:end) = splitAt idx ls
 
+
 -- additional applying ST monad to decrease the cost of copying the whole list         
 -- update the new board with a modified piece
 changeBoardElement :: (BoardType -> BoardType) -> BoardType -> Board -> Board
 changeBoardElement f btype board = let new = f btype
                                        pos = getPos btype
-                                   in  runST $ do n <- newSTRef board
-                                                  modifySTRef n (replace2 pos new)
-                                                  readSTRef n
+                                   in  replace2 pos new board
 -- erase the pieces on the board and keep certain coloured pieces, done at the initial state corresponding to the players amount
 eraseBoard :: [Colour] -> Board
 eraseBoard colourList = runST $ do n <- newSTRef externalBoard
@@ -160,14 +159,14 @@ repaintPath colour board start end  = runST $ do n <- newSTRef board
                                                  modifySTRef n (changeBoardElement (repaint colour) end)
                                                  readSTRef n
 
-destinationList :: Board -> BoardType -> [BoardType]
-destinationList board btype = evalState (do case getColour btype of
-                                               Nothing -> return []
-                                               Just c  -> do adjacentMoves <- findAvaliableNeighbors btype
-                                                             chainedMoves  <- recursiveSearch [] btype
-                                                             -- apply parallel
-                                                             let movesList = adjacentMoves `par` chainedMoves `pseq` nub (adjacentMoves ++ chainedMoves)
-                                                             return (filter (testCorners c) movesList)) board
+destinationList :: BoardType -> State Board [BoardType]
+destinationList btype = do case getColour btype of
+                            Nothing -> return []
+                            Just c  -> do adjacentMoves <- findAvaliableNeighbors btype
+                                          chainedMoves  <- recursiveSearch [] btype
+                                          -- apply parallel
+                                          let movesList = adjacentMoves `par` chainedMoves `pseq` nub (adjacentMoves ++ chainedMoves)
+                                          return (filter (testCorners c) movesList)
 {-
     -- return the valid movable positions from a piece 
     destinationListFilter :: Board -> BoardType -> [BoardType]

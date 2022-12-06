@@ -23,12 +23,22 @@ data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
                 GNode BoardIndex Transform [Wins] [GameTree]
                 deriving (Eq, Show)
 
--- printGameTree :: GameTree -> IO ()
--- printGameTree gt = do printEoard (getBoard gt)
---                       putStrLn ("Index: " ++ show (getBoardIndex gt))
---                       putStrLn ("Tyep: " ++ getNodeType gt)
---                       putStrLn ("Win List: " ++ show(getWins gt))
---                       putStrLn ("Children: " ++ show(length $ getChildren gt))
+type GameTreeStatus = (PlayerIndex, BoardIndex, Board)
+-- contains the next layer's player index, board index accumulated so far, and the parent board state
+
+printGameTree :: GameTree -> IO ()
+printGameTree gt = do -- printEoard (getBoard gt)
+                      putStrLn ("Index: " ++ show (getBoardIndex gt))
+                      putStrLn ("Tyep: " ++ getNodeType gt)
+                      putStrLn ("Win List: " ++ show(getWins gt))
+                      putStrLn ("Children: " ++ show(length $ getChildren gt))
+
+searchNode :: BoardIndex -> GameTree -> GameTree
+searchNode i t = if null $ searchNode' i t then error "Not exist" else head $ searchNode' i t
+    where
+        searchNode' :: BoardIndex -> GameTree -> [GameTree]
+        searchNode' i t = if getBoardIndex t == i then [t]
+                          else concatMap (searchNode' i) (getChildren t)
 
 -- repaintPaths :: Board -> Colour -> [(BoardType, [BoardType])] -> [(Board, Transform)]
 -- repaintPaths _ _ [] = []
@@ -40,14 +50,18 @@ data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
         --                                   in  (changeBoardElement (repaint c) end tempBoard, (start, end))
 
 -- given two pieces, exchange their colours
-repaintBoard :: BoardType -> BoardType -> State Board Board
-repaintBoard start end  = do board <- get
-                             let colour = getColour start
-                                 resultedBoard = runST $ do n <- newSTRef board
-                                                            modifySTRef n (changeBoardElement erase start)
-                                                            modifySTRef n (changeBoardElement (repaint colour) end)
-                                                            readSTRef n
-                             return resultedBoard
+repaintBoard :: Transform -> State GameTreeStatus Board
+repaintBoard (start, end)  = do (_, _, board) <- get
+                                let colour = getColour start
+                                    resultedBoard = runST $ do n <- newSTRef board
+                                                               modifySTRef n (changeBoardElement erase start)
+                                                               modifySTRef n (changeBoardElement (safeRepaint colour) end)
+                                                               readSTRef n
+                                return resultedBoard
+    where
+        safeRepaint :: Maybe Colour -> BoardType -> BoardType
+        safeRepaint Nothing b = b
+        safeRepaint (Just colour) b = repaint colour b
 
 getNodeType :: GameTree -> String
 getNodeType GRoot {} = "Root"
@@ -59,25 +73,21 @@ getBoardIndex (GRoot idx _ _ _) = idx
 getBoardIndex (GNode idx _ _ _) = idx
 getBoardIndex (GLeaf idx _ _) = idx
 
-getBoard :: GameTree -> State Board Board
-getBoard (GRoot _ b _ _) = return b
-getBoard (GNode _ (f, t) _ _) = do repaintBoard f t
-getBoard (GLeaf _ (f, t) _) = do repaintBoard f t
-                                   
-                                   
--- getBoard (GNode _ b _ _ _) = b
--- getBoard (GLeaf _ b _ _) = b
+-- stores parent's board and repaint it
+getChildBoard :: GameTree -> State GameTreeStatus Board
+getChildBoard (GRoot _ b _ _) = return b
+getChildBoard (GNode _ tf _ _) = do repaintBoard tf
+getChildBoard (GLeaf _ tf _) = do repaintBoard tf
 
-{-
 getChildren :: GameTree -> [GameTree]
 getChildren (GRoot _ _ _ ts) = ts
-getChildren (GNode _ _ _ _ ts) = ts
-getChildren _ = []
+getChildren (GNode _ _ _ ts) = ts
+getChildren GLeaf {} = []
 
 getWins :: GameTree -> [Wins]
 getWins (GRoot _ _ ws _) = ws
-getWins (GNode _ _ _ ws _) = ws
-getWins (GLeaf _ _ _ ws) = ws
+getWins (GNode _ _ ws _) = ws
+getWins (GLeaf _ _ ws) = ws
 
 getVisits :: GameTree -> Int
 getVisits gt = sum (getWins gt) -- the sum of the win counts equals to the total visits of that node
@@ -86,43 +96,68 @@ getPlayers :: GameTree -> Int
 getPlayers gt = length (getWins gt) -- the length of win list equals to the total players number
 
 getTransform :: GameTree -> Transform
-getTransform (GLeaf _ _ ft _) = ft
-getTransform (GNode _ _ ft _ _) = ft
-getTransform r@GRoot {} = (U(-1, -1), U(-1, -1))
+getTransform (GLeaf _ ft _) = ft
+getTransform (GNode _ ft _ _) = ft
+getTransform GRoot {} = (U(-1, -1), U(-1, -1))
+
 
 -- transform the display board into occupied board based on piece's colour 
-projectCOB :: Colour -> Board -> OccupiedBoard
-projectCOB colour eboard = let ps = map getPos (findColouredPieces colour eboard)
-                               cs = map (projection colour) ps
-                           in  fillBoard cs empty
+projectCOB :: Colour -> State GameTreeStatus OccupiedBoard
+projectCOB colour = do ps <- findColouredPieces colour
+                       let cps = map (projection colour . getPos) ps
+                       return (fillBoard cps empty)
+-- projectCOB colour eboard = let ps = map getPos (findColouredPieces colour eboard)
+--                                cs = map (projection colour) ps
+--                            in  fillBoard cs empty
     where
         fillBoard [] b = b
-        fillBoard (p:ps) b = fillBoard ps (replace2 p 1 b)
+        fillBoard (p:ps) b = let nb = runST $ do n <- newSTRef b
+                                                 modifySTRef n (replace2 p 1)
+                                                 readSTRef n
+                             in  fillBoard ps nb
 
 --- provide the expanded board based on given board state and player's colour
-expandingBoards :: Colour -> Board -> [(Board, Transform)]
-expandingBoards colour eboard = let ml = colouredMoveList colour eboard
-                                in  repaintPaths eboard colour ml
+-- expandingBoards :: Colour -> Board -> [(Board, Transform)]
+-- expandingBoards colour eboard = let ml = colouredMoveList colour eboard
+--                                 in  repaintPaths eboard colour ml
 -- render a list of movements and return a list of boards and the transformed position pairs
-repaintPaths :: Board -> Colour -> [(BoardType, [BoardType])] -> [(Board, Transform)]
-repaintPaths _ _ [] = []
-repaintPaths eboard colour (x:xs) = let (b, bs) = x
-                                    in  map (repaintPath colour eboard b) bs ++ repaintPaths eboard colour xs
-    where
-        repaintPath :: Colour -> Board -> BoardType -> BoardType -> (Board, Transform)
-        repaintPath c eBoard start end  = let tempBoard = changeBoardElement erase start eBoard
-                                          in  (changeBoardElement (repaint c) end tempBoard, (start, end))
+-- repaintPaths :: Board -> Colour -> [(BoardType, [BoardType])] -> [(Board, Transform)]
+-- repaintPaths _ _ [] = []
+-- repaintPaths eboard colour (x:xs) = let (b, bs) = x
+--                                     in  map (repaintPath colour eboard b) bs ++ repaintPaths eboard colour xs
+--     where
+--         repaintPath :: Colour -> Board -> BoardType -> BoardType -> (Board, Transform)
+--         repaintPath c eBoard start end  = let tempBoard = changeBoardElement erase start eBoard
+--                                           in  (changeBoardElement (repaint c) end tempBoard, (start, end))
 -- find the pieces' positions on the board based on the colour
-findColouredPieces :: Colour -> Board -> [BoardType]
-findColouredPieces c = concatMap (findColouredPieces' c)
-    where
-        findColouredPieces' :: Colour -> [BoardType] -> [BoardType]
-        findColouredPieces' _ [] = []
-        findColouredPieces' c (x:xs) = if compareColour x c then x : findColouredPieces' c xs else findColouredPieces' c xs
+findColouredPieces :: Colour -> State GameTreeStatus [BoardType]
+findColouredPieces colour = do (_, _, board) <- get
+                               let bs = [x | (_, row) <- zip [0..] board, x <- filter (`compareColour` colour) row]
+                               return bs
+-- findColouredPieces :: Colour -> Board -> [BoardType]
+-- findColouredPieces c = concatMap (findColouredPieces' c)
+--     where
+--         findColouredPieces' :: Colour -> [BoardType] -> [BoardType]
+--         findColouredPieces' _ [] = []
+--         findColouredPieces' c (x:xs) = if compareColour x c then x : findColouredPieces' c xs else findColouredPieces' c xs
 -- provide the available pieces and their movement pairs
-colouredMoveList :: Colour -> Board -> [(BoardType, [BoardType])]
-colouredMoveList colour eboard = let bs = findColouredPieces colour eboard
-                                 in  zip bs (map (destinationListS eboard) bs) -- zip the from and to destinations
+-- work as board expansion
+colouredMovesList :: Colour -> State GameTreeStatus [Transform]
+colouredMovesList colour = do bs <- findColouredPieces colour
+                              (_, _, board) <- get
+                              let ds = evalState (do mapM destinationList bs) board
+                              return (pairArrange bs ds)
+                              -- ds <- mapM destinationList bs
+                              -- return (pairArrange bs ds)
+    where
+        pairArrange :: [BoardType] -> [[BoardType]] -> [(BoardType, BoardType)]
+        pairArrange _ [] = []
+        pairArrange [] _ = []
+        pairArrange (b:bs) (d:ds) = let rl = replicate (length d) b
+                                    in  zip rl d ++ pairArrange bs ds
+                              -- let pairList = zip bs (mapM destinationList bs)
+                           -- let bs = findColouredPieces colour eboard
+                           -- in  zip bs (map (destinationList eboard) bs) -- zip the from and to destinations
 -- return the current player's colour based on the number of players
 currentPlayerColour :: PlayerIndex -> Int -> Colour
 currentPlayerColour idx number
@@ -130,31 +165,37 @@ currentPlayerColour idx number
     | number == 3 = threePlayersSet !! idx
     | number == 4 = fourPlayersSet !! idx
     | otherwise = sixPlayersSet !! idx
+
 -- edit a certain win for a node
 editNodeValue :: PlayerIndex -> GameTree -> GameTree
-editNodeValue pi (GRoot i b ws ts) = let nws = replace pi ((ws!!pi)+1) ws
-                                     in  GRoot i b nws ts
-editNodeValue pi (GLeaf i b ft ws) = let nws = replace pi ((ws!!pi)+1) ws
-                                     in  GLeaf i b ft nws
-editNodeValue pi (GNode i b ft ws ts) = let nws = replace pi ((ws!!pi)+1) ws
-                                        in  GNode i b ft nws ts
+editNodeValue pi (GRoot i b ws ts) = let new = runST $ do n <- newSTRef ws
+                                                          modifySTRef n (replace pi ((ws!!pi)+1))
+                                                          readSTRef n
+                                     in  GRoot i b new ts
+editNodeValue pi (GLeaf i ft ws) = let new = runST $ do n <- newSTRef ws
+                                                        modifySTRef n (replace pi ((ws!!pi)+1))
+                                                        readSTRef n
+                                   in  GLeaf i ft new
+editNodeValue pi (GNode i ft ws ts) = let new = runST $ do n <- newSTRef ws
+                                                           modifySTRef n (replace pi ((ws!!pi)+1))
+                                                           readSTRef n
+                                      in  GNode i ft new ts
 -- change the children node list for a node
 editNodeChildren :: [GameTree] -> GameTree -> GameTree
 editNodeChildren [] t = t
 editNodeChildren ts (GRoot i b ws _) = GRoot i b ws ts
-editNodeChildren ts (GNode i b ft ws _) = GNode i b ft ws ts
-editNodeChildren ts (GLeaf i b ft ws) = GNode i b ft ws ts -- a leaf becomes internal node when having children nodes 
+editNodeChildren ts (GNode i ft ws _) = GNode i ft ws ts
+editNodeChildren ts (GLeaf i ft ws) = GNode i ft ws ts -- a leaf becomes internal node when having children nodes 
 -- return the maximum value's index
 maxIndex :: Ord a => [a] -> Int
 maxIndex [] = error "Cannot find the node with the maximum score"
 maxIndex ns = head (elemIndices (maximum ns) ns)
-              
 
 -- determine a node's profits simply based on how well it wins
-estimateNode :: PlayerIndex -> GameTree -> Int
-estimateNode i t = getWins t !! i {-if getVisits t == 0 then 0
-                   else fromIntegral (getWins t !! i) / fromIntegral (getVisits t)-}
-
+estimateNode :: PlayerIndex -> GameTree -> Double
+estimateNode i t = if getVisits t == 0 then 0
+                   else fromIntegral (getWins t !! i) / fromIntegral (getVisits t)
+{-
 -- determine a node's profits accroding to the UCT formula
 estimateNodeUCT :: PlayerIndex -> GameTree -> GameTree -> Double
 estimateNodeUCT i p n = averageWins n + constant * exploration n p
