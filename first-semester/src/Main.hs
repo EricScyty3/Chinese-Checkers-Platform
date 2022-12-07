@@ -55,7 +55,7 @@ import Monomer
       EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline), CmbPaddingB (paddingB), CmbOnClick (onClick), CmbBorder (border), black, gray )
 import TextShow
 import Board
-
+import Control.Monad.State
 import qualified Data.Text as T
 import qualified Monomer.Lens as L
 import Monomer.Widgets
@@ -242,7 +242,7 @@ handleEvent wenv node model evt = case evt of
       lastTurnColour = turnColour model (revertTurnChange model)
       lastTurnState = (model ^. internalStates) !! revertTurnChange model
       -- newState = flipBoardState toProjectPos fromProjectPos ((model ^. internalStates) !! revertTurnChange model)
-      newState = hashChange toProjectPos fromProjectPos lastTurnState
+      newState = evalState (hashChange toProjectPos fromProjectPos lastTurnState) randomBoardState
       insertState = replace (revertTurnChange model) newState (model ^. internalStates)
 
   RenderMove -- modified
@@ -271,7 +271,7 @@ handleEvent wenv node model evt = case evt of
         fromProjectPos = projection currentColour (getPos f)
         toProjectPos = projection currentColour (getPos t)
         -- newState = flipBoardState fromProjectPos toProjectPos ((model ^. internalStates) !! (model ^. turnS))
-        newState = hashChange fromProjectPos toProjectPos currentState
+        newState = evalState (hashChange fromProjectPos toProjectPos currentState) randomBoardState
         insertState = replace (model ^. turnS) newState (model ^. internalStates)
 
   EndGameButtonClick -> [Model $ model & turnS .~ 0
@@ -291,8 +291,8 @@ handleEvent wenv node model evt = case evt of
                   True -> []
                   False -> case ifInitialPiece $ model ^. fromPiece of
                               True  -> if Just currentColour == getColour b then [Model $ model & fromPiece .~ b
-                                                                                                   & errorMessage .~ ""
-                                                                                                   & movesList .~ destinationListS (model ^. displayBoard) b]
+                                                                                                & errorMessage .~ ""
+                                                                                                & movesList .~ newMovesList]
                                        else [Model $ model & errorMessage .~ show currentColour ++ ": invalid start"
                                                            & fromPiece .~ U (-1, -1)]
                               False -> case model ^. fromPiece == b of
@@ -308,6 +308,8 @@ handleEvent wenv node model evt = case evt of
                                                                           & fromPiece .~ U (-1, -1)]
     where
       currentColour = turnColour model (model ^. turnS)
+      newMovesList = evalState (destinationList b) (model ^. displayBoard)
+
   ResetChoice v
     | v < c -> [Model $ model & computerPlayersAmount .~ v]
     | otherwise -> []

@@ -1,10 +1,10 @@
--- module Configuration where
+module Configuration where
 
 import Data.List
 import System.IO
 import Zobrist
 import ShortestPath
-import Board (totalPieces)
+import Board
 import Control.Monad.State
 import Control.Parallel
 
@@ -99,11 +99,11 @@ main = tableElementsRecord (take 200 sufficientBoards)
 -- buildLookupTable = createTree loadTableElements
 
 -- `lp 49 6 = 13983816`
--- lp u d = lm u (u-d+1) `div` lc d
+lp u d = lm u (u-d+1) `div` lc d
 
--- lc 1 = 1
--- lc x = x * lc (x-1)
+lc 1 = 1
+lc x = x * lc (x-1)
 
--- lm x m
---     | x == m = m
---     | otherwise = x * lm (x-1) m
+lm x m
+    | x == m = m
+    | otherwise = x * lm (x-1) m

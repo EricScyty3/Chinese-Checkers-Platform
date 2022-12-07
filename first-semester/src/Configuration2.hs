@@ -1,0 +1,3 @@
+module Configuration2 where
+
+import Configuration

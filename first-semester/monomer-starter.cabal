@@ -25,7 +25,6 @@ executable app
       MCTS
       RBTree
       ShortestPath
-      State
       Zobrist
       Paths_monomer_starter
   hs-source-dirs:
