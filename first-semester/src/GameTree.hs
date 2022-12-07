@@ -24,7 +24,7 @@ data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
                 deriving (Eq, Show)
 
 type GameTreeStatus = (PlayerIndex, BoardIndex, Board)
--- contains the next layer's player index, board index accumulated so far, and the parent board state
+-- contains the layer's player index for choosing the next move, board index accumulated so far, and the parent board state
 
 printGameTree :: GameTree -> IO ()
 printGameTree gt = do -- printEoard (getBoard gt)
@@ -73,11 +73,9 @@ getBoardIndex (GRoot idx _ _ _) = idx
 getBoardIndex (GNode idx _ _ _) = idx
 getBoardIndex (GLeaf idx _ _) = idx
 
--- stores parent's board and repaint it
-getChildBoard :: GameTree -> State GameTreeStatus Board
-getChildBoard (GRoot _ b _ _) = return b
-getChildBoard (GNode _ tf _ _) = do repaintBoard tf
-getChildBoard (GLeaf _ tf _) = do repaintBoard tf
+getRootBoard :: GameTree -> Board
+getRootBoard (GRoot _ b _ _) = b
+getRootBoard _ = []
 
 getChildren :: GameTree -> [GameTree]
 getChildren (GRoot _ _ _ ts) = ts

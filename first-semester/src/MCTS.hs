@@ -164,32 +164,43 @@ playout players = do (pi, bi, b) <- get
             --    else do stUpdate (turnBase pn pi, pn)
             --            playout nb
 
+
+-- testTree :: (GameTree, GameTreeStatus)
+-- testTree = let (root, bi) = makeRoot 2 (eraseBoard twoPlayersSet)
+--                status = (0, bi, getRootBoard root)
+--                -- (nTree, status) = runState (expansion root) (0, bi, getRootBoard root)
+--            in  runState (iterations root status 5) status
+
 -- the MCTS structure that first selects the node with largest profits, then expands it, 
 -- and play simulations on the expanded node, and finally update the reviewed nodes
 mcts :: GameTree -> State GameTreeStatus GameTree
 mcts tree = do (trace, lastnode) <- selection tree [getBoardIndex tree]
                expandednode <- expansion lastnode
                (ntrace, playnode) <- selection expandednode trace
-               let winIdx = 0
-                   newGameTree = mainBackpropagation winIdx ntrace tree expandednode
+               winIdx <- playout (getPlayers playnode)
+               let newGameTree = mainBackpropagation winIdx ntrace tree expandednode
                return newGameTree
+                          
+iterations :: GameTree -> GameTreeStatus -> Int -> GameTree
+iterations tree s 0 = tree
+iterations tree s@(pi, bi, board) counts = let (newTree, (_, nbi, _)) = runState (mcts tree) s
+                                           in  iterations newTree (pi, nbi, board) (counts - 1)
+
     -- let ((lastNode, pi2), trace) = runState (selection pi tree) [getBoardIndex tree]
 --                          (expandedNode, bi2) = runState (expansion pi2 lastNode) bi -- ignore the threshold, just expand fully
 --                          ((playNode, pi3), trace1) = runState (selection pi2 expandedNode) trace -- select the best expanded child
 --                          (_, (winIdx, _)) = runState (playout (getBoard playNode)) (pi3, getPlayers playNode)
 --                          newGameTree = mainBackpropagation winIdx trace1 tree expandedNode -- update the wins for each traversed node
 --                      in  (newGameTree, bi2)
-{-
--- call multiple times of the four stages in order
-iteration :: Int -> (GameTree, BoardIndex) -> PlayerIndex -> (GameTree, BoardIndex)
-iteration 0 state _ = state
-iteration counts state i = let newState = mcts state i
-                           in iteration (counts - 1) newState i
 
--- ts = runState (makeRoot 3 (eraseBoard threePlayersSet externalBoard)) 0
-finalSelection :: (GameTree, BoardIndex) -> PlayerIndex -> Board
-finalSelection state playerIndex = let (tree, boardIdx) = iteration 3 state playerIndex
-                                       sl = map ((!! playerIndex) . getWins) (getChildren tree)
-                                   in  getBoard (getChildren tree !! maxIndex sl)
--}
+-- call multiple times of the four stages in order
+finalSelection :: Board -> PlayerIndex -> Int -> Board 
+finalSelection board playerIndex players = let (root, boardIndex) = makeRoot players board
+                                               tree = iterations root (playerIndex, boardIndex, board) 5 
+                                               ts = getChildren tree
+                                               scores = map (estimateNode playerIndex) ts
+                                               tf = getTransform (ts !! maxIndex scores)
+                                           in  evalState (repaintBoard tf) (playerIndex, boardIndex, board)
+
+
 
