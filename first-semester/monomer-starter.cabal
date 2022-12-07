@@ -21,6 +21,7 @@ executable app
   other-modules:
       Board
       Configuration
+      Configuration2
       GameTree
       MCTS
       RBTree
