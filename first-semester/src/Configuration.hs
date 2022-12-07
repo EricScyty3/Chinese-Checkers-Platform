@@ -79,7 +79,7 @@ tableElementsRecord bs = do filePath <- openFile "lookup_table.txt" WriteMode
 -- ghc Configuration.hs -O2 -fllvm -outputdir dist
 -- rm -rf dist/
 -- rm Configuration
-main = tableElementsRecord (take 200 sufficientBoards)
+-- main = tableElementsRecord (take 200 sufficientBoards)
 
 -- -- load the stored lookup table data from the file
 -- loadTableElements :: [(Hash, StoredData)]
