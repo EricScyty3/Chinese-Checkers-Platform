@@ -86,19 +86,6 @@ hashChange fp tp xv = do f <- getElement fp
                          t <- getElement tp
                          return $ f `par` t `pseq` foldr myXOR 0 [xv, f, t]
 
--- construct the hashed board state of the given occupied board state
--- hashState :: OccupiedBoard -> StateTable -> Int
--- hashState _ [] = 0
--- hashState [] _ = 0
--- hashState (x:xs) (s:ss) = myXOR (hashOneRow x s) (hashState xs ss)
---     where
---         hashOneRow :: [Int] -> [Int] -> Int
---         hashOneRow [] _ = 0
---         hashOneRow _ [] = 0
---         hashOneRow (x:xs) (s:ss)
---             | x == 1 = myXOR s (hashOneRow xs ss) -- only XOR the occupied position's state value
---             | otherwise = hashOneRow xs ss
-
 -- transform a decimal integer into binary list
 toBinary :: Int -> [Int]
 toBinary 0 = [0]

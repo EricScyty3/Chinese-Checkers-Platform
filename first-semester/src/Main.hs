@@ -225,7 +225,7 @@ handleEvent wenv node model evt = case evt of
     | otherwise -> [Model $ model & startGame .~ True
                                   & displayBoard .~ externalBoard
                                   & internalStates .~ replicate 6 hashInitial]
-  CancelMove -- modified
+  CancelMove 
     | model ^. ifWin -> []
     | not (ifInitialPiece pf) && not (ifInitialPiece pt) -> [Model $ model & displayBoard .~ newBoard
                                                                            & internalStates .~ insertState
@@ -241,7 +241,6 @@ handleEvent wenv node model evt = case evt of
       toProjectPos = projection lastTurnColour (getPos pt)
       lastTurnColour = turnColour model (revertTurnChange model)
       lastTurnState = (model ^. internalStates) !! revertTurnChange model
-      -- newState = flipBoardState toProjectPos fromProjectPos ((model ^. internalStates) !! revertTurnChange model)
       newState = evalState (hashChange toProjectPos fromProjectPos lastTurnState) randomBoardState
       insertState = replace (revertTurnChange model) newState (model ^. internalStates)
 
@@ -270,7 +269,6 @@ handleEvent wenv node model evt = case evt of
         currentState = (model ^. internalStates) !! (model ^. turnS)
         fromProjectPos = projection currentColour (getPos f)
         toProjectPos = projection currentColour (getPos t)
-        -- newState = flipBoardState fromProjectPos toProjectPos ((model ^. internalStates) !! (model ^. turnS))
         newState = evalState (hashChange fromProjectPos toProjectPos currentState) randomBoardState
         insertState = replace (model ^. turnS) newState (model ^. internalStates)
 

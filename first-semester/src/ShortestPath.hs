@@ -28,19 +28,19 @@ import Data.Containers.ListUtils
 -- another search that counts the moves needed for reaching the goal state, mostly used for 
 test :: OccupiedBoard
 test = [
-        [0, 0, 0, 0, 1, 1, 1],
-        [0, 0, 0, 0, 0, 1, 1],
-        [0, 0, 0, 0, 0, 0, 1],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 1, 0],
         [0, 0, 0, 0, 0, 0, 0]]
 
 -- breadth-first search
 -- when searching, don't really need the whole occupied board, only need to known about the occupied positions
 -- very similar to the board search, but with different a move strategy
 shortestMoves :: OccupiedBoard -> Int -> Int
-shortestMoves b wd = bSearchS 0 wd [(findOccupiedPieces b, centroid b)] []
+shortestMoves b wd = if centroid b == 28 then 0 else bSearchS 0 wd [(findOccupiedPieces b, centroid b)] []
 -- for a list of board states, process each new state for each state 
 -- update the new positions based on the old one
 -- the arguments including the level, breadth width, the new found states, and the currently explored states
