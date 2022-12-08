@@ -10,7 +10,7 @@ import Control.Monad.Extra
 import Control.Parallel
 import Control.Monad.ST
 import Data.STRef
-import RBTree (RBTree, rbSearch, rbInsert, emptyTree)
+import RBTree (RBTree (RBLeaf, RBNode), rbSearch, rbInsert)
 -- import qualified Data.Map as Map
 
 
@@ -26,7 +26,7 @@ import RBTree (RBTree, rbSearch, rbInsert, emptyTree)
 sufficientBoards :: (RBTree OccupiedBoard, Int)
 sufficientBoards = let p = listAllPermutations 6 (replicate 21 0, 0)
                        ps = map (convertToBoardWithSpace 0) p
-                   in  evalState (myTest ps emptyTree 0) randomBoardState
+                   in  evalState (myTest ps RBLeaf 0) randomBoardState
 
 myTest :: [OccupiedBoard] -> RBTree OccupiedBoard -> Int -> State StateTable (RBTree OccupiedBoard, Int)
 myTest [] rb c = return (rb, c)
@@ -53,41 +53,6 @@ flipBoardState :: [Int] -> Int -> [Int]
 flipBoardState board p = runST $ do n <- newSTRef board
                                     modifySTRef n (replace p 1)
                                     readSTRef n
-
--- -- result the sufficient amount of board states with identical effect
--- sufficientBoards :: [OccupiedBoard]
--- sufficientBoards = mirrorBoardCheck (validBoards $ listBoards $ listRows 0 7)
-
-
--- -- ensure the boards that are unique, can reduce a factor close to 2
--- mirrorBoardCheck :: [OccupiedBoard] -> [OccupiedBoard]
--- mirrorBoardCheck [] = []
--- mirrorBoardCheck (b:bs) = if symmetric1 b `notElem` bs then b:mirrorBoardCheck bs
---                           else mirrorBoardCheck bs
-
--- -- omit the boards with less than 6 pieces
--- validBoards :: [OccupiedBoard] -> [OccupiedBoard]
--- validBoards = filter ((== totalPieces) . piecesCount)
---   where
---     piecesCount :: [[Int]] -> Int
---     piecesCount rs = sum (map sum rs)
-
--- -- arrange the board state with different row states
--- listBoards :: [[[Int]]] -> [OccupiedBoard]
--- listBoards [] = [[]]
--- listBoards (r:rs) = [x:xs | x <- r, xs <- listBoards rs]
-
--- -- compute different rows with different pieces allowed
--- listRows :: Int -> Int -> [[[Int]]]
--- listRows i w
---     | i /= w = map (replicate (i+1) 0 ++ ) (replicateM (w - (i+1)) [0, 1]):listRows (i+1) w
---     | otherwise = []
-
--- -- arrange a binary list with certain length
--- permutation :: Int -> [[Int]]
--- permutation 0 = [[]]
--- permutation l = [x:xs | x <- [0..1], xs <- permutation (l - 1)]
-
 {-
 The needed configurations will be shown as folllowing, ignoring the middle-game stage becuase the lookup table is quite weak for this,
 alternative will be apply instead, hence, the size of the table could also be reduced
@@ -104,32 +69,35 @@ Besides, according to the mirror states sharing the same shortest paths, these c
 
 -- transform the board state into hashed value and calculate the corresponding shortest moves need to reach the goal state, 
 -- as well as the minimum moves of its mirror
-{-
-tableElementsConstruct :: [OccupiedBoard] -> [(Int, Int, Int)]
-tableElementsConstruct [] = []
-tableElementsConstruct (b:bs) = newElement:tableElementsConstruct bs
+
+tableElementsConstruct :: RBTree OccupiedBoard -> [(Int, Int, Int)]
+tableElementsConstruct RBLeaf = []
+tableElementsConstruct (RBNode c b t1 key t2) = let front = tableElementsConstruct t1
+                                                    end   = tableElementsConstruct t2
+                                                in  front `par` end `pseq` front ++ newElement:end
     where
         x = shortestMoves b 200
         y = shortestMoves (symmetric2 b) 200
         newElement = x `par` y `pseq` (hashState b, x, y)
         hashState board = evalState (hashBoardWithPos (findPieces board)) randomBoardState
 
+
 -- record the board state into hashed state as well as the corresponding minimum moves
-tableElementsRecord :: [OccupiedBoard] -> IO()
-tableElementsRecord bs = do filePath <- openFile "lookup_table.txt" WriteMode
-                            let tableElements = tableElementsConstruct bs
-                            hPutStr filePath (convertToString tableElements)
-                            hClose filePath
+tableElementsRecord :: RBTree OccupiedBoard -> IO()
+tableElementsRecord boardTree = do filePath <- openFile "lookup_table.txt" WriteMode
+                                   let tableElements = tableElementsConstruct boardTree
+                                   hPutStr filePath (convertToString tableElements)
+                                   hClose filePath
     where
         convertToString :: [(Int, Int, Int)] -> String
         convertToString [] = ""
         convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
--}
+
 -- ghc Configuration.hs -O2 -fllvm -outputdir dist
 -- rm -rf dist/
 -- rm Configuration
-main = do let (_, size) = sufficientBoards
-          print size
+main :: IO ()
+main = tableElementsRecord (fst sufficientBoards)
 
 -- -- load the stored lookup table data from the file
 -- loadTableElements :: [(Hash, StoredData)]
