@@ -25,6 +25,7 @@ dependencies:
   - mtl
   - extra
   - parallel
+  - containers
 
 executables:
   app:

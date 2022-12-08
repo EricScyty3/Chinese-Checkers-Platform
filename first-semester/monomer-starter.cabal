@@ -21,7 +21,6 @@ executable app
   other-modules:
       Board
       Configuration
-      Configuration2
       GameTree
       MCTS
       RBTree
@@ -35,6 +34,7 @@ executable app
   ghc-options: -fwarn-incomplete-patterns -threaded
   build-depends:
       base >=4.7 && <5
+    , containers
     , data-default
     , extra
     , lens

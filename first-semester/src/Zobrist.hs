@@ -3,6 +3,7 @@ import System.Random
 import Data.List
 import Board
 import Control.Monad.State
+import Control.Parallel
 
 type StateTable = [[Int]]
 type OccupiedBoard = [[Int]]
@@ -31,6 +32,9 @@ randomBoardState = {- randomBoardColumn randomList 0
         [2990988946,3063264481,149517643,1100318883,2752873187,3781215980,2792287776],
         [977698729,118633436,2784537123,1886397907,1695135422,92683337,2971222636],
         [1857154033,3253362046,1756536471,2064999353,510226296,402957728,3185258486]]
+
+-- randomBoardStateList :: [Int]
+-- randomBoardStateList = concat randomBoardState
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the internal single-agent board for a player with the top-right the starting point and botton-left the destination
@@ -64,17 +68,24 @@ hashEnd :: Int
 hashEnd = evalState (hashBoardWithPos homeBase) randomBoardState
 
 -- convert the occupiedBoard to hashed value, but based on given pieces' positions
+-- hashBoardWithIndex :: [Int] -> State [Int] Int
+-- hashBoardWithIndex [] = return 0
+-- hashBoardWithIndex (i:is) = do rList <- get
+--                                let randomState1 = rList !! i
+--                                randomState2 <- hashBoardWithIndex is
+--                                return (randomState1 `myXOR` randomState2)
+
 hashBoardWithPos :: [Pos] -> State StateTable Int
 hashBoardWithPos [] = return 0
 hashBoardWithPos (p:ps) = do randomState1 <- getElement p
                              randomState2 <- hashBoardWithPos ps
-                             return (randomState1 `myXOR` randomState2)
+                             return $ randomState1 `par` randomState2 `pseq` (randomState1 `myXOR` randomState2)
 
 -- after the first construct, each changed hash does not need to recalculate, just applys the two changed points
 hashChange :: (Int, Int) -> (Int, Int) -> Int -> State StateTable Int
 hashChange fp tp xv = do f <- getElement fp
                          t <- getElement tp
-                         return (foldr myXOR 0 [xv, f, t])
+                         return $ f `par` t `pseq` foldr myXOR 0 [xv, f, t]
 
 -- construct the hashed board state of the given occupied board state
 -- hashState :: OccupiedBoard -> StateTable -> Int

@@ -10,6 +10,8 @@ import Data.STRef
 import Control.Monad.State
 import Control.Monad.Extra
 import Control.Parallel
+import Data.Containers.ListUtils
+
 
 -- basically will need a breadth-first search for preventing duplicate moves, it is known that 28 is the highest value
 -- each level represents a move that is done only if certain moves were done
@@ -34,16 +36,18 @@ test = [
         [0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0]]
 
+main = print (shortestMoves initialState 200)
+
 -- breadth-first search
 shortestMoves :: OccupiedBoard -> Int -> Int
-shortestMoves b wd = bSearchS 0 wd [(b, centroid b)] []
+shortestMoves b wd = bSearchS 0 wd [(findPieces b, centroid b)] []
 -- for a list of board states, process each new state for each state 
 -- update the new positions based on the old one
-bSearchS :: Int -> Int -> [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)] -> Int
+bSearchS :: Int -> Int -> [([Pos], Int)] -> [([Pos], Int)] -> Int
 -- clear the new position list and start searching on them, and update the last level positions
 bSearchS i wd np [] = bSearchS (i+1) wd [] np -- start searching at the next level
 bSearchS i wd np (b:bs) = case evalState (bSearch np wd) b of
-                             [(_, 100)] -> i  -- indicate that the goal state is reached, return the level
+                             [(_, 28)] -> i  -- indicate that the goal state is reached, return the level
                              ls -> bSearchS i wd ls bs -- otherwise, keep searching
 -- breath-first search, where each level is move that requires certain moves before can be performed
 -- for each pieces on a board, return the resulting board states
@@ -51,18 +55,18 @@ bSearchS i wd np (b:bs) = case evalState (bSearch np wd) b of
 -- bSearch np (b, s) bw = let ps = dListForBoard b -- then search for from-to pair for each piece
 --                            nb = mirrorCheck $ flipLists b s ps -- retrieve the resulting new board states containing no mirror images
 --                        in  updateList np nb bw -- return the updated new positions list
-bSearch :: [(OccupiedBoard, Int)] -> Int -> State (OccupiedBoard, Int) [(OccupiedBoard, Int)]
+bSearch :: [([Pos], Int)] -> Int -> State ([Pos], Int) [([Pos], Int)]
 bSearch np wd = do (board, score) <- get
-                   let ps = evalState dListForBoard board
-                       bs = evalState (flipLists score ps) board
-                   let uniqueList = mirrorCheck bs
-                   return (updateList np uniqueList wd)
+                   let moves = dListForBoard board
+                       boardsAndScores = evalState (flipLists score moves) board
+                   {-let uniqueList = mirrorCheck bs-}
+                   return (updateList np boardsAndScores wd)
 
 -- update the new positions list with better positions of fixed length
-updateList :: [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)] -> Int -> [(OccupiedBoard, Int)]
+updateList :: [([Pos], Int)] -> [([Pos], Int)] -> Int -> [([Pos], Int)]
 updateList os [] _ = os
 updateList os (n:ns) bw
-  | snd n == 28 = [(fst n, 100)] -- if reach the goal then just return the flag 
+  | snd n == 28 = [n] -- if reach the goal then just return the flag 
   | n `elem` os = updateList os ns bw -- skip if already exists
   | length os < bw = updateList (n:os) ns bw -- just add if the breadth is not wide enough
   | otherwise = let minScore = minimum (map snd os)
@@ -98,15 +102,15 @@ symmetric2 = transpose
 
 -- should avoid implementing mirror/symmetric state to reduce the search space
 -- diagonal line from top right to left bottom
-mirrorCheck :: [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)]
-mirrorCheck [] = []
-mirrorCheck (x:xs) = let (board, _) = x
-                         mirrorBoard = symmetric1 board
-                     in  if mirrorBoard `elem` map fst xs then mirrorCheck xs
-                         else x:mirrorCheck xs
+-- mirrorCheck :: [(OccupiedBoard, Int)] -> [(OccupiedBoard, Int)]
+-- mirrorCheck [] = []
+-- mirrorCheck (x:xs) = let (board, _) = x
+--                          mirrorBoard = symmetric1 board
+--                      in  if mirrorBoard `elem` map fst xs then mirrorCheck xs
+--                          else x:mirrorCheck xs
 
 -- implement the list of movements and the resulting board states
-flipLists :: Int -> [(Pos, [Pos])] -> State OccupiedBoard [(OccupiedBoard, Int)]
+flipLists :: Int -> [(Pos, [Pos])] -> State [Pos] [([Pos], Int)]
 flipLists _ [] = return []
 flipLists c (x:xs) = do let (p, ps) = x
                         resultingBoards <- mapM (flipBoardState c p) ps
@@ -118,20 +122,14 @@ flipLists c (x:xs) = do let (p, ps) = x
         -- flipBoardState b c f t = let new1 = replace2 f (flip $ getElement b f) b
         --                              new2 = replace2 t (flip $ getElement new1 t) new1
         --                          in  (new2, c - centroidPos f + centroidPos t)
-        flipBoardState :: Int -> Pos -> Pos -> State OccupiedBoard (OccupiedBoard, Int)
-        flipBoardState c f t = do board <- get
-                                  n1    <- getElement f
-                                  n2    <- getElement t
-                                  let new1 = flip n1
-                                      new2 = flip n2
-                                      newBoard = runST $ do n <- newSTRef board
-                                                            modifySTRef n (replace2 f new1)
-                                                            modifySTRef n (replace2 t new2)
-                                                            readSTRef n
-                                  return (newBoard, c - centroidPos f + centroidPos t)
-        flip :: Int -> Int
-        flip 0 = 1
-        flip _ = 0
+        flipBoardState :: Int -> Pos -> Pos -> State [Pos] ([Pos], Int)
+        flipBoardState c f t = do ps <- get
+                                  case elemIndex f ps of
+                                    Nothing -> error "Cannot find this position in the occupied board"
+                                    Just i  -> do let newps = runST $ do n <- newSTRef ps
+                                                                         modifySTRef n (replace i t)
+                                                                         readSTRef n
+                                                  return (newps, c - centroidPos f + centroidPos t)
 
 {-
     -- provide the available pieces and their avaliable movements
@@ -173,34 +171,30 @@ flipLists c (x:xs) = do let (p, ps) = x
         | otherwise = pos -- no ways found
 -}
 
-dListForBoard :: State OccupiedBoard [(Pos, [Pos])]
-dListForBoard = do board <- get
-                   let ps = findPieces board
-                   movesListForPoses <- mapM destinationList' ps -- zip the from and to destinations
-                   return (zip ps movesListForPoses)
+dListForBoard :: [Pos] -> [(Pos, [Pos])]
+dListForBoard ps = evalState (mapM destinationList' ps) ps -- zip the from and to destinations
 
 -- find the occupied positions of the board/find the pieces' positions on the board
 findPieces :: OccupiedBoard -> [Pos]
 findPieces board = [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
 
-destinationList' :: Pos -> State OccupiedBoard [Pos]
-destinationList' pos = do content <- getElement pos
-                          if content == 0 then return []
-                          else do adjacentMoves <- findAvaliableNeighbors' pos
-                                  chainedMoves  <- recursiveSearch' [] pos
-                                  -- apply parallel
-                                  let movesList = adjacentMoves `par` chainedMoves `pseq` nub (adjacentMoves ++ chainedMoves)
-                                  return movesList
+destinationList' :: Pos -> State [Pos] (Pos, [Pos])
+destinationList' p = do ps <- get
+                        if p `notElem` ps then return (p, [])
+                        else do adjacentMoves <- findAvaliableNeighbors' p
+                                chainedMoves  <- recursiveSearch' [] p
+                                let movesList = adjacentMoves `par` chainedMoves `pseq` nubOrd (adjacentMoves ++ chainedMoves)
+                                return (p, movesList)
 
 -- state monad version
-findAvaliableNeighbors' :: Pos -> State OccupiedBoard [Pos]
-findAvaliableNeighbors' (x, y) = do contentList <- mapM getElement neighborPosList
-                                    let avaliableIndices = elemIndices 0 contentList
-                                    return (map (neighborPosList !!) avaliableIndices)
+findAvaliableNeighbors' :: Pos -> State [Pos] [Pos]
+findAvaliableNeighbors' (x, y) = do ps <- get
+                                    let avaliableList = filter (`notElem` ps) neighborPosList
+                                    return avaliableList
     where
         neighborPosList = filter testValidPos' [(x, y-1), (x-1, y-1), (x-1, y), (x, y+1), (x+1, y+1), (x+1, y)]
 
-recursiveSearch' :: [Pos] -> Pos -> State OccupiedBoard [Pos]
+recursiveSearch' :: [Pos] -> Pos -> State [Pos] [Pos]
 recursiveSearch' ls pos = do chainJumpList <- jumpDirection' pos
                              let renewList = filter (`notElem` ls) chainJumpList
                                  recordList = renewList ++ ls
@@ -208,18 +202,18 @@ recursiveSearch' ls pos = do chainJumpList <- jumpDirection' pos
                              return (recursiveList ++ renewList)
 
 -- state monad version 
-jumpDirection' :: Pos -> State OccupiedBoard [Pos]
+jumpDirection' :: Pos -> State [Pos] [Pos]
 jumpDirection' pos = do reachableList <- mapM (determineValidJump' pos) [f (0, -1), f (-1, -1), f (-1, 0), f (0, 1), f (1, 1), f (1, 0)]
                         let validReachableList = filter (/= pos) reachableList -- remove the invalid moves
                         return validReachableList
     where
         f (a, b) (x, y) = (a+x, b+y)
 
-determineValidJump' :: Pos -> (Pos -> Pos) -> State OccupiedBoard Pos
+-- don't really need the whole occupied board, only need to known about the occupied positions, hence, [Pos]
+determineValidJump' :: Pos -> (Pos -> Pos) -> State [Pos] Pos
 determineValidJump' pos f = do if not (testValidPos' fp) || not (testValidPos' fp2) then return pos
-                               else do n1 <- getElement fp
-                                       n2 <- getElement fp2
-                                       if n1 == 1 && n2 == 0 then return fp2
+                               else do ps <- get
+                                       if fp2 `notElem` ps && fp `elem` ps then return fp2
                                        else return pos
     where
         fp = f pos
