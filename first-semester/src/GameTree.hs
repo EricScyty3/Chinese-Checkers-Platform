@@ -11,7 +11,7 @@ import Data.STRef
 type Wins = Int
 type PlayerIndex = Int
 type BoardIndex = Int
-type Transform = (BoardType, BoardType) -- the conversion between two adjacent boards, known the positions pair could transform the board state as well as its hash
+type Transform = (Pos, Pos) -- the conversion between two adjacent boards, known the positions pair could transform the board state as well as its hash
 -- the game tree contains two main types: leaf and internal node with at least one child
 -- the root node can be represented individually as it does not need the board value
 -- normally, each node should hold the overall board of the game and a tuple of size N = players number representing the scroe for each player
@@ -40,28 +40,24 @@ searchNode i t = if null $ searchNode' i t then error "Not exist" else head $ se
         searchNode' i t = if getBoardIndex t == i then [t]
                           else concatMap (searchNode' i) (getChildren t)
 
--- repaintPaths :: Board -> Colour -> [(BoardType, [BoardType])] -> [(Board, Transform)]
--- repaintPaths _ _ [] = []
--- repaintPaths eboard colour (x:xs) = let (b, bs) = x
---                                     in  map (repaintPath colour eboard b) bs ++ repaintPaths eboard colour xs
---     where
-        -- repaintPath :: Colour -> Board -> BoardType -> BoardType -> (Board, Transform)
-        -- repaintPath c eBoard start end  = let tempBoard = changeBoardElement erase start eBoard
-        --                                   in  (changeBoardElement (repaint c) end tempBoard, (start, end))
-
 -- given two pieces, exchange their colours
-repaintBoard :: Transform -> State GameTreeStatus Board
-repaintBoard (start, end)  = do (_, _, board) <- get
-                                let colour = getColour start
-                                    resultedBoard = runST $ do n <- newSTRef board
-                                                               modifySTRef n (changeBoardElement erase start)
-                                                               modifySTRef n (changeBoardElement (safeRepaint colour) end)
-                                                               readSTRef n
-                                return resultedBoard
+repaintBoard :: Colour -> Transform-> State GameTreeStatus Board
+repaintBoard colour (start, end ) = do (_, _, board) <- get
+                                       let resultedBoard = runST $ do n <- newSTRef board
+                                                                      modifySTRef n (changeBoardElement id (erase' start))
+                                                                      modifySTRef n (changeBoardElement id (repaint' colour end))
+                                                                      readSTRef n
+                                       return resultedBoard
     where
-        safeRepaint :: Maybe Colour -> BoardType -> BoardType
-        safeRepaint Nothing b = b
-        safeRepaint (Just colour) b = repaint colour b
+        erase' pos = E pos
+
+        repaint' Green b = G b
+        repaint' Black b = K b
+        repaint' Orange b = O b
+        repaint' Red b = R b
+        repaint' Blue b = B b
+        repaint' Purple b = P b
+
 
 getNodeType :: GameTree -> String
 getNodeType GRoot {} = "Root"
@@ -96,17 +92,15 @@ getPlayers gt = length (getWins gt) -- the length of win list equals to the tota
 getTransform :: GameTree -> Transform
 getTransform (GLeaf _ ft _) = ft
 getTransform (GNode _ ft _ _) = ft
-getTransform GRoot {} = (U(-1, -1), U(-1, -1))
+getTransform GRoot {} = ((-1, -1), (-1, -1))
 
 
 -- transform the display board into occupied board based on piece's colour 
 projectCOB :: Colour -> State GameTreeStatus OccupiedBoard
-projectCOB colour = do ps <- findColouredPieces colour
-                       let cps = map (projection colour . getPos) ps
+projectCOB colour = do (_, _, board) <- get
+                       let ps = findPiecesWithColour colour board
+                           cps = map (projection colour) ps
                        return (fillBoard cps empty)
--- projectCOB colour eboard = let ps = map getPos (findColouredPieces colour eboard)
---                                cs = map (projection colour) ps
---                            in  fillBoard cs empty
     where
         fillBoard [] b = b
         fillBoard (p:ps) b = let nb = runST $ do n <- newSTRef b
@@ -114,41 +108,18 @@ projectCOB colour = do ps <- findColouredPieces colour
                                                  readSTRef n
                              in  fillBoard ps nb
 
---- provide the expanded board based on given board state and player's colour
--- expandingBoards :: Colour -> Board -> [(Board, Transform)]
--- expandingBoards colour eboard = let ml = colouredMoveList colour eboard
---                                 in  repaintPaths eboard colour ml
--- render a list of movements and return a list of boards and the transformed position pairs
--- repaintPaths :: Board -> Colour -> [(BoardType, [BoardType])] -> [(Board, Transform)]
--- repaintPaths _ _ [] = []
--- repaintPaths eboard colour (x:xs) = let (b, bs) = x
---                                     in  map (repaintPath colour eboard b) bs ++ repaintPaths eboard colour xs
---     where
---         repaintPath :: Colour -> Board -> BoardType -> BoardType -> (Board, Transform)
---         repaintPath c eBoard start end  = let tempBoard = changeBoardElement erase start eBoard
---                                           in  (changeBoardElement (repaint c) end tempBoard, (start, end))
--- find the pieces' positions on the board based on the colour
-findColouredPieces :: Colour -> State GameTreeStatus [BoardType]
-findColouredPieces colour = do (_, _, board) <- get
-                               let bs = [x | (_, row) <- zip [0..] board, x <- filter (`compareColour` colour) row]
-                               return bs
--- findColouredPieces :: Colour -> Board -> [BoardType]
--- findColouredPieces c = concatMap (findColouredPieces' c)
---     where
---         findColouredPieces' :: Colour -> [BoardType] -> [BoardType]
---         findColouredPieces' _ [] = []
---         findColouredPieces' c (x:xs) = if compareColour x c then x : findColouredPieces' c xs else findColouredPieces' c xs
 -- provide the available pieces and their movement pairs
 -- work as board expansion
 colouredMovesList :: Colour -> State GameTreeStatus [Transform]
-colouredMovesList colour = do bs <- findColouredPieces colour
-                              (_, _, board) <- get
-                              let ds = evalState (do mapM destinationList bs) board
-                              return (pairArrange bs ds)
+colouredMovesList colour = do (_, _, board) <- get
+                              let cps = findPiecesWithColour colour board
+                                  aps = findAllPieces board
+                                  ds = evalState (do mapM destinationList cps) aps
+                              return (pairArrange cps ds)
                               -- ds <- mapM destinationList bs
                               -- return (pairArrange bs ds)
     where
-        pairArrange :: [BoardType] -> [[BoardType]] -> [(BoardType, BoardType)]
+        pairArrange :: [Pos] -> [[Pos]] -> [Transform]
         pairArrange _ [] = []
         pairArrange [] _ = []
         pairArrange (b:bs) (d:ds) = let rl = replicate (length d) b

@@ -30,8 +30,8 @@ sufficientBoards = let p = listAllPermutations 6 (replicate 21 0, 0)
 
 myTest :: [OccupiedBoard] -> RBTree OccupiedBoard -> Int -> State StateTable (RBTree OccupiedBoard, Int)
 myTest [] rb c = return (rb, c)
-myTest (b:bs) rb c = do let ones = findPieces b -- avoid mirror images
-                            ones2 = findPieces (symmetric1 b)
+myTest (b:bs) rb c = do let ones  = findOccupiedPieces b -- avoid mirror images
+                            ones2 = findOccupiedPieces (symmetric1 b)
                         hash  <- hashBoardWithPos ones
                         hash2 <- hashBoardWithPos ones2
                         if hash `par` hash2 `pseq` rbSearch hash2 rb then myTest bs rb c
@@ -79,7 +79,7 @@ tableElementsConstruct (RBNode c b t1 key t2) = let front = tableElementsConstru
         x = shortestMoves b 200
         y = shortestMoves (symmetric2 b) 200
         newElement = x `par` y `pseq` (hashState b, x, y)
-        hashState board = evalState (hashBoardWithPos (findPieces board)) randomBoardState
+        hashState board = evalState (hashBoardWithPos (findOccupiedPieces board)) randomBoardState
 
 
 -- record the board state into hashed state as well as the corresponding minimum moves

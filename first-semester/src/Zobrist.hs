@@ -8,8 +8,7 @@ import Control.Parallel
 type StateTable = [[Int]]
 type OccupiedBoard = [[Int]]
 
-occupiedBoardSize :: Int
-occupiedBoardSize = 7
+
 
 -- board state matrix: each position has one state: Occupied with its own value
 randomBoardState :: StateTable

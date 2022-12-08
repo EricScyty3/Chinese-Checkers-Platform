@@ -12,7 +12,6 @@ import Control.Monad.ST
 import Data.STRef
 
 type Trace = [BoardIndex]
-type NodeInfo = ()
 
 -- update the player turns based on index from 0 to the number - 1
 turnBase :: Int -> PlayerIndex -> PlayerIndex
@@ -67,10 +66,11 @@ selection gametree trace = let childrenList = getChildren gametree
                            in  if null childrenList then return (trace, gametree) -- return the next node and player index for the expansion
                                else do (pi, bi, pb) <- get
                                        let pn = getPlayers gametree
+                                           co = currentPlayerColour pi pn
                                            wl = map (estimateNode pi) childrenList
                                            sn = childrenList !! randomSelection wl  -- select the child with the maximum estimation 
                                            ntrace = push (getBoardIndex sn) trace
-                                       nboard <- repaintBoard (getTransform sn)
+                                       nboard <- repaintBoard co (getTransform sn)
                                        put (turnBase pn pi, bi, nboard)      -- update the selection record
                                        selection sn ntrace  -- start the next selection at the selected node
 
@@ -123,17 +123,17 @@ backpropagation pi xs ts new = let (bi, ys) = pop xs
 -- get the best heuristic estimated board from all expanded boards 
 playoutPolicy :: Colour -> Int -> [Transform] -> State GameTreeStatus (Board, Int)
 playoutPolicy colour score tfs = do (_, _, b) <- get
-                                    let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
+                                    let ptfs = map (\(x, y) -> (projection colour x, projection colour y)) tfs
                                         sl  = map (flipBoardStateEvaluation score) ptfs
                                     if  randomPercentage 95 then do let cidx = maxIndex sl
                                                                         cft  = tfs !! cidx
                                                                         ms   = sl !! cidx
-                                                                    newBoard <- repaintBoard cft
+                                                                    newBoard <- repaintBoard colour cft
                                                                     return (newBoard, ms)
                                     else do let cidx = randomMove (length tfs)
                                                 cft  = tfs !! cidx
                                                 ms   = sl !! cidx
-                                            newBoard <- repaintBoard cft
+                                            newBoard <- repaintBoard colour cft
                                             return (newBoard, ms)
 -- playoutPolicy c s xs = let ps = map ((\(x, y) -> (projection c (getPos x), projection c (getPos y))) . snd) xs -- convert the positions for the boards
 --                            sl = map (flipBoardStateEvaluation s) ps -- calculate the heuristic scores for the possible expanded boards
@@ -200,7 +200,8 @@ finalSelection board playerIndex players = let (root, boardIndex) = makeRoot pla
                                                ts = getChildren tree
                                                scores = map (estimateNode playerIndex) ts
                                                tf = getTransform (ts !! maxIndex scores)
-                                           in  evalState (repaintBoard tf) (playerIndex, boardIndex, board)
+                                               co = currentPlayerColour playerIndex players
+                                           in  evalState (repaintBoard co tf) (playerIndex, boardIndex, board)
 
 
 

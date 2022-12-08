@@ -38,9 +38,9 @@ test = [
 
 -- breadth-first search
 -- when searching, don't really need the whole occupied board, only need to known about the occupied positions
--- because there are no opponents' pieces
+-- very similar to the board search, but with different a move strategy
 shortestMoves :: OccupiedBoard -> Int -> Int
-shortestMoves b wd = bSearchS 0 wd [(findPieces b, centroid b)] []
+shortestMoves b wd = bSearchS 0 wd [(findOccupiedPieces b, centroid b)] []
 -- for a list of board states, process each new state for each state 
 -- update the new positions based on the old one
 -- the arguments including the level, breadth width, the new found states, and the currently explored states
@@ -80,7 +80,7 @@ updateList ps (n:ns) bw
 -- also, considering the symmetric of the board across the diagonal line, hence, the search space could be halved 
 -- -- calculate for the whole occupied board
 centroid :: OccupiedBoard -> Int
-centroid board = let ps = findPieces board
+centroid board = let ps = findOccupiedPieces board
                  in  sum (map centroidPos ps)
 -- -- the heuristic evaluation to estimate the board and detect the win state
 centroidPos :: Pos -> Int
@@ -113,8 +113,8 @@ dListForBoard :: [Pos] -> [(Pos, [Pos])]
 dListForBoard ps = evalState (mapM destinationList' ps) ps -- zip the from and to destinations
 
 -- find the occupied positions of the board/find the pieces' positions on the board
-findPieces :: OccupiedBoard -> [Pos]
-findPieces board = [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
+findOccupiedPieces :: OccupiedBoard -> [Pos]
+findOccupiedPieces board = [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
 
 -- combine the two move lists
 destinationList' :: Pos -> State [Pos] (Pos, [Pos])
@@ -130,7 +130,8 @@ findAvaliableNeighbors' (x, y) = do ps <- get
                                     let avaliableList = filter (`notElem` ps) neighborPosList
                                     return avaliableList
     where
-        neighborPosList = filter testValidPos' [(x, y-1), (x-1, y-1), (x-1, y), (x, y+1), (x+1, y+1), (x+1, y)]
+        neighborPosList = filter (testValidPos size size) [(x, y-1), (x-1, y-1), (x-1, y), (x, y+1), (x+1, y+1), (x+1, y)]
+        size = occupiedBoardSize
 
 recursiveSearch' :: [Pos] -> Pos -> State [Pos] [Pos]
 recursiveSearch' ls pos = do chainJumpList <- jumpDirection' pos
@@ -148,13 +149,12 @@ jumpDirection' pos = do reachableList <- mapM (determineValidJump' pos) [f (0, -
         f (a, b) (x, y) = (a+x, b+y)
 
 determineValidJump' :: Pos -> (Pos -> Pos) -> State [Pos] Pos
-determineValidJump' pos f = do if not (testValidPos' fp) || not (testValidPos' fp2) then return pos
+determineValidJump' pos f = do if not (testValidPos size size fp) || 
+                                  not (testValidPos size size fp2) then return pos
                                else do ps <- get
                                        if fp2 `notElem` ps && fp `elem` ps then return fp2
                                        else return pos
     where
         fp = f pos
         fp2 = (f . f) pos
-
-testValidPos' :: Pos -> Bool
-testValidPos' (x, y) = x >= 0 && y >= 0 && x < occupiedBoardSize && y < occupiedBoardSize
+        size = occupiedBoardSize

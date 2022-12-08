@@ -84,7 +84,7 @@ data AppModel = AppModel {
   _previousFromPiece:: BoardType,
   _previousToPiece :: BoardType,
   _errorMessage :: String,
-  _movesList :: [BoardType]
+  _movesList :: [Pos]
   -- _computerPlayersAmount :: Int
 } deriving (Eq, Show)
 
@@ -143,7 +143,7 @@ buildUI wenv model = widgetTree where
                                 styleIf (isPurple ch)(bgColor purple),
                                 styleIf (isOrange ch) (bgColor darkOrange),
                                 styleIf (isBlack ch) (bgColor black),
-                                styleIf (ch == p || ch `elem` model ^. movesList) (border 2 pc)
+                                styleIf (ch == p || getPos ch `elem` model ^. movesList) (border 2 pc)
                                 ]
     where
       p = model ^. fromPiece
@@ -236,7 +236,7 @@ handleEvent wenv node model evt = case evt of
     where
       pf = model ^. previousFromPiece
       pt = model ^. previousToPiece
-      newBoard = repaintPath lastTurnColour (model ^. displayBoard) pt pf 
+      newBoard = repaintPath (model ^. displayBoard) pt pf 
       fromProjectPos = projection lastTurnColour (getPos pf)
       toProjectPos = projection lastTurnColour (getPos pt)
       lastTurnColour = turnColour model (revertTurnChange model)
@@ -265,7 +265,7 @@ handleEvent wenv node model evt = case evt of
       where
         f = model ^. fromPiece
         t = model ^. toPiece
-        newBoard = repaintPath currentColour (model ^. displayBoard) f t 
+        newBoard = repaintPath (model ^. displayBoard) f t 
         currentColour = turnColour model (model ^. turnS)
         currentState = (model ^. internalStates) !! (model ^. turnS)
         fromProjectPos = projection currentColour (getPos f)
@@ -299,7 +299,7 @@ handleEvent wenv node model evt = case evt of
                                           True  -> [Model $ model & errorMessage .~ show currentColour ++ ": no move made"
                                                                   & fromPiece .~ U (-1, -1)]
                                           False -> case isOccupied b of
-                                                      False -> case b `elem` model ^. movesList of
+                                                      False -> case getPos b `elem` model ^. movesList of
                                                                         True  -> [Model $ model & toPiece .~ b
                                                                                                 & errorMessage .~ ""]
                                                                         False -> [Model $ model & errorMessage .~ show currentColour ++ ": destination unreacbable"
@@ -308,7 +308,7 @@ handleEvent wenv node model evt = case evt of
                                                                           & fromPiece .~ U (-1, -1)]
     where
       currentColour = turnColour model (model ^. turnS)
-      newMovesList = evalState (destinationList b) (model ^. displayBoard)
+      newMovesList = destinationListCorner (model ^. displayBoard) b
 
   ResetChoice v
     | v < c -> [Model $ model & computerPlayersAmount .~ v]
