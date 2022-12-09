@@ -40,12 +40,12 @@ getKey (RBNode _ _ _ i _) = Just i
 
 -- searches a node with certain hashed index in the tree
 -- returns the node value if found, otherwise, nothing
-rbSearch :: Key -> RBTree a -> Bool -- Maybe a
-rbSearch h RBLeaf = False
+rbSearch :: Key -> RBTree a -> Maybe a
+rbSearch h RBLeaf = Nothing
 rbSearch h (RBNode _ v t1 x t2)
     | h > x = rbSearch h t2
     | h < x = rbSearch h t1
-    | otherwise = True
+    | otherwise = Just v
 
 -- balances a tree when there are 2 consecutive red nodes 
 -- parameters: root node colour, left subtree, root node index, root node value, right subtree

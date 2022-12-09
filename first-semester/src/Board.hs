@@ -8,7 +8,6 @@ import Data.STRef
 import Control.Monad.State
 import Control.Monad.Extra
 import Control.Parallel
-import Data.Containers.ListUtils
 
 -- the board type should be able to represent the unique identification, occupy state and the occupied piece's color
 data Colour = Green | Blue | Purple | Red | Orange | Black deriving (Eq, Show)
@@ -138,12 +137,12 @@ replace idx new ls = front ++ [new] ++ end
         (front, _:end) = splitAt idx ls
 
 -- find the pieces' positions
-findAllPieces :: Board -> [Pos]
-findAllPieces board = map getPos $ concatMap (filter isOccupied) board
+findAllPieces :: Board -> [BoardType]
+findAllPieces = concatMap (filter isOccupied)
 
 -- find the pieces' positions on the board based on the colour
-findPiecesWithColour :: Colour -> Board -> [Pos]
-findPiecesWithColour colour board = map getPos $ concatMap (filter (`compareColour` colour)) board
+findPiecesWithColour :: Colour -> Board -> [BoardType]
+findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
 
 -- additional applying ST monad to decrease the cost of copying the whole list         
 -- update the new board with a modified piece
@@ -171,52 +170,48 @@ repaintPath board start end  =  let colour = getColour start
                                                modifySTRef n (changeBoardElement (safeRepaint colour) end)
                                                readSTRef n
 
-destinationListCorner :: Board -> BoardType -> [Pos]
-destinationListCorner board btype = case getColour btype of 
-                                        Nothing -> error "Invalid position for move"
-                                        Just c  -> let movesList = evalState (destinationList (getPos btype)) (findAllPieces board)
-                                                   in  filter (testCorners c) movesList
-
-destinationList :: Pos -> State [Pos] [Pos]
-destinationList p = do ps <- get
-                       if p `notElem` ps then return []
-                       else do adjacentMoves <- findAvaliableNeighbors p
-                               chainedMoves  <- recursiveSearch [] p
-                               let movesList = adjacentMoves `par` chainedMoves `pseq` nubOrd (adjacentMoves ++ chainedMoves)
-                               return movesList
+destinationList :: BoardType -> State Board [BoardType]
+destinationList btype = do case getColour btype of
+                            Nothing -> return []
+                            Just c  -> do adjacentMoves <- findAvaliableNeighbors btype
+                                          chainedMoves  <- recursiveSearch [] btype
+                                          -- apply parallel
+                                          let movesList = adjacentMoves `par` chainedMoves `pseq` nub (adjacentMoves ++ chainedMoves)
+                                          return (filter (testCorners c) movesList)
 
 -- state monad version
-findAvaliableNeighbors :: Pos -> State [Pos] [Pos]
-findAvaliableNeighbors (x, y) = do ps <- get
-                                   let avaliableList = filter (`notElem` ps) neighborPosList
-                                   return avaliableList
+findAvaliableNeighbors :: BoardType -> State Board [BoardType]
+findAvaliableNeighbors btype = do neighbourList <- mapM getElement neighborPosList
+                                  return (filter isEmpty neighbourList)
     where
-        neighborPosList = filter (testValidPos boardWidth boardHeight) [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)]
+        (x, y) = getPos btype
+        neighborPosList = filter (testValidPos boardWidth boardHeight)  [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)]
 
 -- chained jump range
 -- one over hop
 -- recursively search for the reachable positions of multiple chained hops
 -- state monad
-recursiveSearch :: [Pos] -> Pos -> State [Pos] [Pos]
-recursiveSearch ls pos = do chainJumpList <- jumpDirection pos
-                            let renewList = filter (`notElem` ls) chainJumpList
-                                recordList = renewList ++ ls
-                            recursiveList <- concatMapM (recursiveSearch recordList) renewList
-                            return (recursiveList ++ renewList)
+recursiveSearch :: [BoardType] -> BoardType -> State Board [BoardType]
+recursiveSearch ls btype = do chainJumpList <- jumpDirection (getPos btype)
+                              let renewList = filter (`notElem` ls) chainJumpList
+                                  recordList = renewList ++ ls
+                              recursiveList <- concatMapM (recursiveSearch recordList) renewList
+                              return (recursiveList ++ renewList)
 
 -- state monad version 
-jumpDirection :: Pos -> State [Pos] [Pos]
+jumpDirection :: Pos -> State Board [BoardType]
 jumpDirection pos = do reachableList <- mapM (determineValidJump pos) [f (-1, -1), f (-2, 0), f (-1, 1), f (1, 1), f (2, 0), f (1, -1)]
                        let validReachableList = filter (/= pos) reachableList -- remove the invalid moves
-                       return validReachableList
+                       mapM getElement validReachableList
     where
         f (a, b) (x, y) = (a+x, b+y)
 
-determineValidJump :: Pos -> (Pos -> Pos) -> State [Pos] Pos
-determineValidJump pos f = do if not (testValidPos boardWidth boardHeight fp) || 
+determineValidJump :: Pos -> (Pos -> Pos) -> State Board Pos
+determineValidJump pos f = do if not (testValidPos boardWidth boardHeight fp) ||
                                  not (testValidPos boardWidth boardHeight fp2) then return pos
-                              else do ps <- get
-                                      if fp2 `notElem` ps && fp `elem` ps then return fp2
+                              else do n1 <- getElement fp
+                                      n2 <- getElement fp2
+                                      if isOccupied n1 && isEmpty n2 then return fp2
                                       else return pos
     where
         fp = f pos
@@ -228,8 +223,8 @@ testValidPos xlimt ylimt (x, y) = x >= 0 && y >= 0 && x < xlimt && y < ylimt
 
 -- an addition check should be transformed into a square cooupied board and tested whether it exists in that board
 -- this is only for computer players to enable sufficient compute and shorter game
-testCorners :: Colour -> Pos -> Bool
-testCorners colour p = testValidPos occupiedBoardSize occupiedBoardSize $ projection colour p
+testCorners :: Colour -> BoardType -> Bool
+testCorners colour btype = testValidPos occupiedBoardSize occupiedBoardSize $ projection colour (getPos btype)
 
 -- the projection of the main (display) board to the sub occupied board for each player
 projection :: Colour -> Pos -> Pos

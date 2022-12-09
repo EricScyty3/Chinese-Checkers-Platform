@@ -12,7 +12,6 @@ import Control.Monad.Extra
 import Control.Parallel
 import Data.Containers.ListUtils
 
-
 -- basically will need a breadth-first search for preventing duplicate moves, it is known that 28 is the highest value
 -- each level represents a move that is done only if certain moves were done
 -- level 0 means the initial positions
@@ -24,17 +23,6 @@ import Data.Containers.ListUtils
 --          For each of the 10 marbles in the current "old" position
 --              For each possible move of each of these marbles
 --                  Calculate the "Score" for the resulting new positions and update the new positions list
-
--- another search that counts the moves needed for reaching the goal state, mostly used for 
-test :: OccupiedBoard
-test = [
-        [0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 0, 0]]
 
 -- breadth-first search
 -- when searching, don't really need the whole occupied board, only need to known about the occupied positions
@@ -56,7 +44,7 @@ bSearchS i wd np (b:bs) = case evalState (bSearch np wd) b of
 bSearch :: [([Pos], Int)] -> Int -> State ([Pos], Int) [([Pos], Int)]
 bSearch ps wd = do (board, score) <- get
                    let moves = dListForBoard board
-                       ns = evalState (flipLists score moves) board
+                       ns = mirrorCheck2 $ evalState (flipLists score moves) board
                    return (updateList ps ns wd)
 
 -- update the new positions list with better positions of fixed length
@@ -91,6 +79,16 @@ symmetric1 = reverse . transpose . reverse
 symmetric2 :: OccupiedBoard -> OccupiedBoard
 symmetric2 = transpose
 
+symmetric2_pos :: [Pos] -> [Pos]
+symmetric2_pos = map (\(x, y) -> (6 - y, 6 - x))
+
+mirrorCheck2 :: [([Pos], Int)] -> [([Pos], Int)]
+mirrorCheck2 [] = []
+mirrorCheck2 (x:xs) = let (ps, c) = x
+                          sp = sort $ symmetric2_pos ps
+                      in  if sp `elem` map fst xs then mirrorCheck2 xs
+                          else x:mirrorCheck2 xs
+
 -- implement the list of movements and the resulting board states
 flipLists :: Int -> [(Pos, [Pos])] -> State [Pos] [([Pos], Int)]
 flipLists _ [] = return []
@@ -107,14 +105,15 @@ flipLists c (x:xs) = do let (p, ps) = x
                                     Just i  -> do let newps = runST $ do n <- newSTRef ps
                                                                          modifySTRef n (replace i t)
                                                                          readSTRef n
-                                                  return (newps, c - centroidPos f + centroidPos t)
+                                                  return (sort newps, c - centroidPos f + centroidPos t)
 
+-- only need to consider the positions of the pieces since the board is simpler
 dListForBoard :: [Pos] -> [(Pos, [Pos])]
 dListForBoard ps = evalState (mapM destinationList' ps) ps -- zip the from and to destinations
 
 -- find the occupied positions of the board/find the pieces' positions on the board
 findOccupiedPieces :: OccupiedBoard -> [Pos]
-findOccupiedPieces board = [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
+findOccupiedPieces board = sort $ [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
 
 -- combine the two move lists
 destinationList' :: Pos -> State [Pos] (Pos, [Pos])
@@ -149,7 +148,7 @@ jumpDirection' pos = do reachableList <- mapM (determineValidJump' pos) [f (0, -
         f (a, b) (x, y) = (a+x, b+y)
 
 determineValidJump' :: Pos -> (Pos -> Pos) -> State [Pos] Pos
-determineValidJump' pos f = do if not (testValidPos size size fp) || 
+determineValidJump' pos f = do if not (testValidPos size size fp) ||
                                   not (testValidPos size size fp2) then return pos
                                else do ps <- get
                                        if fp2 `notElem` ps && fp `elem` ps then return fp2

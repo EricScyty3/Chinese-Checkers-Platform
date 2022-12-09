@@ -11,6 +11,7 @@ import Control.Parallel
 import Control.Monad.ST
 import Data.STRef
 import RBTree (RBTree (RBLeaf, RBNode), rbSearch, rbInsert)
+import Data.Maybe (isNothing)
 -- import qualified Data.Map as Map
 
 
@@ -34,8 +35,8 @@ myTest (b:bs) rb c = do let ones  = findOccupiedPieces b -- avoid mirror images
                             ones2 = findOccupiedPieces (symmetric1 b)
                         hash  <- hashBoardWithPos ones
                         hash2 <- hashBoardWithPos ones2
-                        if hash `par` hash2 `pseq` rbSearch hash2 rb then myTest bs rb c
-                        else myTest bs (rbInsert hash b rb) (c+1)
+                        if isNothing $ hash `par` hash2 `pseq` rbSearch hash2 rb then myTest bs (rbInsert hash b rb) (c+1)
+                        else myTest bs rb c
 
 convertToBoardWithSpace :: Int -> [Int] -> OccupiedBoard
 convertToBoardWithSpace 6 _ = [replicate 7 0]
@@ -96,8 +97,8 @@ tableElementsRecord boardTree = do filePath <- openFile "lookup_table.txt" Write
 -- ghc Configuration.hs -O2 -fllvm -outputdir dist
 -- rm -rf dist/
 -- rm Configuration
-main :: IO ()
-main = tableElementsRecord (fst sufficientBoards)
+-- main :: IO ()
+-- main = tableElementsRecord (fst sufficientBoards)
 
 -- -- load the stored lookup table data from the file
 -- loadTableElements :: [(Hash, StoredData)]

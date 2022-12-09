@@ -9,7 +9,6 @@ type StateTable = [[Int]]
 type OccupiedBoard = [[Int]]
 
 
-
 -- board state matrix: each position has one state: Occupied with its own value
 randomBoardState :: StateTable
 randomBoardState = {- randomBoardColumn randomList 0

@@ -84,7 +84,7 @@ data AppModel = AppModel {
   _previousFromPiece:: BoardType,
   _previousToPiece :: BoardType,
   _errorMessage :: String,
-  _movesList :: [Pos]
+  _movesList :: [BoardType]
   -- _computerPlayersAmount :: Int
 } deriving (Eq, Show)
 
@@ -143,7 +143,7 @@ buildUI wenv model = widgetTree where
                                 styleIf (isPurple ch)(bgColor purple),
                                 styleIf (isOrange ch) (bgColor darkOrange),
                                 styleIf (isBlack ch) (bgColor black),
-                                styleIf (ch == p || getPos ch `elem` model ^. movesList) (border 2 pc)
+                                styleIf (ch == p || ch `elem` model ^. movesList) (border 2 pc)
                                 ]
     where
       p = model ^. fromPiece
@@ -297,7 +297,7 @@ handleEvent wenv node model evt = case evt of
                                           True  -> [Model $ model & errorMessage .~ show currentColour ++ ": no move made"
                                                                   & fromPiece .~ U (-1, -1)]
                                           False -> case isOccupied b of
-                                                      False -> case getPos b `elem` model ^. movesList of
+                                                      False -> case b `elem` model ^. movesList of
                                                                         True  -> [Model $ model & toPiece .~ b
                                                                                                 & errorMessage .~ ""]
                                                                         False -> [Model $ model & errorMessage .~ show currentColour ++ ": destination unreacbable"
@@ -306,7 +306,7 @@ handleEvent wenv node model evt = case evt of
                                                                           & fromPiece .~ U (-1, -1)]
     where
       currentColour = turnColour model (model ^. turnS)
-      newMovesList = destinationListCorner (model ^. displayBoard) b
+      newMovesList = evalState (destinationList b) (model ^. displayBoard)
 
   ResetChoice v
     | v < c -> [Model $ model & computerPlayersAmount .~ v]
