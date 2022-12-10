@@ -24,6 +24,16 @@ import Data.Containers.ListUtils
 --              For each possible move of each of these marbles
 --                  Calculate the "Score" for the resulting new positions and update the new positions list
 
+test :: OccupiedBoard
+test = [
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 1, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0, 0, 0],
+                [1, 1, 0, 0, 1, 0, 0]]
+
 -- breadth-first search
 -- when searching, don't really need the whole occupied board, only need to known about the occupied positions
 -- very similar to the board search, but with different a move strategy
@@ -44,15 +54,16 @@ bSearchS i wd np (b:bs) = case evalState (bSearch np wd) b of
 bSearch :: [([Pos], Int)] -> Int -> State ([Pos], Int) [([Pos], Int)]
 bSearch ps wd = do (board, score) <- get
                    let moves = dListForBoard board
-                       ns = mirrorCheck2 $ evalState (flipLists score moves) board
+                       ns = evalState (flipLists score moves) board
                    return (updateList ps ns wd)
 
 -- update the new positions list with better positions of fixed length
+-- a red black tree is also applied here to speed up the process, with hash as key, pose as content
 updateList :: [([Pos], Int)] -> [([Pos], Int)] -> Int -> [([Pos], Int)]
 updateList ps [] _ = ps
 updateList ps (n:ns) bw
   | snd n == 28 = [n] -- if reach the goal then just return the goal state
-  | n `elem` ps = updateList ps ns bw -- skip if already exists
+  | n `elem` ps || mirrorImage n `elem` ps = updateList ps ns bw -- skip if already exists or the mirror image exists
   | length ps < bw = updateList (n:ps) ns bw -- just add if the breadth is not wide enough
   | otherwise = let minScore = minimum (map snd ps)
                     (_, score) = n
@@ -82,12 +93,9 @@ symmetric2 = transpose
 symmetric2_pos :: [Pos] -> [Pos]
 symmetric2_pos = map (\(x, y) -> (6 - y, 6 - x))
 
-mirrorCheck2 :: [([Pos], Int)] -> [([Pos], Int)]
-mirrorCheck2 [] = []
-mirrorCheck2 (x:xs) = let (ps, c) = x
-                          sp = sort $ symmetric2_pos ps
-                      in  if sp `elem` map fst xs then mirrorCheck2 xs
-                          else x:mirrorCheck2 xs
+mirrorImage :: ([Pos], Int) -> ([Pos], Int)
+mirrorImage (ps, c) = let sp = sort $ symmetric2_pos ps
+                      in  (sp, c)
 
 -- implement the list of movements and the resulting board states
 flipLists :: Int -> [(Pos, [Pos])] -> State [Pos] [([Pos], Int)]
@@ -110,10 +118,6 @@ flipLists c (x:xs) = do let (p, ps) = x
 -- only need to consider the positions of the pieces since the board is simpler
 dListForBoard :: [Pos] -> [(Pos, [Pos])]
 dListForBoard ps = evalState (mapM destinationList' ps) ps -- zip the from and to destinations
-
--- find the occupied positions of the board/find the pieces' positions on the board
-findOccupiedPieces :: OccupiedBoard -> [Pos]
-findOccupiedPieces board = sort $ [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
 
 -- combine the two move lists
 destinationList' :: Pos -> State [Pos] (Pos, [Pos])

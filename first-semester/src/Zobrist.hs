@@ -52,6 +52,10 @@ initialState = [
                 [0, 0, 0, 0, 0, 0, 0],
                 [0, 0, 0, 0, 0, 0, 0]]
 
+-- find the occupied positions of the board/find the pieces' positions on the board
+findOccupiedPieces :: OccupiedBoard -> [Pos]
+findOccupiedPieces board = sort $ [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
+
 homeBase :: [Pos] -- 1224456959
 homeBase = [(0,4),(0,5),(1,5),(0,6),(1,6),(2,6)]
 startBase :: [Pos] -- 556115780
@@ -72,6 +76,9 @@ hashEnd = evalState (hashBoardWithPos homeBase) randomBoardState
 --                                let randomState1 = rList !! i
 --                                randomState2 <- hashBoardWithIndex is
 --                                return (randomState1 `myXOR` randomState2)
+
+hash :: OccupiedBoard -> Int
+hash oboard = evalState (hashBoardWithPos (findOccupiedPieces oboard)) randomBoardState
 
 hashBoardWithPos :: [Pos] -> State StateTable Int
 hashBoardWithPos [] = return 0

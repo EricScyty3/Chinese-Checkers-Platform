@@ -27,16 +27,16 @@ import Data.Maybe (isNothing)
 sufficientBoards :: (RBTree OccupiedBoard, Int)
 sufficientBoards = let p = listAllPermutations 6 (replicate 21 0, 0)
                        ps = map (convertToBoardWithSpace 0) p
-                   in  evalState (myTest ps RBLeaf 0) randomBoardState
+                   in  evalState (boardTree ps RBLeaf 0) randomBoardState
 
-myTest :: [OccupiedBoard] -> RBTree OccupiedBoard -> Int -> State StateTable (RBTree OccupiedBoard, Int)
-myTest [] rb c = return (rb, c)
-myTest (b:bs) rb c = do let ones  = findOccupiedPieces b -- avoid mirror images
-                            ones2 = findOccupiedPieces (symmetric1 b)
-                        hash  <- hashBoardWithPos ones
-                        hash2 <- hashBoardWithPos ones2
-                        if isNothing $ hash `par` hash2 `pseq` rbSearch hash2 rb then myTest bs (rbInsert hash b rb) (c+1)
-                        else myTest bs rb c
+boardTree :: [OccupiedBoard] -> RBTree OccupiedBoard -> Int -> State StateTable (RBTree OccupiedBoard, Int)
+boardTree [] rb c = return (rb, c)
+boardTree (b:bs) rb c = do let ones  = findOccupiedPieces b -- avoid mirror images
+                               ones2 = findOccupiedPieces (symmetric1 b)
+                           hash  <- hashBoardWithPos ones
+                           hash2 <- hashBoardWithPos ones2
+                           if isNothing $ hash `par` hash2 `pseq` rbSearch hash2 rb then boardTree bs (rbInsert hash b rb) (c+1)
+                           else boardTree bs rb c
 
 convertToBoardWithSpace :: Int -> [Int] -> OccupiedBoard
 convertToBoardWithSpace 6 _ = [replicate 7 0]
@@ -71,11 +71,14 @@ Besides, according to the mirror states sharing the same shortest paths, these c
 -- transform the board state into hashed value and calculate the corresponding shortest moves need to reach the goal state, 
 -- as well as the minimum moves of its mirror
 
-tableElementsConstruct :: RBTree OccupiedBoard -> [(Int, Int, Int)]
-tableElementsConstruct RBLeaf = []
-tableElementsConstruct (RBNode c b t1 key t2) = let front = tableElementsConstruct t1
-                                                    end   = tableElementsConstruct t2
-                                                in  front `par` end `pseq` front ++ newElement:end
+tableElementsConstruct :: RBTree OccupiedBoard -> State Int [(Int, Int, Int)]
+tableElementsConstruct RBLeaf = return []
+tableElementsConstruct (RBNode c b t1 key t2) = do size <- get
+                                                   if size <= 0 then return []
+                                                   else do put (size - 1)
+                                                           front <- tableElementsConstruct t1 
+                                                           end   <- tableElementsConstruct t2 
+                                                           return (front `par` end `pseq` front ++ newElement:end)
     where
         x = shortestMoves b 200
         y = shortestMoves (symmetric2 b) 200
@@ -86,7 +89,7 @@ tableElementsConstruct (RBNode c b t1 key t2) = let front = tableElementsConstru
 -- record the board state into hashed state as well as the corresponding minimum moves
 tableElementsRecord :: RBTree OccupiedBoard -> IO()
 tableElementsRecord boardTree = do filePath <- openFile "lookup_table.txt" WriteMode
-                                   let tableElements = tableElementsConstruct boardTree
+                                   let tableElements = evalState (tableElementsConstruct boardTree) 5
                                    hPutStr filePath (convertToString tableElements)
                                    hClose filePath
     where
@@ -97,8 +100,12 @@ tableElementsRecord boardTree = do filePath <- openFile "lookup_table.txt" Write
 -- ghc Configuration.hs -O2 -fllvm -outputdir dist
 -- rm -rf dist/
 -- rm Configuration
--- main :: IO ()
--- main = tableElementsRecord (fst sufficientBoards)
+-- [(64981887,19,8),(185890494,23,7),(409872039,18,8),(808272287,18,8),(1323560088,19,6)]
+-- [(64981887,18,8),(185890494,21,7),(409872039,17,8),(808272287,17,8),(1323560088,18,6)]
+-- [(64981887,18,8),(185890494,23,7),(409872039,17,8),(808272287,17,8),(1323560088,18,6)]
+-- [(64981887,19,8),(185890494,23,7),(409872039,18,8),(808272287,18,8),(1323560088,19,6)]
+main :: IO ()
+main = tableElementsRecord (fst sufficientBoards)
 
 -- -- load the stored lookup table data from the file
 -- loadTableElements :: [(Hash, StoredData)]

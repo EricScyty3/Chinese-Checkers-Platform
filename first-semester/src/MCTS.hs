@@ -10,6 +10,8 @@ import Data.List
 import Control.Monad.State
 import Control.Monad.ST
 import Data.STRef
+import Control.Parallel
+import System.Environment (getArgs)
 
 type Trace = [BoardIndex]
 
@@ -62,10 +64,10 @@ selection gametree trace = let childrenList = getChildren gametree
                                else do (pi, bi, pb) <- get
                                        let pn = getPlayers gametree
                                            co = currentPlayerColour pi pn
-                                           wl = map (estimateNode pi) childrenList
+                                           wl = map (averageScore pi) childrenList
                                            sn = childrenList !! randomSelection wl  -- select the child with the maximum estimation 
                                            ntrace = push (getBoardIndex sn) trace
-                                       nboard <- repaintBoard co (getTransform sn)
+                                       nboard <- repaintBoard (getTransform sn)
                                        put (turnBase pn pi, bi, nboard)      -- update the selection record
                                        selection sn ntrace  -- start the next selection at the selected node
 
@@ -82,7 +84,7 @@ expansion n = let cs = getChildren n
                           cs <- mapM (makeLeaf pn) (expandPolicy ts)
                           return (editNodeChildren cs n)
     where
-        expandPolicy xs = take 5 xs
+        expandPolicy xs = xs
 
 -- start with updating the root's state
 mainBackpropagation :: PlayerIndex -> Trace -> GameTree -> GameTree -> GameTree
@@ -108,36 +110,65 @@ backpropagation pi xs ts new = let (bi, ys) = pop xs
                                                                            modifySTRef n (replace li n3)
                                                                            readSTRef n
 
+-- different approaches for estimating the current board state during the playout stage
+-- 1. centroid: board evaluation
+-- 2. movement distance: move evaluation
+-- 3. lookup table search: board evaluation
+
+evaluateBoard :: OccupiedBoard -> Int
+evaluateBoard = centroid -- the larger, the better
+
+reEvaluation :: Int -> (Pos, Pos) -> Int
+reEvaluation score (f, t) = score - centroidPos f + centroidPos t
+
+-- comparing the distance to the home base
+evaluateMove :: (Pos, Pos) -> Double
+evaluateMove ((x1, y1), (x2, y2)) = let dist1 = sqrt (fromIntegral (x1 - x0)^2 + fromIntegral (y1 - y0)^2)
+                                        dist2 = sqrt (fromIntegral (x2 - x0)^2 + fromIntegral (y2 - y0)^2)
+                                    in  dist1 `par` dist2 `pseq` dist1 - dist2 -- the larger, the better
+    where
+        (x0, y0) = (0, 6)
+
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice
 -- get the best heuristic estimated board from all expanded boards 
-playoutPolicy :: Colour -> Int -> [Transform] -> State GameTreeStatus (Board, Int)
-playoutPolicy colour score tfs = do (_, _, b) <- get
-                                    let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
-                                        sl  = map (flipBoardStateEvaluation score) ptfs
-                                    if  randomPercentage 95 then do let cidx = maxIndex sl
-                                                                        cft  = tfs !! cidx
-                                                                        ms   = sl !! cidx
-                                                                    newBoard <- repaintBoard colour cft
-                                                                    return (newBoard, ms)
-                                    else do let cidx = randomMove (length tfs)
-                                                cft  = tfs !! cidx
-                                                ms   = sl !! cidx
-                                            newBoard <- repaintBoard colour cft
-                                            return (newBoard, ms)
-    where
-        flipBoardStateEvaluation :: Int -> (Pos, Pos) -> Int
-        flipBoardStateEvaluation c (f, t) = c - centroidPos f + centroidPos t
+playoutPolicy :: Colour -> [Transform] -> State GameTreeStatus Board
+playoutPolicy colour tfs = do (_, _, b) <- get
+                              let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
+                                  sl  = map evaluateMove ptfs
+                              if  randomPercentage 95 then do let cidx = maxIndex sl
+                                                                  cft  = tfs !! cidx
+                                                              repaintBoard cft
+                              else do let cidx = randomMove (length tfs)
+                                          cft  = tfs !! cidx
+                                      repaintBoard cft
 
 -- game simulation from a certain board state 
-playout :: Int -> State GameTreeStatus PlayerIndex
-playout players = do (pi, bi, b) <- get
-                     let colour = currentPlayerColour pi players
-                     oboard <- projectCOB colour
-                     tfs <- colouredMovesList colour
-                     (nboard, nscore) <- playoutPolicy colour (centroid oboard) tfs
-                     if nscore == 28 then return pi
-                     else do put (turnBase players pi, bi, nboard)
-                             playout players
+playout :: Int -> Int -> State GameTreeStatus PlayerIndex
+playout players turns = do (pi, bi, b) <- get
+                           {-if turns >= 100 then error (show b)
+                           else do-}
+                           let colour = currentPlayerColour pi players
+                           oboard <- projectCOB colour
+                           tfs <- colouredMovesList colour
+                           nboard <- oboard `par` tfs `pseq` playoutPolicy colour tfs
+                           if winStateDetermine colour nboard then return pi
+                           else do put (turnBase players pi, bi, nboard)
+                                   playout players (turns+1)
+
+-- should consider not only the normal wining state
+-- but also the potential block state: 
+-- A state in Chinese Checkers is won for player n if player n’s goal area is filled with pieces, 
+-- and at least one of the pieces belongs to player n.
+winStateDetermine :: Colour -> Board -> Bool
+winStateDetermine c b = let ps = map (reversion c) homeBase
+                            bs = evalState (do mapM getElement ps) b
+                        in  isFull bs && existColour c bs
+
+isFull :: [BoardType] -> Bool
+isFull = foldr ((&&) . isOccupied) True
+
+existColour :: Colour -> [BoardType] -> Bool
+existColour c bs = Just c `elem` map getColour bs
 
 -- the MCTS structure that first selects the node with largest profits, then expands it, 
 -- and play simulations on the expanded node, and finally update the reviewed nodes
@@ -145,24 +176,27 @@ mcts :: GameTree -> State GameTreeStatus GameTree
 mcts tree = do (trace, lastnode) <- selection tree [getBoardIndex tree]
                expandednode <- expansion lastnode
                (ntrace, playnode) <- selection expandednode trace
-               winIdx <- playout (getPlayers playnode)
+               winIdx <- playout (getPlayers playnode) 0
                let newGameTree = mainBackpropagation winIdx ntrace tree expandednode
                return newGameTree
-                          
+
 iterations :: GameTree -> GameTreeStatus -> Int -> GameTree
 iterations tree s 0 = tree
 iterations tree s@(pi, bi, board) counts = let (newTree, (_, nbi, _)) = runState (mcts tree) s
                                            in  iterations newTree (pi, nbi, board) (counts - 1)
 
 -- call multiple times of the four stages in order
-finalSelection :: Board -> PlayerIndex -> Int -> Board 
-finalSelection board playerIndex players = let (root, boardIndex) = makeRoot players board
-                                               tree = iterations root (playerIndex, boardIndex, board) 5 
-                                               ts = getChildren tree
-                                               scores = map (estimateNode playerIndex) ts
-                                               tf = getTransform (ts !! maxIndex scores)
-                                               co = currentPlayerColour playerIndex players
-                                           in  evalState (repaintBoard co tf) (playerIndex, boardIndex, board)
+finalSelection :: Board -> PlayerIndex -> Int -> Int -> Int
+finalSelection board playerIndex players counts = let (root, boardIndex) = makeRoot players board
+                                                      tree = iterations root (playerIndex, boardIndex, board) counts
+                                                      ts = getChildren tree
+                                                      scores = map (averageScore playerIndex) ts
+                                                        --    tf = getTransform (ts !! maxIndex scores)
+                                                        --    co = currentPlayerColour playerIndex players
+                                                  in  maxIndex scores-- evalState (repaintBoard tf) (playerIndex, boardIndex, board)
+
+-- main = do args <- getArgs
+--           print $ finalSelection externalBoard 0 6 ((read . head) args)
 
 
 

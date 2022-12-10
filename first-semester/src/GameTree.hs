@@ -40,13 +40,14 @@ searchNode i t = if null $ searchNode' i t then error "Not exist" else head $ se
                           else concatMap (searchNode' i) (getChildren t)
 
 -- given two pieces, exchange their colours
-repaintBoard :: Colour -> Transform-> State GameTreeStatus Board
-repaintBoard colour (start, end ) = do (_, _, board) <- get
-                                       let resultedBoard = runST $ do n <- newSTRef board
-                                                                      modifySTRef n (changeBoardElement erase start)
-                                                                      modifySTRef n (changeBoardElement (repaint colour) end)
-                                                                      readSTRef n
-                                       return resultedBoard
+repaintBoard :: Transform-> State GameTreeStatus Board
+repaintBoard (start, end ) = do (_, _, board) <- get
+                                let colour = getColour start
+                                    resultedBoard = runST $ do n <- newSTRef board
+                                                               modifySTRef n (changeBoardElement erase start)
+                                                               modifySTRef n (changeBoardElement (safeRepaint colour) end)
+                                                               readSTRef n
+                                return resultedBoard
 
 getNodeType :: GameTree -> String
 getNodeType GRoot {} = "Root"
@@ -144,24 +145,26 @@ maxIndex [] = error "Cannot find the node with the maximum score"
 maxIndex ns = head (elemIndices (maximum ns) ns)
 
 -- determine a node's profits simply based on how well it wins
-estimateNode :: PlayerIndex -> GameTree -> Double
-estimateNode i t = if getVisits t == 0 then 0
+averageScore :: PlayerIndex -> GameTree -> Double
+averageScore i t = if getVisits t == 0 then 0
                    else fromIntegral (getWins t !! i) / fromIntegral (getVisits t)
+
+-- -- determine a node's profits accroding to the UCT formula
+--     estimateNodeUCT :: PlayerIndex -> GameTree -> GameTree -> Double
+--     estimateNodeUCT i p n = averageWins n + constant * exploration n p
+--         where
+--             constant :: Double
+--             constant = 0.5
+
+--             averageWins :: GameTree -> Double
+--             averageWins n = if getVisits n == 0 then 0
+--                             else fromIntegral (getWins n !! i) / fromIntegral (getVisits n)
+
+--             exploration :: GameTree -> GameTree -> Double
+--             exploration n p = if getVisits n == 0 then 0
+--                             else sqrt (log (fromIntegral (getVisits p)) / fromIntegral (getVisits n))
 {-
-    -- determine a node's profits accroding to the UCT formula
-    estimateNodeUCT :: PlayerIndex -> GameTree -> GameTree -> Double
-    estimateNodeUCT i p n = averageWins n + constant * exploration n p
-        where
-            constant :: Double
-            constant = 0.5
-
-            averageWins :: GameTree -> Double
-            averageWins n = if getVisits n == 0 then 0
-                            else fromIntegral (getWins n !! i) / fromIntegral (getVisits n)
-
-            exploration :: GameTree -> GameTree -> Double
-            exploration n p = if getVisits n == 0 then 0
-                            else sqrt (log (fromIntegral (getVisits p)) / fromIntegral (getVisits n))
+    
     -- start with easy estimation
     -- retrieve a score of an internal node for selection, hence, root does not needed
     -- estimateNode :: PlayerIndex -> HistoryTree -> Visits -> GameTree -> Double
