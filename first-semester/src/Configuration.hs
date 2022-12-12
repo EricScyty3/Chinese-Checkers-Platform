@@ -3,16 +3,15 @@ module Configuration where
 import Data.List
 import System.IO
 import Zobrist
-import ShortestPath
+import BFS
 import Board
 import Control.Monad.State
 import Control.Monad.Extra
 import Control.Parallel
 import Control.Monad.ST
 import Data.STRef
-import RBTree (RBTree (RBLeaf, RBNode), rbSearch, rbInsert)
-import Data.Maybe (isNothing)
--- import qualified Data.Map as Map
+import RBTree
+import Data.Maybe
 
 
 -- this version of configuration tends to compute all possible board states (excluding mirror images) rather than deleting some sections
@@ -27,16 +26,16 @@ import Data.Maybe (isNothing)
 sufficientBoards :: (RBTree OccupiedBoard, Int)
 sufficientBoards = let p = listAllPermutations 6 (replicate 21 0, 0)
                        ps = map (convertToBoardWithSpace 0) p
-                   in  evalState (boardTree ps RBLeaf 0) randomBoardState
+                   in  boardTree ps RBLeaf 0
 
-boardTree :: [OccupiedBoard] -> RBTree OccupiedBoard -> Int -> State StateTable (RBTree OccupiedBoard, Int)
-boardTree [] rb c = return (rb, c)
-boardTree (b:bs) rb c = do let ones  = findOccupiedPieces b -- avoid mirror images
+boardTree :: [OccupiedBoard] -> RBTree OccupiedBoard -> Int -> (RBTree OccupiedBoard, Int)
+boardTree [] rb size = (rb, size)
+boardTree (b:bs) rb size = let ones1 = findOccupiedPieces b -- avoid mirror images
                                ones2 = findOccupiedPieces (symmetric1 b)
-                           hash  <- hashBoardWithPos ones
-                           hash2 <- hashBoardWithPos ones2
-                           if isNothing $ hash `par` hash2 `pseq` rbSearch hash2 rb then boardTree bs (rbInsert hash b rb) (c+1)
-                           else boardTree bs rb c
+                               hash1 = hash ones1
+                               hash2 = hash ones2
+                           in  if isNothing $ hash1 `par` hash2 `pseq` rbSearch hash2 rb then boardTree bs (rbInsert hash1 b rb) (size+1)
+                               else boardTree bs rb size
 
 convertToBoardWithSpace :: Int -> [Int] -> OccupiedBoard
 convertToBoardWithSpace 6 _ = [replicate 7 0]
@@ -50,10 +49,10 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. length ls - p
                                                 nls = map (flipBoardState ls) idx
                                                 next = map (+1) idx
                                             in  nls `par` next `pseq` concatMap (listAllPermutations (pieces - 1)) (zip nls next)
-flipBoardState :: [Int] -> Int -> [Int]
-flipBoardState board p = runST $ do n <- newSTRef board
-                                    modifySTRef n (replace p 1)
-                                    readSTRef n
+    where
+        flipBoardState :: [Int] -> Int -> [Int]
+        flipBoardState ls p = replace p 1 ls
+                                    
 {-
 The needed configurations will be shown as folllowing, ignoring the middle-game stage becuase the lookup table is quite weak for this,
 alternative will be apply instead, hence, the size of the table could also be reduced
@@ -71,41 +70,43 @@ Besides, according to the mirror states sharing the same shortest paths, these c
 -- transform the board state into hashed value and calculate the corresponding shortest moves need to reach the goal state, 
 -- as well as the minimum moves of its mirror
 
-tableElementsConstruct :: RBTree OccupiedBoard -> State Int [(Int, Int, Int)]
-tableElementsConstruct RBLeaf = return []
-tableElementsConstruct (RBNode c b t1 key t2) = do size <- get
-                                                   if size <= 0 then return []
-                                                   else do put (size - 1)
-                                                           front <- tableElementsConstruct t1 
-                                                           end   <- tableElementsConstruct t2 
-                                                           return (front `par` end `pseq` front ++ newElement:end)
+tableElementsConstruct :: RBTree OccupiedBoard -> [(Int, Int, Int)]
+tableElementsConstruct RBLeaf = []
+tableElementsConstruct (RBNode _ b t1 key t2) = let left  = tableElementsConstruct t1 
+                                                    right = tableElementsConstruct t2 
+                                                in  left `par` right `pseq` (newElement:left ++ right)
     where
-        x = shortestMoves b 200
+        x = shortestMoves b 800
         y = shortestMoves (symmetric2 b) 200
-        newElement = x `par` y `pseq` (hashState b, x, y)
-        hashState board = evalState (hashBoardWithPos (findOccupiedPieces board)) randomBoardState
+        newElement = x `par` y `pseq` (key, x, y)
 
 
 -- record the board state into hashed state as well as the corresponding minimum moves
-tableElementsRecord :: RBTree OccupiedBoard -> IO()
-tableElementsRecord boardTree = do filePath <- openFile "lookup_table.txt" WriteMode
-                                   let tableElements = evalState (tableElementsConstruct boardTree) 5
-                                   hPutStr filePath (convertToString tableElements)
-                                   hClose filePath
+tableElementsRecord :: RBTree OccupiedBoard  -> String -> IO()
+tableElementsRecord boardTree filePath = do filePath <- openFile filePath WriteMode
+                                            let tableElements = tableElementsConstruct boardTree
+                                            hPutStr filePath (convertToString tableElements)
+                                            hClose filePath
+                                            return ()
     where
         convertToString :: [(Int, Int, Int)] -> String
         convertToString [] = ""
         convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
 
--- ghc Configuration.hs -O2 -fllvm -outputdir dist
+-- ghc -main-is Configuration Configuration.hs -O2 -fllvm -outputdir dist
 -- rm -rf dist/
 -- rm Configuration
--- [(64981887,19,8),(185890494,23,7),(409872039,18,8),(808272287,18,8),(1323560088,19,6)]
--- [(64981887,18,8),(185890494,21,7),(409872039,17,8),(808272287,17,8),(1323560088,18,6)]
--- [(64981887,18,8),(185890494,23,7),(409872039,17,8),(808272287,17,8),(1323560088,18,6)]
--- [(64981887,19,8),(185890494,23,7),(409872039,18,8),(808272287,18,8),(1323560088,19,6)]
+
+-- although the processing speed could not be improved, it coulod be divided into several programs and run at the same time
 main :: IO ()
-main = tableElementsRecord (fst sufficientBoards)
+main = do let (RBNode c b t1 key t2, size) = sufficientBoards
+              newLeftTree = rbInsert key b t1
+          n1 <- tableElementsRecord newLeftTree "lookup_table1.txt"
+          n2 <- tableElementsRecord t2 "lookup_table2.txt"
+          n1 `par` n2 `pseq` print "Done"
+
+
+                         
 
 -- -- load the stored lookup table data from the file
 -- loadTableElements :: [(Hash, StoredData)]

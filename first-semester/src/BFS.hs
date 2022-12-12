@@ -1,16 +1,17 @@
-module ShortestPath where
+module BFS where
+
 import Board
 import Zobrist
 import Data.List
-import Data.Maybe
-
-
 import Control.Monad.ST
 import Data.STRef
 import Control.Monad.State
 import Control.Monad.Extra
 import Control.Parallel
 import Data.Containers.ListUtils
+
+
+
 
 -- basically will need a breadth-first search for preventing duplicate moves, it is known that 28 is the highest value
 -- each level represents a move that is done only if certain moves were done
@@ -24,21 +25,32 @@ import Data.Containers.ListUtils
 --              For each possible move of each of these marbles
 --                  Calculate the "Score" for the resulting new positions and update the new positions list
 
-test :: OccupiedBoard
-test = [
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 1, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [1, 0, 0, 0, 0, 0, 0],
-                [1, 0, 0, 0, 0, 0, 0],
-                [1, 1, 0, 0, 1, 0, 0]]
-
+testBoard :: OccupiedBoard
+testBoard = [
+        -- [0,1,0,1,1,0,1],
+        -- [0,0,0,0,0,0,0],
+        -- [0,0,0,0,0,0,0],
+        -- [0,0,0,0,0,0,1],
+        -- [0,0,0,0,0,0,0],
+        -- [0,0,0,0,0,0,1],
+        -- [0,0,0,0,0,0,0]
+        [0,1,0,0,1,1,0],
+        [0,0,0,1,0,0,0],
+        [0,0,0,0,0,0,1],
+        [0,0,0,0,0,0,1],
+        [0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0]
+    ]
+-- additional consideration for more accurate estimate
 -- breadth-first search
 -- when searching, don't really need the whole occupied board, only need to known about the occupied positions
 -- very similar to the board search, but with different a move strategy
 shortestMoves :: OccupiedBoard -> Int -> Int
 shortestMoves b wd = if centroid b == 28 then 0 else bSearchS 0 wd [(findOccupiedPieces b, centroid b)] []
+
+
+
 -- for a list of board states, process each new state for each state 
 -- update the new positions based on the old one
 -- the arguments including the level, breadth width, the new found states, and the currently explored states
@@ -49,30 +61,34 @@ bSearchS i wd np [] = bSearchS (i+1) wd [] np -- start searching at the next lev
 bSearchS i wd np (b:bs) = case evalState (bSearch np wd) b of
                              [(_, 28)] -> i  -- indicate that the goal state is reached, return the level
                              ls -> bSearchS i wd ls bs -- otherwise, keep searching with the new found states
+
+
 -- for each pieces on a board, return the resulting board states
 -- return the list containing the new found states and previously accumulated states
 bSearch :: [([Pos], Int)] -> Int -> State ([Pos], Int) [([Pos], Int)]
 bSearch ps wd = do (board, score) <- get
                    let moves = dListForBoard board
-                       ns = evalState (flipLists score moves) board
-                   return (updateList ps ns wd)
+                       ns = evalState (flipLists score moves) board 
+                       newPositionsList = runST $ do n <- newSTRef ps
+                                                     modifySTRef n (updateList ns wd)
+                                                     readSTRef n
+                   return newPositionsList
 
--- update the new positions list with better positions of fixed length
--- a red black tree is also applied here to speed up the process, with hash as key, pose as content
-updateList :: [([Pos], Int)] -> [([Pos], Int)] -> Int -> [([Pos], Int)]
-updateList ps [] _ = ps
-updateList ps (n:ns) bw
+-- since A star is not as accurate as expected, try to improve with different data structure here
+updateList :: [([Pos], Int)] -> Int -> [([Pos], Int)] -> [([Pos], Int)]
+updateList [] _ ps = ps
+updateList (n:ns) wb ps
   | snd n == 28 = [n] -- if reach the goal then just return the goal state
-  | n `elem` ps || mirrorImage n `elem` ps = updateList ps ns bw -- skip if already exists or the mirror image exists
-  | length ps < bw = updateList (n:ps) ns bw -- just add if the breadth is not wide enough
-  | otherwise = let minScore = minimum (map snd ps)
+  | n `elem` ps = updateList ns wb ps -- skip if already exists, the mirror image could be added due to the large search range
+  | length ps < wb = updateList ns wb (mySort (n:ps)) -- just add if the search wide is not large as expected
+  | otherwise = let minScore = (snd . head) ps -- the minimum item is the first item of the list
                     (_, score) = n
-                in  if score > minScore then let idx = head (elemIndices minScore (map snd ps))
-                                                 newList = runST $ do ls <- newSTRef ps
-                                                                      modifySTRef ls (replace idx n)
-                                                                      readSTRef ls
-                                             in  updateList newList ns bw -- replace the element with the current board state
-                    else updateList ps ns bw -- if the board state is not better then skip 
+                in  if score > minScore then updateList ns wb (mySort (n:tail ps)) -- replace the element with the current board state
+                    else updateList ns wb ps -- if the board state is not better then skip 
+
+-- sort the list based on score, such that every time the minimum value is the head
+mySort :: [([Pos], Int)] -> [([Pos], Int)]
+mySort = sortBy (\(_, x) (_, y) -> compare x y)
 
 -- to tend the movement from right-top to left-bottom, the centroid of the position can be set as: y-x
 -- such that the the closer to the homebase, the larger the centroid is
@@ -97,6 +113,7 @@ mirrorImage :: ([Pos], Int) -> ([Pos], Int)
 mirrorImage (ps, c) = let sp = sort $ symmetric2_pos ps
                       in  (sp, c)
 
+
 -- implement the list of movements and the resulting board states
 flipLists :: Int -> [(Pos, [Pos])] -> State [Pos] [([Pos], Int)]
 flipLists _ [] = return []
@@ -110,9 +127,7 @@ flipLists c (x:xs) = do let (p, ps) = x
         flipBoardState c f t = do ps <- get
                                   case elemIndex f ps of
                                     Nothing -> error "Cannot find this position in the occupied board"
-                                    Just i  -> do let newps = runST $ do n <- newSTRef ps
-                                                                         modifySTRef n (replace i t)
-                                                                         readSTRef n
+                                    Just i  -> do let newps = replace i t ps
                                                   return (sort newps, c - centroidPos f + centroidPos t)
 
 -- only need to consider the positions of the pieces since the board is simpler
@@ -161,3 +176,4 @@ determineValidJump' pos f = do if not (testValidPos size size fp) ||
         fp = f pos
         fp2 = (f . f) pos
         size = occupiedBoardSize
+

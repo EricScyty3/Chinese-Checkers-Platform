@@ -43,11 +43,8 @@ searchNode i t = if null $ searchNode' i t then error "Not exist" else head $ se
 repaintBoard :: Transform-> State GameTreeStatus Board
 repaintBoard (start, end ) = do (_, _, board) <- get
                                 let colour = getColour start
-                                    resultedBoard = runST $ do n <- newSTRef board
-                                                               modifySTRef n (changeBoardElement erase start)
-                                                               modifySTRef n (changeBoardElement (safeRepaint colour) end)
-                                                               readSTRef n
-                                return resultedBoard
+                                    n1 = changeBoardElement erase start board
+                                return (changeBoardElement (safeRepaint colour) end n1)
 
 getNodeType :: GameTree -> String
 getNodeType GRoot {} = "Root"
@@ -89,13 +86,12 @@ projectCOB :: Colour -> State GameTreeStatus OccupiedBoard
 projectCOB colour = do (_, _, board) <- get
                        let ps = findPiecesWithColour colour board
                            cps = map (projection colour . getPos) ps
-                       return (fillBoard cps empty)
-    where
-        fillBoard [] b = b
-        fillBoard (p:ps) b = let nb = runST $ do n <- newSTRef b
-                                                 modifySTRef n (replace2 p 1)
-                                                 readSTRef n
-                             in  fillBoard ps nb
+                       return (runST $ do n <- newSTRef empty
+                                          modifySTRef n (fillBoard cps)
+                                          readSTRef n)
+
+fillBoard :: [Pos] -> OccupiedBoard -> OccupiedBoard
+fillBoard ps b = foldl (\ b p -> replace2 p 1 b) b ps
 
 -- provide the available pieces and their movement pairs
 -- work as board expansion
@@ -121,17 +117,11 @@ currentPlayerColour idx number
 
 -- edit a certain win for a node
 editNodeValue :: PlayerIndex -> GameTree -> GameTree
-editNodeValue pi (GRoot i b ws ts) = let new = runST $ do n <- newSTRef ws
-                                                          modifySTRef n (replace pi ((ws!!pi)+1))
-                                                          readSTRef n
+editNodeValue pi (GRoot i b ws ts) = let new = replace pi ((ws!!pi)+1) ws
                                      in  GRoot i b new ts
-editNodeValue pi (GLeaf i ft ws) = let new = runST $ do n <- newSTRef ws
-                                                        modifySTRef n (replace pi ((ws!!pi)+1))
-                                                        readSTRef n
+editNodeValue pi (GLeaf i ft ws) = let new = replace pi ((ws!!pi)+1) ws
                                    in  GLeaf i ft new
-editNodeValue pi (GNode i ft ws ts) = let new = runST $ do n <- newSTRef ws
-                                                           modifySTRef n (replace pi ((ws!!pi)+1))
-                                                           readSTRef n
+editNodeValue pi (GNode i ft ws ts) = let new = replace pi ((ws!!pi)+1) ws
                                       in  GNode i ft new ts
 -- change the children node list for a node
 editNodeChildren :: [GameTree] -> GameTree -> GameTree

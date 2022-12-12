@@ -19,12 +19,12 @@ extra-source-files:
 executable app
   main-is: Main.hs
   other-modules:
+      BFS
       Board
       Configuration
       GameTree
       MCTS
       RBTree
-      ShortestPath
       Zobrist
       Paths_monomer_starter
   hs-source-dirs:

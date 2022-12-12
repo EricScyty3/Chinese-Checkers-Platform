@@ -77,8 +77,8 @@ hashEnd = evalState (hashBoardWithPos homeBase) randomBoardState
 --                                randomState2 <- hashBoardWithIndex is
 --                                return (randomState1 `myXOR` randomState2)
 
-hash :: OccupiedBoard -> Int
-hash oboard = evalState (hashBoardWithPos (findOccupiedPieces oboard)) randomBoardState
+hash :: [Pos] -> Int
+hash ps = evalState (hashBoardWithPos ps) randomBoardState
 
 hashBoardWithPos :: [Pos] -> State StateTable Int
 hashBoardWithPos [] = return 0
@@ -86,8 +86,11 @@ hashBoardWithPos (p:ps) = do randomState1 <- getElement p
                              randomState2 <- hashBoardWithPos ps
                              return $ randomState1 `par` randomState2 `pseq` (randomState1 `myXOR` randomState2)
 
+changeHash :: Pos -> Pos -> Int -> Int
+changeHash x y h = evalState (hashChange x y h) randomBoardState
+
 -- after the first construct, each changed hash does not need to recalculate, just applys the two changed points
-hashChange :: (Int, Int) -> (Int, Int) -> Int -> State StateTable Int
+hashChange :: Pos -> Pos -> Int -> State StateTable Int
 hashChange fp tp xv = do f <- getElement fp
                          t <- getElement tp
                          return $ f `par` t `pseq` foldr myXOR 0 [xv, f, t]

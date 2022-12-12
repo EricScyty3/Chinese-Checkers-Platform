@@ -126,10 +126,12 @@ externalBoard = [
 getElement :: Pos -> State [[a]] a
 getElement (x, y) = do n <- get
                        return ((n !! y) !! x)
+
 -- replace version of 2d list
 replace2 :: Pos -> a -> [[a]] -> [[a]]
 replace2 (x, y) new ls = let row = replace x new (ls !! y)
                          in  replace y row ls
+
 -- repalce a content with a new one in a list
 replace :: Int -> a -> [a] -> [a]
 replace idx new ls = front ++ [new] ++ end
@@ -165,17 +167,14 @@ eraseBoard colourList = runST $ do n <- newSTRef externalBoard
 -- given two pieces, exchange their colours
 repaintPath :: Board -> BoardType -> BoardType -> Board
 repaintPath board start end  =  let colour = getColour start
-                                in  runST $ do n <- newSTRef board
-                                               modifySTRef n (changeBoardElement erase start)
-                                               modifySTRef n (changeBoardElement (safeRepaint colour) end)
-                                               readSTRef n
+                                    n1 = changeBoardElement erase start board
+                                in  changeBoardElement (safeRepaint colour) end n1
 
 destinationList :: BoardType -> State Board [BoardType]
 destinationList btype = do case getColour btype of
                             Nothing -> return []
                             Just c  -> do adjacentMoves <- findAvaliableNeighbors btype
                                           chainedMoves  <- recursiveSearch [] btype
-                                          -- apply parallel
                                           let movesList = adjacentMoves `par` chainedMoves `pseq` nub (adjacentMoves ++ chainedMoves)
                                           return (filter (testCorners c) movesList)
 

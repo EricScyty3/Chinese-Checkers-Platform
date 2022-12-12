@@ -4,7 +4,7 @@ module RBTree where
 type Key = Int
 -- the score of the represented board state for lookup table or the history heuristic
 -- the colour of the node, either red or black 
-data TColour = Red | Black deriving (Eq, Show) 
+data TColour = Red | Black deriving (Eq, Show)
 -- the Red Black tree contains the colour of node, the node value, left subtree, node index, right rubtree  
 data RBTree a = RBLeaf | RBNode TColour a (RBTree a) Key (RBTree a) deriving (Eq, Show)
 
@@ -14,9 +14,12 @@ emptyTree = RBLeaf
 -- creates a Reb Black tree from a provided list where the elements are unique 
 -- simply insert all the elements one by one from an empty tree
 -- different order of the list will make different tree
-createTree :: [(Key, a)] -> RBTree a
-createTree [] = RBLeaf
-createTree ((k, n):xs) = rbInsert k n (createTree xs)
+insertionWithItems :: RBTree a -> [(Key, a)] -> RBTree a
+insertionWithItems tree [] = tree
+insertionWithItems tree ((k, n):xs) = rbInsert k n (insertionWithItems tree xs)
+
+insertionWithKeys :: RBTree () -> [Key] -> RBTree ()
+insertionWithKeys = foldr (`rbInsert` ())
 
 -- repaints a tree's root node and returns 
 repaint :: TColour -> RBTree a -> RBTree a

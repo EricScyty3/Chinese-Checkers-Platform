@@ -1,7 +1,7 @@
 module MCTS where
 
 import GameTree
-import ShortestPath
+import BFS
 import Board
 import GHC.IO
 import System.Random
@@ -11,7 +11,7 @@ import Control.Monad.State
 import Control.Monad.ST
 import Data.STRef
 import Control.Parallel
-import System.Environment (getArgs)
+import System.Environment
 
 type Trace = [BoardIndex]
 
@@ -100,15 +100,11 @@ backpropagation pi xs ts new = let (bi, ys) = pop xs
                                                        then let n1 = editNodeValue pi new
                                                                 n2 = backpropagation pi ys (getChildren n1) new
                                                                 n3 = editNodeChildren n2 n1
-                                                            in  runST $ do n <- newSTRef ts
-                                                                           modifySTRef n (replace li n3)
-                                                                           readSTRef n
+                                                            in  replace li n3 ts
                                                        else let n1 = editNodeValue pi ln
                                                                 n2 = backpropagation pi ys (getChildren n1) new
                                                                 n3 = editNodeChildren n2 n1
-                                                            in  runST $ do n <- newSTRef ts
-                                                                           modifySTRef n (replace li n3)
-                                                                           readSTRef n
+                                                            in  replace li n3 ts
 
 -- different approaches for estimating the current board state during the playout stage
 -- 1. centroid: board evaluation
