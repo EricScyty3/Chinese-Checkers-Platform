@@ -139,20 +139,17 @@ averageScore :: PlayerIndex -> GameTree -> Double
 averageScore i t = if getVisits t == 0 then 0
                    else fromIntegral (getWins t !! i) / fromIntegral (getVisits t)
 
--- -- determine a node's profits accroding to the UCT formula
---     estimateNodeUCT :: PlayerIndex -> GameTree -> GameTree -> Double
---     estimateNodeUCT i p n = averageWins n + constant * exploration n p
---         where
---             constant :: Double
---             constant = 0.5
+-- determine a node's profits accroding to the UCT formula
+-- consider the total visits of the parent node as well as the child node additionally
+estimateNodeUCT :: PlayerIndex -> Int -> GameTree -> Double
+estimateNodeUCT i parentVisits node = averageScore i node + constant * exploration parentVisits (getVisits node)
+    where
+        constant :: Double
+        constant = 0.5
 
---             averageWins :: GameTree -> Double
---             averageWins n = if getVisits n == 0 then 0
---                             else fromIntegral (getWins n !! i) / fromIntegral (getVisits n)
-
---             exploration :: GameTree -> GameTree -> Double
---             exploration n p = if getVisits n == 0 then 0
---                             else sqrt (log (fromIntegral (getVisits p)) / fromIntegral (getVisits n))
+        exploration :: Int -> Int -> Double
+        exploration parentVisits visits = if getVisits node == 0 then 0
+                                        else sqrt (log (fromIntegral parentVisits) / fromIntegral (getVisits node))
 {-
     
     -- start with easy estimation

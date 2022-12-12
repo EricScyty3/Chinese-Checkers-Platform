@@ -63,8 +63,9 @@ selection gametree trace = let childrenList = getChildren gametree
                            in  if null childrenList then return (trace, gametree) -- return the next node and player index for the expansion
                                else do (pi, bi, pb) <- get
                                        let pn = getPlayers gametree
-                                           co = currentPlayerColour pi pn
-                                           wl = map (averageScore pi) childrenList
+                                           -- co = currentPlayerColour pi pn
+                                           pv = getVisits gametree
+                                           wl = map (estimateNodeUCT pi pv) childrenList
                                            sn = childrenList !! randomSelection wl  -- select the child with the maximum estimation 
                                            ntrace = push (getBoardIndex sn) trace
                                        nboard <- repaintBoard (getTransform sn)
@@ -176,6 +177,7 @@ mcts tree = do (trace, lastnode) <- selection tree [getBoardIndex tree]
                let newGameTree = mainBackpropagation winIdx ntrace tree expandednode
                return newGameTree
 
+
 iterations :: GameTree -> GameTreeStatus -> Int -> GameTree
 iterations tree s 0 = tree
 iterations tree s@(pi, bi, board) counts = let (newTree, (_, nbi, _)) = runState (mcts tree) s
@@ -187,9 +189,8 @@ finalSelection board playerIndex players counts = let (root, boardIndex) = makeR
                                                       tree = iterations root (playerIndex, boardIndex, board) counts
                                                       ts = getChildren tree
                                                       scores = map (averageScore playerIndex) ts
-                                                        --    tf = getTransform (ts !! maxIndex scores)
-                                                        --    co = currentPlayerColour playerIndex players
-                                                  in  maxIndex scores-- evalState (repaintBoard tf) (playerIndex, boardIndex, board)
+                                                      tf = getTransform (ts !! maxIndex scores)
+                                                  in  maxIndex scores --printEoard $ evalState (repaintBoard tf) (playerIndex, boardIndex, board)
 
 -- main = do args <- getArgs
 --           print $ finalSelection externalBoard 0 6 ((read . head) args)
