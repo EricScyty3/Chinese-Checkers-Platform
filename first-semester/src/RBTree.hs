@@ -81,6 +81,7 @@ rbInsert h n tree = repaint Black (ins h n tree) -- recursively calling balance 
             -- hence, the smaller value could be replaced with the larger one
             -- but each hashed value is unique, so there is no need to handle this situation
 
+
 -- rebalances a tree when the black-height of the left side is one less than the right side
 -- parameters: colour of the root node, left subtree, root index, root value, right subtree
 -- returns a weakly Red Black tree

@@ -6,6 +6,8 @@ import Board
 import Control.Monad.State
 import Control.Monad.ST
 import Data.STRef
+import RBTree ( RBTree(..), Key, rbInsert, rbSearch )
+import Control.Parallel
 
 type Wins = Int
 type PlayerIndex = Int
@@ -22,29 +24,40 @@ data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
                 GNode BoardIndex Transform [Wins] [GameTree]
                 deriving (Eq, Show)
 
-type GameTreeStatus = (PlayerIndex, BoardIndex, Board)
--- contains the layer's player index for choosing the next move, board index accumulated so far, and the parent board state
+type HistoryTrace = RBTree [Wins]
+type GameTreeStatus = (PlayerIndex, BoardIndex, Board, Int, HistoryTrace)
+-- contains the layer's player index for choosing the next move, board index accumulated so far, and the parent board state, 
+-- as well as the total players amount
 
 printGameTree :: GameTree -> IO ()
-printGameTree gt = do -- printEoard (getBoard gt)
-                      putStrLn ("Index: " ++ show (getBoardIndex gt))
+printGameTree gt = do putStrLn ("Index: " ++ show (getBoardIndex gt))
                       putStrLn ("Tyep: " ++ getNodeType gt)
                       putStrLn ("Win List: " ++ show(getWins gt))
                       putStrLn ("Children: " ++ show(length $ getChildren gt))
 
-searchNode :: BoardIndex -> GameTree -> GameTree
-searchNode i t = if null $ searchNode' i t then error "Not exist" else head $ searchNode' i t
+searchNode :: BoardIndex -> GameTree -> (GameTree, Board)
+searchNode i t = let ls = searchNode' i (getRootBoard t) t
+                 in  if null ls then error "Not exist" else head ls
     where
-        searchNode' :: BoardIndex -> GameTree -> [GameTree]
-        searchNode' i t = if getBoardIndex t == i then [t]
-                          else concatMap (searchNode' i) (getChildren t)
+        -- start from root 
+        searchNode' :: BoardIndex -> Board -> GameTree -> [(GameTree, Board)]
+
+        searchNode' index board r@GRoot {}
+            | getBoardIndex r == index = [(r, board)]
+            | null $ getChildren r = []
+            | otherwise = concatMap (searchNode' index board) (getChildren r)
+
+        searchNode' index board tree = let newBoard = evalState (repaintBoard $ getTransform tree) (0, 0, board, 0, RBLeaf)
+                                       in  if getBoardIndex tree == index then [(tree, newBoard)]
+                                           else if null $ getChildren tree then []
+                                                else concatMap (searchNode' index newBoard) (getChildren tree)
 
 -- given two pieces, exchange their colours
 repaintBoard :: Transform-> State GameTreeStatus Board
-repaintBoard (start, end ) = do (_, _, board) <- get
-                                let colour = getColour start
-                                    n1 = changeBoardElement erase start board
-                                return (changeBoardElement (safeRepaint colour) end n1)
+repaintBoard (start, end) = do (_, _, board, _, _) <- get
+                               let colour = getColour start
+                                   n1 = changeBoardElement erase start board
+                               return (n1 `par` colour `pseq` changeBoardElement (safeRepaint colour) end n1)
 
 getNodeType :: GameTree -> String
 getNodeType GRoot {} = "Root"
@@ -73,8 +86,8 @@ getWins (GLeaf _ _ ws) = ws
 getVisits :: GameTree -> Int
 getVisits gt = sum (getWins gt) -- the sum of the win counts equals to the total visits of that node
 
-getPlayers :: GameTree -> Int
-getPlayers gt = length (getWins gt) -- the length of win list equals to the total players number
+-- getPlayers :: GameTree -> Int
+-- getPlayers gt = length (getWins gt) -- the length of win list equals to the total players number
 
 getTransform :: GameTree -> Transform
 getTransform (GLeaf _ ft _) = ft
@@ -83,20 +96,20 @@ getTransform GRoot {} = (U(-1, -1), U(-1, -1))
 
 -- transform the display board into occupied board based on piece's colour 
 projectCOB :: Colour -> State GameTreeStatus OccupiedBoard
-projectCOB colour = do (_, _, board) <- get
+projectCOB colour = do (_, _, board, _, _) <- get
                        let ps = findPiecesWithColour colour board
                            cps = map (projection colour . getPos) ps
                        return (runST $ do n <- newSTRef empty
                                           modifySTRef n (fillBoard cps)
                                           readSTRef n)
-
-fillBoard :: [Pos] -> OccupiedBoard -> OccupiedBoard
-fillBoard ps b = foldl (\ b p -> replace2 p 1 b) b ps
+    where
+        fillBoard :: [Pos] -> OccupiedBoard -> OccupiedBoard
+        fillBoard ps b = foldl (\ b p -> replace2 p 1 b) b ps
 
 -- provide the available pieces and their movement pairs
 -- work as board expansion
 colouredMovesList :: Colour -> State GameTreeStatus [Transform]
-colouredMovesList colour = do (_, _, board) <- get
+colouredMovesList colour = do (_, _, board, _, _) <- get
                               let bs = findPiecesWithColour colour board
                                   ds = evalState (do mapM destinationList bs) board
                               return (pairArrange bs ds)
@@ -141,15 +154,52 @@ averageScore i t = if getVisits t == 0 then 0
 
 -- determine a node's profits accroding to the UCT formula
 -- consider the total visits of the parent node as well as the child node additionally
-estimateNodeUCT :: PlayerIndex -> Int -> GameTree -> Double
-estimateNodeUCT i parentVisits node = averageScore i node + constant * exploration parentVisits (getVisits node)
+estimateNodeUCT :: Int -> GameTree -> Double
+estimateNodeUCT parentVisits node = if getVisits node == 0 then 0
+                                    else constant * sqrt (log (fromIntegral parentVisits) / fromIntegral (getVisits node))
     where
         constant :: Double
         constant = 0.5
+-- additionally consider the similar move not only from parent nodes but the history trace
+-- the average score of a certain move being performed
+-- Progressive History 
+extendHT :: (Pos, Pos) -> [Wins] -> HistoryTrace -> HistoryTrace
+extendHT (x, y) ws ht = let h = hash [x, y]
+                        in  rbInsert h ws ht
 
-        exploration :: Int -> Int -> Double
-        exploration parentVisits visits = if getVisits node == 0 then 0
-                                        else sqrt (log (fromIntegral parentVisits) / fromIntegral (getVisits node))
+editHT :: (Pos, Pos) -> PlayerIndex -> HistoryTrace -> HistoryTrace
+editHT (x, y) pi ht = let h = hash [x, y]
+                      in  htEdit h pi ht
+
+htEdit :: Key -> PlayerIndex -> HistoryTrace -> HistoryTrace
+htEdit _ _ RBLeaf = RBLeaf
+htEdit h pi (RBNode c ws t1 x t2)
+    | h > x = htEdit h pi t2
+    | h < x = htEdit h pi t1
+    | otherwise = let new = replace pi ((ws!!pi)+1) ws
+                  in  RBNode c new t1 x t2
+
+estimateNodePH :: PlayerIndex -> HistoryTrace -> GameTree -> Double
+estimateNodePH i ht node = let (from, to) = getTransform node
+                           in  case getColour from of
+                                Nothing -> error "Cannot determine current player's colour"
+                                Just colour -> let pf = projection colour (getPos from)
+                                                   pt = projection colour (getPos to)
+                                               in  case pf `par` pt `pseq` rbSearch (hash [pf, pt]) ht of
+                                                        Nothing -> 0
+                                                        Just wins -> fromIntegral (wins !! i) / fromIntegral (sum wins)
+                                                            * constant / fromIntegral (getVisits node - (getWins node !! i) + 1)
+    where
+        constant :: Double
+        constant = 5
+
+estimateNode :: PlayerIndex -> Int -> HistoryTrace -> GameTree -> Double
+estimateNode pi pv ht node = let mean = averageScore pi node
+                                 uct  = estimateNodeUCT pv node
+                                 ph  = estimateNodePH pi ht node
+                             in  uct `par` ph `pseq` mean + uct + ph
+
+
 {-
     
     -- start with easy estimation
