@@ -86,19 +86,19 @@ expansion n = let cs = getChildren n
         expandPolicy xs = xs
 
 -- start with updating the root's state
-mainBackpropagation :: PlayerIndex -> Trace -> GameTree -> GameTree -> HistoryTrace -> (GameTree, HistoryTrace)
-mainBackpropagation pi xs r new ht = let (ts, nht) = runState (backpropagation pi xs [r] new) ht
-                                     in  (head ts, nht)
+-- mainBackpropagation :: PlayerIndex -> Trace -> GameTree -> GameTree -> HistoryTrace -> (GameTree, HistoryTrace)
+-- mainBackpropagation pi xs r new ht = let (ts, nht) = runState (backpropagation pi xs [r] new) ht
+--                                      in  (head ts, nht)
+
 -- update the game tree stored wins for each player, as well as replacing the new expanded node
-backpropagation :: PlayerIndex -> Trace -> [GameTree] -> GameTree -> State HistoryTrace [GameTree]
+backpropagation :: PlayerIndex -> Trace -> [GameTree] -> GameTree -> State GameTreeStatus [GameTree]
 backpropagation _ [] ts _ = return ts
 backpropagation pi xs ts new = let (bi, ys) = pop xs
                                in  case elemIndex bi (map getBoardIndex ts) of
                                             Nothing -> error "Trace incorrect"
                                             Just li -> let ln = ts !! li
-                                                           (pos1, pos2) = (\(x, y) -> (getPos x, getPos y)) (getTransform new)
-                                                       in  do ht <- get
-                                                              put (htEdit (hash [pos1, pos2]) pi ht)
+                                                       in  do (pi, bi, b, pn, ht) <- get
+                                                              put (pi, bi, b, pn, editHT ln pi pn ht)
                                                               if getBoardIndex ln == getBoardIndex new
                                                               then do let n1 = editNodeValue pi new
                                                                       n2 <- backpropagation pi ys (getChildren n1) new
@@ -175,18 +175,28 @@ mcts tree = do (trace, lastnode) <- selection tree [getBoardIndex tree]
                expandednode <- expansion lastnode
                (ntrace, playnode) <- selection expandednode trace
                winIdx <- playout 0
-               (pi, bi, b, pn, ht) <- get
-               let (newGameTree, newHistoryTrace) = mainBackpropagation winIdx ntrace tree expandednode ht
-               put (pi, bi, b, pn, newHistoryTrace)
-               return newGameTree
+               newTree <- backpropagation winIdx ntrace [tree] expandednode
+               return (head newTree)
 
-iterations :: GameTree -> GameTreeStatus -> Int -> (GameTree, BoardIndex)
-iterations tree (_, bi, _, _, _) 0 = (tree, bi)
+iterations :: GameTree -> GameTreeStatus -> Int -> (GameTree, BoardIndex, HistoryTrace)
+iterations tree s@(_, bi, _, _, ht) 0 = (tree, bi, ht)
 iterations tree s@(pi, _, board, pn, _) counts = let (newTree, (_, nbi, _, _, nht)) = runState (mcts tree) s
                                                  in  iterations newTree (pi, nbi, board, pn, nht) (counts - 1)
 
--- call multiple times of the four stages in order
--- finalSelection :: Board -> PlayerIndex -> Int -> Int -> Int
+-- the tree could be re-used for saving computation 
+finalSelection :: GameTree -> GameTreeStatus -> Int -> (GameTree, BoardIndex, HistoryTrace)
+finalSelection tree s@(pi, _, board, _, _) counts = let (ntree, nboardidx, nht) = iterations tree s counts
+                                                        scores = map (averageScore pi) (getChildren ntree)
+                                                        chosenNode = getChildren ntree !! maxIndex scores
+                                                        newRoot = GRoot (getBoardIndex chosenNode) 
+                                                                        (evalState (repaintBoard (getTransform chosenNode)) s) 
+                                                                        (getWins chosenNode) 
+                                                                        (getChildren chosenNode)
+                                                    in  (newRoot, nboardidx, nht)
+
+
+-- call multiple times of the four stages in order and return the 
+-- finalSelection :: Board -> PlayerIndex -> Int -> Int -> 
 -- finalSelection board playerIndex players counts = let (root, boardIndex) = makeRoot players board
 --                                                       (tree, _) = iterations root (playerIndex, boardIndex, board, players) counts
 --                                                       ts = getChildren tree

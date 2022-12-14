@@ -75,11 +75,8 @@ rbInsert h n tree = repaint Black (ins h n tree) -- recursively calling balance 
         ins h n t@(RBNode c v t1 r t2)
             | h < r = balance c (ins h n t1) r v t2
             | h > r = balance c t1 r v (ins h n t2)
-            | otherwise = t
-            -- additional function could be added to check if the inserted value is better
-            -- since the stored value of the lookup table will be 28 - m, the less moves resulting the larger value
-            -- hence, the smaller value could be replaced with the larger one
-            -- but each hashed value is unique, so there is no need to handle this situation
+            | otherwise = RBNode c n t1 r t2 -- t
+            -- would just replace the old stored value when meeting the same index
 
 
 -- rebalances a tree when the black-height of the left side is one less than the right side

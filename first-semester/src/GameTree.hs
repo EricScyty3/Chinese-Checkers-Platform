@@ -64,6 +64,10 @@ getNodeType GRoot {} = "Root"
 getNodeType GNode {} = "Node"
 getNodeType GLeaf {} = "Leaf"
 
+isRoot :: GameTree -> Bool
+isRoot GRoot {} = True
+isRoot _ = False
+
 getBoardIndex :: GameTree -> BoardIndex
 getBoardIndex (GRoot idx _ _ _) = idx
 getBoardIndex (GNode idx _ _ _) = idx
@@ -86,8 +90,8 @@ getWins (GLeaf _ _ ws) = ws
 getVisits :: GameTree -> Int
 getVisits gt = sum (getWins gt) -- the sum of the win counts equals to the total visits of that node
 
--- getPlayers :: GameTree -> Int
--- getPlayers gt = length (getWins gt) -- the length of win list equals to the total players number
+getPlayers :: GameTree -> Int
+getPlayers gt = length (getWins gt) -- the length of win list equals to the total players number
 
 getTransform :: GameTree -> Transform
 getTransform (GLeaf _ ft _) = ft
@@ -163,32 +167,33 @@ estimateNodeUCT parentVisits node = if getVisits node == 0 then 0
 -- additionally consider the similar move not only from parent nodes but the history trace
 -- the average score of a certain move being performed
 -- Progressive History 
-extendHT :: (Pos, Pos) -> [Wins] -> HistoryTrace -> HistoryTrace
-extendHT (x, y) ws ht = let h = hash [x, y]
-                        in  rbInsert h ws ht
+editHT :: GameTree -> PlayerIndex -> Int -> HistoryTrace -> HistoryTrace
+editHT node pi pn ht = if isRoot node then ht
+                       else let (from, to) = getTransform node
+                            in  case getColour from of
+                                    Nothing -> error "Edit: cannot determine current player's colour"
+                                    Just colour -> let pf = projection colour (getPos from)
+                                                       pt = projection colour (getPos to) 
+                                                       h = hash [pf, pt]
+                                                   in  case rbSearch h ht of
+                                                            Nothing -> rbInsert h initWins ht
+                                                            Just ws -> rbInsert h (replace pi ((ws!!pi)+1) ws) ht  
+    where
+        initWins = replace pi (initial !! pi + 1) initial
+        initial = replicate pn 0
 
-editHT :: (Pos, Pos) -> PlayerIndex -> HistoryTrace -> HistoryTrace
-editHT (x, y) pi ht = let h = hash [x, y]
-                      in  htEdit h pi ht
-
-htEdit :: Key -> PlayerIndex -> HistoryTrace -> HistoryTrace
-htEdit _ _ RBLeaf = RBLeaf
-htEdit h pi (RBNode c ws t1 x t2)
-    | h > x = htEdit h pi t2
-    | h < x = htEdit h pi t1
-    | otherwise = let new = replace pi ((ws!!pi)+1) ws
-                  in  RBNode c new t1 x t2
-
+-- tree-only PH
 estimateNodePH :: PlayerIndex -> HistoryTrace -> GameTree -> Double
-estimateNodePH i ht node = let (from, to) = getTransform node
-                           in  case getColour from of
-                                Nothing -> error "Cannot determine current player's colour"
-                                Just colour -> let pf = projection colour (getPos from)
-                                                   pt = projection colour (getPos to)
-                                               in  case pf `par` pt `pseq` rbSearch (hash [pf, pt]) ht of
-                                                        Nothing -> 0
-                                                        Just wins -> fromIntegral (wins !! i) / fromIntegral (sum wins)
-                                                            * constant / fromIntegral (getVisits node - (getWins node !! i) + 1)
+estimateNodePH i ht node = if isRoot node then 0
+                           else let (from, to) = getTransform node
+                                in  case getColour from of
+                                        Nothing -> error "Estimate: cannot determine current player's colour"
+                                        Just colour -> let pf = projection colour (getPos from)
+                                                           pt = projection colour (getPos to)
+                                                       in  case pf `par` pt `pseq` rbSearch (hash [pf, pt]) ht of
+                                                                Nothing -> 0
+                                                                Just wins -> fromIntegral (wins !! i) / fromIntegral (sum wins)
+                                                                    * constant / fromIntegral (getVisits node - (getWins node !! i) + 1)
     where
         constant :: Double
         constant = 5
@@ -196,7 +201,7 @@ estimateNodePH i ht node = let (from, to) = getTransform node
 estimateNode :: PlayerIndex -> Int -> HistoryTrace -> GameTree -> Double
 estimateNode pi pv ht node = let mean = averageScore pi node
                                  uct  = estimateNodeUCT pv node
-                                 ph  = estimateNodePH pi ht node
+                                 ph  = estimateNodePH pi ht node 
                              in  uct `par` ph `pseq` mean + uct + ph
 
 
