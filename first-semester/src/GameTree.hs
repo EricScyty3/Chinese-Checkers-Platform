@@ -25,9 +25,58 @@ data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
                 deriving (Eq, Show)
 
 type HistoryTrace = RBTree [Wins]
-type GameTreeStatus = (PlayerIndex, BoardIndex, Board, Int, HistoryTrace)
+type GameTreeStatus = (PlayerIndex, BoardIndex, Board, Int, HistoryTrace, (Double, Double))
+
+getPlayerIdx :: State GameTreeStatus PlayerIndex
+getPlayerIdx = do (pi, _, _, _, _, _) <- get
+                  return pi
+
+getPlayerColour :: State GameTreeStatus Colour
+getPlayerColour = do pi <- getPlayerIdx
+                     currentPlayerColour pi <$> getPlayerNum
+
+getBoardIdx :: State GameTreeStatus BoardIndex
+getBoardIdx = do (_, bi, _, _, _, _) <- get
+                 return bi
+getBoard :: State GameTreeStatus Board
+getBoard = do (_, _, b, _, _, _) <- get
+              return b
+getPlayerNum :: State GameTreeStatus Int
+getPlayerNum = do (_, _, _, pn, _, _) <- get
+                  return pn
+getHistoryTrace :: State GameTreeStatus HistoryTrace
+getHistoryTrace = do (_, _, _, _, ht, _) <- get
+                     return ht
+getUCTCons :: State GameTreeStatus Double
+getUCTCons = do (_, _, _, _, _, (uct, _)) <- get
+                return uct
+getPHCons :: State GameTreeStatus Double
+getPHCons = do (_, _, _, _, _, (_, ph)) <- get
+               return ph
+
+updatePlayerIdx :: State GameTreeStatus ()
+updatePlayerIdx = do (pi, bi, b, pn, ht, cons) <- get
+                     put (turnBase pn pi, bi, b, pn, ht, cons)
+-- update the player turns based on index from 0 to the number - 1
+turnBase :: Int -> PlayerIndex -> PlayerIndex
+turnBase players idx = if idx == players - 1 then 0 else idx + 1
+
+updateBoardIdx :: State GameTreeStatus ()
+updateBoardIdx = do (pi, bi, b, pn, ht, cons) <- get
+                    put (pi, bi+1, b, pn, ht, cons)
+
+updateBoard :: Board -> State GameTreeStatus ()
+updateBoard b = do (pi, bi, _, pn, ht, cons) <- get
+                   put (pi, bi, b, pn, ht, cons)
+
+updateHistoryTrace :: HistoryTrace -> State GameTreeStatus ()
+updateHistoryTrace ht = do (pi, bi, b, pn, _, cons) <- get
+                           put (pi, bi, b, pn, ht, cons)
+
+
+
 -- contains the layer's player index for choosing the next move, board index accumulated so far, and the parent board state, 
--- as well as the total players amount
+-- as well as the total players amount, gaming history, and a pair of arguments for node evaluation 
 
 printGameTree :: GameTree -> IO ()
 printGameTree gt = do putStrLn ("Index: " ++ show (getBoardIndex gt))
@@ -41,20 +90,15 @@ searchNode i t = let ls = searchNode' i (getRootBoard t) t
     where
         -- start from root 
         searchNode' :: BoardIndex -> Board -> GameTree -> [(GameTree, Board)]
-
-        searchNode' index board r@GRoot {}
-            | getBoardIndex r == index = [(r, board)]
-            | null $ getChildren r = []
-            | otherwise = concatMap (searchNode' index board) (getChildren r)
-
-        searchNode' index board tree = let newBoard = evalState (repaintBoard $ getTransform tree) (0, 0, board, 0, RBLeaf)
+        searchNode' index board tree = let newBoard = (if isRoot tree then board
+                                                       else evalState (repaintBoard $ getTransform tree) (0, 0, board, 0, RBLeaf, (0, 0)))
                                        in  if getBoardIndex tree == index then [(tree, newBoard)]
                                            else if null $ getChildren tree then []
                                                 else concatMap (searchNode' index newBoard) (getChildren tree)
 
 -- given two pieces, exchange their colours
 repaintBoard :: Transform-> State GameTreeStatus Board
-repaintBoard (start, end) = do (_, _, board, _, _) <- get
+repaintBoard (start, end) = do board <- getBoard
                                let colour = getColour start
                                    n1 = changeBoardElement erase start board
                                return (n1 `par` colour `pseq` changeBoardElement (safeRepaint colour) end n1)
@@ -90,8 +134,8 @@ getWins (GLeaf _ _ ws) = ws
 getVisits :: GameTree -> Int
 getVisits gt = sum (getWins gt) -- the sum of the win counts equals to the total visits of that node
 
-getPlayers :: GameTree -> Int
-getPlayers gt = length (getWins gt) -- the length of win list equals to the total players number
+-- getPlayers :: GameTree -> Int
+-- getPlayers gt = length (getWins gt) -- the length of win list equals to the total players number
 
 getTransform :: GameTree -> Transform
 getTransform (GLeaf _ ft _) = ft
@@ -100,7 +144,7 @@ getTransform GRoot {} = (U(-1, -1), U(-1, -1))
 
 -- transform the display board into occupied board based on piece's colour 
 projectCOB :: Colour -> State GameTreeStatus OccupiedBoard
-projectCOB colour = do (_, _, board, _, _) <- get
+projectCOB colour = do board <- getBoard
                        let ps = findPiecesWithColour colour board
                            cps = map (projection colour . getPos) ps
                        return (runST $ do n <- newSTRef empty
@@ -113,7 +157,7 @@ projectCOB colour = do (_, _, board, _, _) <- get
 -- provide the available pieces and their movement pairs
 -- work as board expansion
 colouredMovesList :: Colour -> State GameTreeStatus [Transform]
-colouredMovesList colour = do (_, _, board, _, _) <- get
+colouredMovesList colour = do board <- getBoard
                               let bs = findPiecesWithColour colour board
                                   ds = evalState (do mapM destinationList bs) board
                               return (pairArrange bs ds)
@@ -158,12 +202,13 @@ averageScore i t = if getVisits t == 0 then 0
 
 -- determine a node's profits accroding to the UCT formula
 -- consider the total visits of the parent node as well as the child node additionally
-estimateNodeUCT :: Int -> GameTree -> Double
-estimateNodeUCT parentVisits node = if getVisits node == 0 then 0
-                                    else constant * sqrt (log (fromIntegral parentVisits) / fromIntegral (getVisits node))
-    where
-        constant :: Double
-        constant = 0.5
+estimateNodeUCT :: Int -> GameTree -> State GameTreeStatus Double
+estimateNodeUCT parentVisits node = if getVisits node == 0 then return 0
+                                    else do constant <- getUCTCons
+                                            return $ constant * sqrt (log (fromIntegral parentVisits) / fromIntegral (getVisits node))
+    -- where
+    --     constant :: Double
+    --     constant = 0.5
 -- additionally consider the similar move not only from parent nodes but the history trace
 -- the average score of a certain move being performed
 -- Progressive History 
@@ -173,76 +218,39 @@ editHT node pi pn ht = if isRoot node then ht
                             in  case getColour from of
                                     Nothing -> error "Edit: cannot determine current player's colour"
                                     Just colour -> let pf = projection colour (getPos from)
-                                                       pt = projection colour (getPos to) 
+                                                       pt = projection colour (getPos to)
                                                        h = hash [pf, pt]
-                                                   in  case rbSearch h ht of
+                                                   in  case pf `par` pt `pseq` rbSearch h ht of
                                                             Nothing -> rbInsert h initWins ht
-                                                            Just ws -> rbInsert h (replace pi ((ws!!pi)+1) ws) ht  
+                                                            Just ws -> rbInsert h (replace pi ((ws!!pi)+1) ws) ht
     where
         initWins = replace pi (initial !! pi + 1) initial
         initial = replicate pn 0
 
 -- tree-only PH
-estimateNodePH :: PlayerIndex -> HistoryTrace -> GameTree -> Double
-estimateNodePH i ht node = if isRoot node then 0
-                           else let (from, to) = getTransform node
-                                in  case getColour from of
-                                        Nothing -> error "Estimate: cannot determine current player's colour"
-                                        Just colour -> let pf = projection colour (getPos from)
-                                                           pt = projection colour (getPos to)
-                                                       in  case pf `par` pt `pseq` rbSearch (hash [pf, pt]) ht of
-                                                                Nothing -> 0
-                                                                Just wins -> fromIntegral (wins !! i) / fromIntegral (sum wins)
-                                                                    * constant / fromIntegral (getVisits node - (getWins node !! i) + 1)
-    where
-        constant :: Double
-        constant = 5
+-- estimateNodePH :: Double ->PlayerIndex -> HistoryTrace -> GameTree -> Double
+estimateNodePH :: GameTree -> State GameTreeStatus Double
+estimateNodePH node = if isRoot node then return 0
+                      else let (from, to) = getTransform node
+                           in  case getColour from of
+                                Nothing -> error "Estimate: cannot determine current player's colour"
+                                Just colour -> do pi <- getPlayerIdx
+                                                  ht <- getHistoryTrace
+                                                  constant <- getPHCons
+                                                  let pf = projection colour (getPos from)
+                                                      pt = projection colour (getPos to)
+                                                  case pf `par` pt `pseq` rbSearch (hash [pf, pt]) ht of
+                                                    Nothing -> return 0
+                                                    Just wins -> return $ fromIntegral (wins !! pi) / fromIntegral (sum wins)
+                                                                          * constant / fromIntegral (getVisits node - (getWins node !! pi) + 1)
+    -- where
+    --     constant :: Double
+    --     constant = 5
 
-estimateNode :: PlayerIndex -> Int -> HistoryTrace -> GameTree -> Double
-estimateNode pi pv ht node = let mean = averageScore pi node
-                                 uct  = estimateNodeUCT pv node
-                                 ph  = estimateNodePH pi ht node 
-                             in  uct `par` ph `pseq` mean + uct + ph
-
-
-{-
-    
-    -- start with easy estimation
-    -- retrieve a score of an internal node for selection, hence, root does not needed
-    -- estimateNode :: PlayerIndex -> HistoryTree -> Visits -> GameTree -> Double
-    -- estimateNode i ht p gt = estimate i ht (getHashBoard gt) (getWins p gt) (getVisits gt) p
-    estimateNode :: GameTree -> Int
-    estimateNode gt = centroid (getOccupiedBoard gt)
-        where
-            getWins :: PlayerIndex -> GameTree -> Wins
-            getWins i gt = getTuple gt !! i
-
-            -- the selection strategy for "profit" of a node
-            estimate :: PlayerIndex -> HistoryTree -> Hash -> Wins -> Visits -> Visits -> Double
-            estimate i t x w v p = calculateUCT w v p + calculatePH i t x w v
-
-            -- UCT formula
-            calculateUCT :: Wins -> Visits -> Visits -> Double
-            calculateUCT w v p = (fromIntegral w / fromIntegral v) + 0.5 * sqrt (log (fromIntegral p) / fromIntegral v)
-
-            -- Progressive History formula
-            calculatePH :: PlayerIndex -> HistoryTree -> Hash -> Wins -> Visits -> Double
-            calculatePH i t x w v = case rbSearch x t of
-                                        Just ws -> (fromIntegral (ws !! i) / fromIntegral (sum ws)) * (5 / fromIntegral (v - w + 1))
-                                        Nothing -> 0 -- if this node is not played before
-
-    -- bedies, the history tree is also needed to be update
-    updateHistoryTree :: PlayerIndex -> HistoryTree -> Trace -> HistoryTree
-    updateHistoryTree _ RBLeaf xs = if null xs then RBLeaf else error "The trace is not correct"
-    updateHistoryTree i ht xs = let (h, ys) = pop xs
-                                in  updateHistoryTree i (htEdit h i ht) ys
-        where
-            -- edit a node with certain hashed index in the tree
-            htEdit :: Hash -> PlayerIndex -> RBTree -> RBTree
-            htEdit h i RBLeaf = RBLeaf
-            htEdit h i (RBNode c v t1 x t2)
-                | h > x = RBNode c v t1 x (htEdit h i t2)
-                | h < x = RBNode c v (htEdit h i t1) x t2
-                | otherwise = let newTuple = updateTuple i v
-                            in RBNode c newTuple t1 x t2
--}
+-- estimateNode :: (Double, Double) -> PlayerIndex -> Int -> HistoryTrace -> GameTree -> Double
+estimateNode :: Int -> GameTree -> State GameTreeStatus Double
+estimateNode pv node = do pi <- getPlayerIdx
+                          let mean = averageScore pi node
+                          uct <- estimateNodeUCT pv node
+                          ph  <- estimateNodePH node
+                          return $ uct `par` ph `pseq` mean + uct + ph

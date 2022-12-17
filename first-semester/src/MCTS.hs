@@ -17,9 +17,7 @@ import RBTree (RBTree(..))
 
 type Trace = [BoardIndex]
 
--- update the player turns based on index from 0 to the number - 1
-turnBase :: Int -> PlayerIndex -> PlayerIndex
-turnBase players idx = if idx == players - 1 then 0 else idx + 1
+
 -- the operator of selected node record
 push :: BoardIndex -> Trace -> Trace
 push x xs = x:xs
@@ -37,8 +35,10 @@ makeRoot :: Int -> Board -> (GameTree, BoardIndex)
 makeRoot players eboard = (GRoot 0 eboard (replicate players 0) [], 1)
 -- create a leaf node from its parent internal node
 makeLeaf :: Transform -> State GameTreeStatus GameTree
-makeLeaf transform = do (pi, bi, b, pn, ht) <- get
-                        put (pi, bi + 1, b, pn, ht) -- add an increment of the board index, such that it won't be duplicate  
+makeLeaf transform = do bi <- getBoardIdx
+                        pn <- getPlayerNum
+                        updateBoardIdx
+                        -- add an increment of the board index, such that it won't be duplicate  
                         return (GLeaf bi transform (replicate pn 0))
 
 -- generate a random value from 0 to 100, for certain percentage check
@@ -62,28 +62,35 @@ randomSelection xs  = let is = elemIndices (maximum xs) xs
 selection :: GameTree -> Trace -> State GameTreeStatus (Trace, GameTree)
 selection gametree trace = let childrenList = getChildren gametree
                            in  if null childrenList then return (trace, gametree) -- return the next node and player index for the expansion
-                               else do (pi, bi, pb, pn, ht) <- get
-                                       let pv = getVisits gametree
-                                           wl = map (estimateNode pi pv ht) childrenList
-                                           sn = childrenList !! randomSelection wl  -- select the child with the maximum estimation 
+                               else do wl <- mapM (estimateNode (getVisits gametree)) childrenList
+                                       let sn = childrenList !! randomSelection wl  -- select the child with the maximum estimation 
                                            ntrace = push (getBoardIndex sn) trace
                                        nboard <- repaintBoard (getTransform sn)
-                                       put (turnBase pn pi, bi, nboard, pn, ht)      -- update the selection record
+                                       updatePlayerIdx
+                                       updateBoard nboard
                                        selection sn ntrace  -- start the next selection at the selected node
-
+                                              
 -- expand a node based on the next possible move made by a certain player, and assign each board state an index
 -- the expansion could apply various policies such as expanding multiple board states, or set a threshold of visits before any expansion
 -- as well as the restriction of the expanded move's type, but the common one is to only expand once each time
 expansion :: GameTree -> State GameTreeStatus GameTree
 expansion n = let cs = getChildren n
               in  if not (null cs) then return n -- no need to expand if already has children, mostly expanding for leaf
-                  else do (pi, _, _, pn, _) <- get
-                          let co = currentPlayerColour pi pn
+                  else do co <- getPlayerColour
                           ts <- colouredMovesList co
-                          cs <- mapM makeLeaf (expandPolicy ts)
+                          cs <- mapM makeLeaf (expandPolicy co ts)
                           return (editNodeChildren cs n)
     where
-        expandPolicy xs = xs
+        expandPolicy :: Colour -> [Transform] -> [Transform]
+        expandPolicy co xs
+            | not $ null front = front
+            | not $ null nonback  = nonback
+            | otherwise = back
+            where
+                front = filter ((> 0) . evaluateMove . (\(x, y) -> (projection co (getPos x), projection co (getPos y)))) xs
+                nonback  = filter ((==0) . evaluateMove . (\(x, y) -> (projection co (getPos x), projection co (getPos y)))) xs
+                back  = filter ((< 0) . evaluateMove . (\(x, y) -> (projection co (getPos x), projection co (getPos y)))) xs
+        -- only allow frontward moves, however, this could lead to a situation where no move is avaiable
 
 -- start with updating the root's state
 -- mainBackpropagation :: PlayerIndex -> Trace -> GameTree -> GameTree -> HistoryTrace -> (GameTree, HistoryTrace)
@@ -97,25 +104,21 @@ backpropagation pi xs ts new = let (bi, ys) = pop xs
                                in  case elemIndex bi (map getBoardIndex ts) of
                                             Nothing -> error "Trace incorrect"
                                             Just li -> let ln = ts !! li
-                                                       in  do (pi, bi, b, pn, ht) <- get
-                                                              put (pi, bi, b, pn, editHT ln pi pn ht)
-                                                              if getBoardIndex ln == getBoardIndex new
-                                                              then do let n1 = editNodeValue pi new
-                                                                      n2 <- backpropagation pi ys (getChildren n1) new
-                                                                      let n3 = editNodeChildren n2 n1
-                                                                      return (replace li n3 ts)
-                                                              else do let n1 = editNodeValue pi ln
-                                                                      n2 <- backpropagation pi ys (getChildren n1) new
-                                                                      let n3 = editNodeChildren n2 n1
-                                                                      return (replace li n3 ts)
+                                                       in  do pi <- getPlayerIdx
+                                                              pn <- getPlayerNum
+                                                              ht <- getHistoryTrace
+                                                              updateHistoryTrace (editHT ln pi pn ht)
+                                                              let n1 = (if getBoardIndex ln == getBoardIndex new 
+                                                                        then editNodeValue pi new
+                                                                        else editNodeValue pi ln)
+                                                              n2 <- backpropagation pi ys (getChildren n1) new
+                                                              let n3 = editNodeChildren n2 n1
+                                                              return (replace li n3 ts)
 
 -- different approaches for estimating the current board state during the playout stage
 -- 1. centroid: board evaluation
 -- 2. movement distance: move evaluation
 -- 3. lookup table search: board evaluation
-
-evaluateBoard :: OccupiedBoard -> Int
-evaluateBoard = centroid -- the larger, the better
 
 reEvaluation :: Int -> (Pos, Pos) -> Int
 reEvaluation score (f, t) = score - centroidPos f + centroidPos t
@@ -131,27 +134,25 @@ evaluateMove ((x1, y1), (x2, y2)) = let dist1 = sqrt (fromIntegral (x1 - x0)^2 +
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice
 -- get the best heuristic estimated board from all expanded boards 
 playoutPolicy :: Colour -> [Transform] -> State GameTreeStatus Board
-playoutPolicy colour tfs = do (_, _, b, _, _) <- get
-                              let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
-                                  sl  = map evaluateMove ptfs
-                              if  randomPercentage 95 then do let cidx = maxIndex sl
-                                                                  cft  = tfs !! cidx
-                                                              repaintBoard cft
+playoutPolicy colour tfs = let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
+                               sl  = map evaluateMove ptfs
+                           in if randomPercentage 95 then do let cidx = maxIndex sl
+                                                                 cft  = tfs !! cidx
+                                                             repaintBoard cft
                               else do let cidx = randomMove (length tfs)
                                           cft  = tfs !! cidx
                                       repaintBoard cft
 
 -- game simulation from a certain board state 
 playout :: Int -> State GameTreeStatus PlayerIndex
-playout turns = do (pi, bi, b, pn, ht) <- get
-                   if turns >= 500 then error (show b)
-                   else do let colour = currentPlayerColour pi pn
-                           oboard <- projectCOB colour
-                           tfs <- colouredMovesList colour
-                           nboard <- oboard `par` tfs `pseq` playoutPolicy colour tfs
-                           if winStateDetermine colour nboard then return pi
-                           else do put (turnBase pn pi, bi, nboard, pn, ht)
-                                   playout (turns + 1)
+playout turns = do colour <- getPlayerColour
+                   tfs <- colouredMovesList colour
+                   nboard <- playoutPolicy colour tfs
+                   pi <- getPlayerIdx
+                   if winStateDetermine colour nboard then return pi
+                   else do updatePlayerIdx
+                           updateBoard nboard
+                           playout (turns + 1)
 
 -- should consider not only the normal wining state
 -- but also the potential block state: 
@@ -160,13 +161,13 @@ playout turns = do (pi, bi, b, pn, ht) <- get
 winStateDetermine :: Colour -> Board -> Bool
 winStateDetermine c b = let ps = map (reversion c) homeBase
                             bs = evalState (do mapM getElement ps) b
-                        in  isFull bs && existColour c bs
-    where
-        isFull :: [BoardType] -> Bool
-        isFull = foldr ((&&) . isOccupied) True
+                        in  isFull bs && existColour c bs 
 
-        existColour :: Colour -> [BoardType] -> Bool
-        existColour c bs = Just c `elem` map getColour bs
+isFull :: [BoardType] -> Bool
+isFull = foldr ((&&) . isOccupied) True
+
+existColour :: Colour -> [BoardType] -> Bool
+existColour c bs = Just c `elem` map getColour bs
 
 -- the MCTS structure that first selects the node with largest profits, then expands it, 
 -- and play simulations on the expanded node, and finally update the reviewed nodes
@@ -179,39 +180,22 @@ mcts tree = do (trace, lastnode) <- selection tree [getBoardIndex tree]
                return (head newTree)
 
 iterations :: GameTree -> GameTreeStatus -> Int -> (GameTree, BoardIndex, HistoryTrace)
-iterations tree s@(_, bi, _, _, ht) 0 = (tree, bi, ht)
-iterations tree s@(pi, _, board, pn, _) counts = let (newTree, (_, nbi, _, _, nht)) = runState (mcts tree) s
-                                                 in  iterations newTree (pi, nbi, board, pn, nht) (counts - 1)
+iterations tree s@(_, bi, _, _, ht, _) 0 = (tree, bi, ht)
+iterations tree s@(pi, _, board, pn, _, cons) counts = let (newTree, (_, nbi, _, _, nht, _)) = runState (mcts tree) s
+                                                       in  iterations newTree (pi, nbi, board, pn, nht, cons) (counts - 1)
 
 -- the tree could be re-used for saving computation 
-finalSelection :: GameTree -> GameTreeStatus -> Int -> (GameTree, BoardIndex, HistoryTrace)
-finalSelection tree s@(pi, _, board, _, _) counts = let (ntree, nboardidx, nht) = iterations tree s counts
-                                                        scores = map (averageScore pi) (getChildren ntree)
-                                                        chosenNode = getChildren ntree !! maxIndex scores
-                                                        newRoot = GRoot (getBoardIndex chosenNode) 
-                                                                        (evalState (repaintBoard (getTransform chosenNode)) s) 
-                                                                        (getWins chosenNode) 
-                                                                        (getChildren chosenNode)
-                                                    in  (newRoot, nboardidx, nht)
-
-
--- call multiple times of the four stages in order and return the 
--- finalSelection :: Board -> PlayerIndex -> Int -> Int -> 
--- finalSelection board playerIndex players counts = let (root, boardIndex) = makeRoot players board
---                                                       (tree, _) = iterations root (playerIndex, boardIndex, board, players) counts
---                                                       ts = getChildren tree
---                                                       scores = map (averageScore playerIndex) ts
---                                                       tf = getTransform (ts !! maxIndex scores)
---                                                   in  {-maxIndex scores --printEoard $-} 
---                                                       evalState (repaintBoard tf) (playerIndex, boardIndex, board, players)
-
--- main = do args <- getArgs
---           {-let (root, boardIndex) = makeRoot 6 externalBoard
---               (newTree, newBoardIndex)= iterations root (0, boardIndex, externalBoard, 6) ((read . head) args)
---               (win, (_, _, board, _)) = runState playout (0, newBoardIndex, externalBoard, 6)
---           putStrLn("Won Players: " ++ show (win+1))
---           printEoard board-}
---           printEoard $ finalSelection externalBoard 0 6 ((read . head) args)
+-- if looking for different result, the tree could be reset every turn
+finalSelection :: GameTree -> GameTreeStatus -> Int -> (Board, HistoryTrace)
+finalSelection tree s@(pi, _, board, _, _, _) counts = let (ntree, _, nht) = iterations tree s counts
+                                                           scores = map (averageScore pi) (getChildren ntree)
+                                                       in  if null scores then error (show ntree)
+                                                           else let chosenNode = getChildren ntree !! maxIndex scores
+                                                            {-newRoot = GRoot (getBoardIndex chosenNode) 
+                                                                            (evalState (repaintBoard (getTransform chosenNode)) s) 
+                                                                            (getWins chosenNode) 
+                                                                            (getChildren chosenNode)-}
+                                                                in  (evalState (repaintBoard (getTransform chosenNode)) s, nht)
 
 
 

@@ -372,7 +372,7 @@ printEoard :: Board -> IO ()
 printEoard b = printEoard' $ testDisplay b
     where
         printEoard' :: Show a => [a] -> IO ()
-        printEoard' [] = putStr ""
+        printEoard' [] = putStrLn ""
         printEoard' (x:xs) = do let str = map skipZero (show x)
                                 putStrLn str
                                 printEoard' xs
