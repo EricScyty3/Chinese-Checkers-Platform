@@ -8,19 +8,6 @@ data TColour = Red | Black deriving (Eq, Show)
 -- the Red Black tree contains the colour of node, the node value, left subtree, node index, right rubtree  
 data RBTree a = RBLeaf | RBNode TColour a (RBTree a) Key (RBTree a) deriving (Eq, Show)
 
-emptyTree :: RBTree a
-emptyTree = RBLeaf
-
--- creates a Reb Black tree from a provided list where the elements are unique 
--- simply insert all the elements one by one from an empty tree
--- different order of the list will make different tree
-insertionWithItems :: RBTree a -> [(Key, a)] -> RBTree a
-insertionWithItems tree [] = tree
-insertionWithItems tree ((k, n):xs) = rbInsert k n (insertionWithItems tree xs)
-
-insertionWithKeys :: RBTree () -> [Key] -> RBTree ()
-insertionWithKeys = foldr (`rbInsert` ())
-
 -- repaints a tree's root node and returns 
 repaint :: TColour -> RBTree a -> RBTree a
 repaint _ RBLeaf = RBLeaf
@@ -31,18 +18,18 @@ getColour :: RBTree a -> TColour
 getColour RBLeaf = Black -- the leaf's colour is black 
 getColour (RBNode c _ _ _ _) = c
 
--- returns the stored board state value of a node
-getValue :: RBTree a -> Maybe a
-getValue RBLeaf = Nothing
-getValue (RBNode _ n _ _ _) = Just n
+-- returns the stored content of a node
+getContent :: RBTree a -> Maybe a
+getContent RBLeaf = Nothing
+getContent (RBNode _ n _ _ _) = Just n
 
--- returns the hashed index representing a board state
+-- returns the integer index representing a board state
 getKey :: RBTree a -> Maybe Key
 getKey RBLeaf = Nothing
 getKey (RBNode _ _ _ i _) = Just i
 
--- searches a node with certain hashed index in the tree
--- returns the node value if found, otherwise, nothing
+-- searches a node with certain index in the tree
+-- returns the node's content if found, otherwise, nothing
 rbSearch :: Key -> RBTree a -> Maybe a
 rbSearch h RBLeaf = Nothing
 rbSearch h (RBNode _ v t1 x t2)
@@ -76,7 +63,8 @@ rbInsert h n tree = repaint Black (ins h n tree) -- recursively calling balance 
             | h < r = balance c (ins h n t1) r v t2
             | h > r = balance c t1 r v (ins h n t2)
             | otherwise = RBNode c n t1 r t2 -- t
-            -- would just replace the old stored value when meeting the same index
+            -- if the insertion's index is duplicated, would replace the old stored value with new content
+            -- can be treated as an update operator for the tree
 
 
 -- rebalances a tree when the black-height of the left side is one less than the right side
@@ -109,7 +97,7 @@ del h RBLeaf = RBLeaf
 del h (RBNode c n t1 r t2)
     | h < r = delL h t1 c r n t2
     | h > r = delR h t1 c r n t2
-    | otherwise = fuse t1 t2 -- if found then just fuse its left and right subtrees 
+    | otherwise = fuse t1 t2 -- if found then just fuse its left and right subtrees as the root would be taken away 
 
 -- deletes a node from the left subtree t1 where r is the root with colour c and t2 is the right subtree 
 delL :: Key -> RBTree a -> TColour -> Key -> a -> RBTree a -> RBTree a
