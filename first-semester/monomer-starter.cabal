@@ -45,4 +45,5 @@ executable app
     , random
     , text
     , text-show
+    , time
   default-language: Haskell2010

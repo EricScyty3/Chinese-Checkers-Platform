@@ -45,6 +45,10 @@ randomSelection xs  = let is = elemIndices (maximum xs) xs
                           else let ri = randomMove (length is)  -- random index of the maximum values' indices
                                in  is !! ri -- return the maximum value's index for selecting
 
+-- get a list of non-repeated random values of a range
+randomIndices :: Int -> [Int]
+randomIndices l = unsafePerformIO $ take l . nub . randomRs (0, l-1) <$> newStdGen
+
 --Stage Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- normal MCTS is divided into four phases: selection, expansion, playout and backpropagation
 -- the first phase is to select one resulting board with the maximum profit/score, which is calculated based on different formulas
@@ -181,16 +185,22 @@ iterations tree s@(pi, _, board, pn, _, cons) pl c = let ((newTree, sims), (_, n
 
 -- after the iterations of four stages are finished running, the root shoudl choose the child with the most win rate for the next move 
 -- the tree could be re-used for saving computation, but if looking for different result, the tree should be started from scratch every several iterations
-finalSelection :: GameTree -> GameTreeStatus -> Int -> (Board, HistoryTrace, [Int])
-finalSelection tree s@(pi, _, board, _, _, _) counts = let (ntree, _, nht, pl) = iterations tree s [] counts
-                                                           scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
-                                                       in  if null scores then error (show ntree)
-                                                           else let idx = randomSelection scores
-                                                                    chosenNode = getChildren ntree !! idx -- get the maximum win rate move as the next movement
-                                                                in  (evalState (repaintBoard (getTransform chosenNode)) s, nht, pl)
-                                                                -- depending on the need, several information could be returned 
+finalSelection :: GameTree -> GameTreeStatus -> Int -> Int -> (Board, Int, HistoryTrace, [Int])
+finalSelection tree s@(pi, _, board, pn, _, _) bhash counts = let (ntree, _, nht, pl) = iterations tree s [] counts
+                                                                  scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
+                                                              in  if null scores then error (show ntree)
+                                                                  else let idx = randomSelection scores
+                                                                           chosenNode = getChildren ntree !! idx -- get the maximum win rate move as the next movement
+                                                                           colour = currentPlayerColour pi pn
+                                                                           (from, to) = getTransform chosenNode
+                                                                           newBoard = evalState (repaintBoard (from, to)) s
+                                                                           newBoardHash = changeHash (projection colour (getPos from)) (projection colour (getPos to)) bhash
+                                                                       in  newBoard `par` newBoardHash `pseq` (newBoard, newBoardHash, nht, pl)
+                                                                      -- depending on the need, several information could be returned 
+                                                                      -- the new board state and the new board hash are generated for Computer decision in Main
+                                                                      -- while playouts are treated as one of the measurements in experiments
+                                                                      -- the game history is maintained globally for the next call
 -- retrieve the average value of a list
-
 mean :: [Double] -> Double
 mean xs = sum xs / fromIntegral (length xs)
 
@@ -205,4 +215,3 @@ medianValue xs = let minIdx = elemIndices (minimum xs) xs
                      dropList = drop (last minIdx + 1) takeList
                  in  if null dropList then medianValue [minimum xs, maximum xs]
                      else medianValue dropList
-

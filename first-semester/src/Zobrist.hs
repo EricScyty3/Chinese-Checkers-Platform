@@ -59,9 +59,14 @@ hashEnd = hash homeBase
 winStateDetectHash :: Int -> Bool
 winStateDetectHash h = hashEnd == h
 
+checkPositive :: Pos -> Bool
+checkPositive (x, y) = x >= 0 && y >= 0
+
 -- given a list of positions on the pieces on the current occupied board and return a hashed value
 hash :: [Pos] -> Int
-hash ps = evalState (hashBoardWithPos ps) randomBoardState
+hash ps = let posPL = filter checkPositive ps -- filter the negative positions
+          in  evalState (hashBoardWithPos posPL) randomBoardState
+
     where
         hashBoardWithPos :: [Pos] -> State StateTable Int
         hashBoardWithPos [] = return 0
@@ -75,9 +80,13 @@ changeHash x y h = evalState (hashChange x y h) randomBoardState
     where
         -- after the first construct, each changed hash does not need to recalculate, just applys the two changed positions' hashes
         hashChange :: Pos -> Pos -> Int -> State StateTable Int
-        hashChange fp tp xv = do f <- getElement fp
-                                 t <- getElement tp
+        hashChange fp tp xv = do f <- safeGetElement fp -- if the position is negative, then treat it as 0
+                                 t <- safeGetElement tp
                                  return $ f `par` t `pseq` foldr myXOR 0 [xv, f, t]
+        
+        safeGetElement :: Pos -> State StateTable Int
+        safeGetElement pos = do if not $ checkPositive pos then return 0
+                                else getElement pos
 
 --Hash Construct---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- transform a decimal integer into a binary list

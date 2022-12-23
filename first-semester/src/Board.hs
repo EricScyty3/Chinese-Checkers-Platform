@@ -15,6 +15,8 @@ data BoardPos = G Pos | B Pos | P Pos | R Pos | O Pos | K Pos | E Pos | U Pos de
 type Board = [[BoardPos]]
 type OccupiedBoard = [[Int]] -- for occupied board, only occupied state is needed
 
+
+
 -- the board setting for displaying
 boardWidth :: Int
 boardWidth = 19

@@ -14,9 +14,9 @@ repaint _ RBLeaf = RBLeaf
 repaint c (RBNode _ n t1 x t2) = RBNode c n t1 x t2
 
 -- returns the colour of the root of a tree
-getColour :: RBTree a -> TColour
-getColour RBLeaf = Black -- the leaf's colour is black 
-getColour (RBNode c _ _ _ _) = c
+getTColour :: RBTree a -> TColour
+getTColour RBLeaf = Black -- the leaf's colour is black 
+getTColour (RBNode c _ _ _ _) = c
 
 -- returns the stored content of a node
 getContent :: RBTree a -> Maybe a
@@ -101,12 +101,12 @@ del h (RBNode c n t1 r t2)
 
 -- deletes a node from the left subtree t1 where r is the root with colour c and t2 is the right subtree 
 delL :: Key -> RBTree a -> TColour -> Key -> a -> RBTree a -> RBTree a
-delL h t1 c r n t2 = if getColour t1 == Black then balL c (del h t1) r n t2 -- since the returned tree will have a top red node, the black height need to be rebalanced
+delL h t1 c r n t2 = if getTColour t1 == Black then balL c (del h t1) r n t2 -- since the returned tree will have a top red node, the black height need to be rebalanced
                      else RBNode Red n (del h t1) r t2
 
 -- deletes a node from the right subtree t2 where r is the root with colour c and t1 is the left subtree
 delR :: Key -> RBTree a -> TColour -> Key -> a -> RBTree a -> RBTree a
-delR h t1 c r n t2 = if getColour t2 == Black then balR c t1 r n (del h t2) -- since the returned tree will have a top red node, the black height need to be rebalanced
+delR h t1 c r n t2 = if getTColour t2 == Black then balR c t1 r n (del h t2) -- since the returned tree will have a top red node, the black height need to be rebalanced
                      else RBNode Red n t1 r (del h t2)
 
 -- gathers two trees t1 and t2 together, known that the nodes in t1 is smaller than t2
@@ -116,11 +116,11 @@ fuse RBLeaf t = t
 fuse t RBLeaf = t
 fuse lt@(RBNode Black n1 t1 x1 t2) (RBNode Red n2 t3 x2 t4) = RBNode Red n2 (fuse lt t3) x2 t4
 fuse (RBNode Red n1 t1 x1 t2) rt@(RBNode Black n2 t3 x2 t4) = RBNode Red n1 t1 x1 (fuse t2 rt)
-fuse (RBNode Red n1 t1 x1 t2) (RBNode Red n2 t3 x2 t4) = if getColour s == Black then RBNode Red n1 t1 x1 (RBNode Red n2 s x2 t4)
+fuse (RBNode Red n1 t1 x1 t2) (RBNode Red n2 t3 x2 t4) = if getTColour s == Black then RBNode Red n1 t1 x1 (RBNode Red n2 s x2 t4)
                                                          else let RBNode Red nf s1 f s2 = s
                                                               in  RBNode Red nf (RBNode Red n1 t1 x1 s1) f (RBNode Red n2 s2 x2 t4)
                                                          where s = fuse t2 t3
-fuse (RBNode Black n1 t1 x1 t2) (RBNode Black n2 t3 x2 t4) = if getColour s == Black then balL Black t1 x1 n1 (RBNode Black n2 s x2 t4)
+fuse (RBNode Black n1 t1 x1 t2) (RBNode Black n2 t3 x2 t4) = if getTColour s == Black then balL Black t1 x1 n1 (RBNode Black n2 s x2 t4)
                                                              else let RBNode Red nf s1 f s2 = s
                                                                   in  RBNode Red nf (RBNode Black n1 t1 x1 s1) f (RBNode Black n2 s2 x2 t4)
                                                              where s = fuse t2 t3

@@ -31,9 +31,13 @@ data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
 -- which could be useful at the early stage of movement selection when no much moves are experienced 
 type HistoryTrace = RBTree [Wins]
 
--- the game state contains the current player of the turn, the unique id for indicating a board, the board state delivered from the parent
--- the history trace, and the arguments for selection strategy
-type GameTreeStatus = (PlayerIndex, BoardIndex, Board, Int, HistoryTrace, (Double, Double))
+-- the game status
+type GameTreeStatus = (PlayerIndex, -- current player of the turn
+                       BoardIndex, -- the unique id for indicating a board
+                       Board, -- the board state delivered from the parent
+                       Int, -- the total players
+                       HistoryTrace, -- the history performance of each move played in the past
+                       (Double, Double)) -- the arguments for selection strategy
 
 --Encapsulation----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- since the game state is warpped in the state monad, several toolkits are applied to access and modify and game state 
@@ -144,18 +148,6 @@ repaintBoard (start, end) = do board <- getBoard
                                let colour = Board.getColour start
                                    eboard = changeBoardElement erase start board -- erase the start position
                                return (eboard `par` colour `pseq` changeBoardElement (safeRepaint colour) end eboard) -- recolour the end position
-
--- -- transform the main board into occupied board based on piece's colour such that the board could be hashed 
--- projectCOB :: Colour -> State GameTreeStatus OccupiedBoard
--- projectCOB colour = do board <- getBoard
---                        let ps = findPiecesWithColour colour board
---                            cps = map (projection colour . getPos) ps -- project the position from main board to sub-board of square shape
---                        return (runST $ do n <- newSTRef empty
---                                           modifySTRef n (fillBoard cps)
---                                           readSTRef n)
---     where
---         fillBoard :: [Pos] -> OccupiedBoard -> OccupiedBoard
---         fillBoard ps b = foldl (\ b p -> replace2 p 1 b) b ps
 
 -- given a certain piece's colour, return a list of avaliable movements (transforms)
 colouredMovesList :: Colour -> State GameTreeStatus [Transform]

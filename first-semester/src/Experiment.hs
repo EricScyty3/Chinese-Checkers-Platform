@@ -8,6 +8,7 @@ import RBTree
 import Data.Ratio
 import Control.Parallel
 import Data.Time
+import Zobrist
 
 -- random move player: just randomly choose a move regradless of the benefit
 randomMoveDecision :: GameTreeStatus -> Board
@@ -26,17 +27,17 @@ randomMoveDecision s@(pi, _, board, pn, _, _)= let co = currentPlayerColour pi p
 
 -- given a set of agruments, test the performance of the selection strategy
 -- measurement: median playouts
-experiment1 _ _ [] _ = []
-experiment1 pn board (a:as) iter = let p = mean (experimentalPlayout pn board a iter) -- get the average of a list of median playouts
-                                       ps = experiment1 pn board as iter
-                                   in  p `par` ps `pseq` p:ps
+experiment1 _ _ _ [] _ = []
+experiment1 pn board bh (a:as) iter = let p = mean (experimentalPlayout pn board bh a iter) -- get the average of a list of median playouts
+                                          ps = experiment1 pn board bh as iter
+                                      in  p `par` ps `pseq` p:ps
 
 -- given a board state with the same configuration and check the median amount of turns it needs to complete a playout
-experimentalPlayout _ _ _ 0 = []
-experimentalPlayout pn board cons counts = let (root, rootIdx) = makeRoot pn board
-                                               (_, _, pl) = finalSelection root (0, rootIdx, board, pn, RBLeaf, cons) 1000
-                                               rs = experimentalPlayout pn board cons (counts - 1)
-                                           in  pl `par` rs `pseq` medianValue pl:rs
+experimentalPlayout _ _ _ _ 0 = []
+experimentalPlayout pn board bh cons counts = let (root, rootIdx) = makeRoot pn board
+                                                  (_, _, _, pl) = finalSelection root (0, rootIdx, board, pn, RBLeaf, cons) bh 1000
+                                                  rs = experimentalPlayout pn board bh cons (counts - 1)
+                                              in  pl `par` rs `pseq` medianValue pl:rs
 {-
     -- given a multiple-players board, let certain players play against each other and see how well the players perform
     -- measurments: avarage win rate, average game turns
@@ -69,9 +70,9 @@ experimentalPlayout pn board cons counts = let (root, rootIdx) = makeRoot pn boa
                                                                     else -- do -- printEoard newBoard
                                                                             experimentalGame (turnBase pn pi) pn newBoard cons mctsPi (moves+1) iter
 -}
--- ghc -main-is Experiment Experiment.hs -O2 -outputdir dist
+-- ghc -main-is Experiment Experiment.hs -O2 -fllvm -outputdir dist
 main = do start <- getCurrentTime
-          let xs = experiment1 3 (eraseBoard threePlayersSet) [(5, 0.5)] 1
+          let xs = experiment1 3 (eraseBoard threePlayersSet) hashInitial [(5, 0.5)] 1
           print xs
           end <- getCurrentTime
           print $ diffUTCTime end start
