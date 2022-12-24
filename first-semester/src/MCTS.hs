@@ -10,6 +10,7 @@ import Control.Monad.State
 import Control.Parallel
 import RBTree
 import Data.Time
+import BFS
 
 -- a list of node that is chosen along with the selection, used for updating the tree information as well as the history movements
 type Trace = [BoardIndex]
@@ -38,7 +39,7 @@ randomPercentage n  = unsafePerformIO (randomRIO (0, 100)) <= n
 randomMove :: Int -> Int
 randomMove l  = unsafePerformIO (randomRIO (0, l-1))
 -- selecting randomly if there exist multiple maximum elements in a list
-randomSelection :: [Double] -> Int
+randomSelection :: Ord a => [a] -> Int
 randomSelection []  = error "Selection: no node for selecting"
 randomSelection xs  = let is = elemIndices (maximum xs) xs
                       in  if length is == 1 then head is
@@ -85,7 +86,7 @@ expansion n = let cs = getChildren n
                 front = filter ((> 0) . distanceChange) xs
                 nonfront = filter ((<= 0) . distanceChange) xs
                 -- project the position from main board to the occupied board of certain colour
-                distanceChange (x, y) = evaluateMove (projection co (getPos x), projection co (getPos y))
+                distanceChange (x, y) = evaluateMove2 (projection co (getPos x), projection co (getPos y))
 
 -- after the selection, expansion, and playout is done, a win is known from the game simulation in playout stage, and should be update to the selected nodes
 -- update the game tree stored wins for certain player, as well as replacing the new expanded node to the game tree
@@ -114,18 +115,26 @@ backpropagation pi xs cs new = let (bi, ys) = pop xs -- check the if any child n
 -- 1. movement distance: move evaluation
 -- 2. lookup table search: board evaluation
 
--- comparing the distance to the home base of boards before and after the movement performed
-evaluateMove :: (Pos, Pos) -> Double
-evaluateMove ((x1, y1), (x2, y2)) = let dist1 = sqrt (fromIntegral (x1 - x0)^2 + fromIntegral (y1 - y0)^2)
-                                        dist2 = sqrt (fromIntegral (x2 - x0)^2 + fromIntegral (y2 - y0)^2)
-                                    in  dist1 `par` dist2 `pseq` dist1 - dist2 -- the larger, the closer the new position is to the goal state
-    where
-        (x0, y0) = (0, 6)
+-- simple move evalutor of how close the changed piece is to the goal state, 
+-- using centroid function in BFS, that the closer it is, the larger it will be
+evaluateMove :: (Pos, Pos) -> Int
+evaluateMove (p1, p2) = let cen1 = centroidPos p1
+                            cen2 = centroidPos p2
+                        in  cen1 `par` cen2 `pseq` (cen2 - cen1) -- the larger, the closer the new position is to the goal state
+                    
+-- an addition move evaluator is to measure the forward distance to the goal base
+dist :: Pos -> Pos -> Double
+dist (x1, y1) (x2, y2) = sqrt (fromIntegral (x1 - x2)^2 + fromIntegral (y1 - y2)^2)
+-- return the distance of a piece to the goal state, the evaluation is more straightforward as only considering the distance
+evaluateMove2 :: (Pos, Pos) -> Double
+evaluateMove2 (p1, p2) = let dist1 = dist p1 (0, 6)
+                             dist2 = dist p2 (0, 6)
+                         in dist1 `par` dist2 `pseq` (dist1 - dist2) -- still the larger the better
 
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
 playoutPolicy :: Colour -> [Transform] -> State GameTreeStatus Board
 playoutPolicy colour tfs = let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs -- projected to corresponding occupied board
-                               sl   = map evaluateMove ptfs -- measure change of distance made by the movements 
+                               sl   = map evaluateMove2 ptfs -- measure change of distance made by the movements 
                            in if randomPercentage 95 then do let cidx = randomSelection sl
                                                                  cft  = tfs !! cidx
                                                              repaintBoard cft -- get the board that lead to largest distance increment 
@@ -135,15 +144,16 @@ playoutPolicy colour tfs = let ptfs = map (\(x, y) -> (projection colour (getPos
 
 -- game simulation from a certain board state 
 playout :: Int -> State GameTreeStatus (PlayerIndex, Int)
-playout moves = do colour <- getPlayerColour
-                   tfs <- colouredMovesList colour    -- get all of the avaliable moves
-                   nboard <- playoutPolicy colour tfs -- choose one of the boards resulted from the moves
-                   pi <- getPlayerIdx
-                   pn <- getPlayerNum
-                   if winStateDetermine colour nboard then return (pi, getTurns moves pn)  -- if a player wins, then return the player's index
-                   else do updatePlayerIdx -- otherwise, keep simulating on the next turn
-                           updateBoard nboard
-                           playout (moves + 1)
+playout moves = if moves >= 500 then error "too many loads"
+                else do colour <- getPlayerColour
+                        tfs <- colouredMovesList colour    -- get all of the avaliable moves
+                        nboard <- playoutPolicy colour tfs -- choose one of the boards resulted from the moves
+                        pi <- getPlayerIdx
+                        pn <- getPlayerNum
+                        if winStateDetermine colour nboard then return (pi, getTurns moves pn)  -- if a player wins, then return the player's index
+                        else do updatePlayerIdx -- otherwise, keep simulating on the next turn
+                                updateBoard nboard
+                                playout (moves + 1)
 
 getTurns :: Int -> Int -> Int
 getTurns moves pn = ceiling (fromIntegral moves / fromIntegral pn)
@@ -151,7 +161,7 @@ getTurns moves pn = ceiling (fromIntegral moves / fromIntegral pn)
 -- the win state detection here is not just checking the hash state, should consider not only the normal wining state, but also the potential blocking
 -- a state is won for a player if its goal area is filled with pieces, and at least one of the pieces belongs it
 winStateDetermine :: Colour -> Board -> Bool
-winStateDetermine c b = let hs = map (reversion c) homeBase -- get the goal positions of certain player
+winStateDetermine c b = let hs = map (reversion c) goalBase -- get the goal positions of certain player
                             bs = evalState (do mapM getElement hs) b -- get the corresponding board state
                         in  isFull bs && existColour c bs -- check if the two conditions are satisfied
     where

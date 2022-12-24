@@ -273,20 +273,16 @@ handleEvent wenv node model evt = case evt of
   -- after a movement is determined valid, it will be rendered
   RenderMove
     | model ^. ifWin -> [] -- if already won then do nothing
-    | not (ifInitialPiece (model ^. toPiece)) && winStateDetectHash newState -> -- if a decisive move is made, then trigger the win flag
-      [Model $ model & ifWin .~ True
-                     & displayBoard .~ newBoard
-                     & internalStates .~ insertState
-                     & movesList .~ []]
     -- otherwise just update the turn 
     | not (ifInitialPiece (model ^. toPiece)) -> [Model $ model & displayBoard .~ newBoard
                                                                 & internalStates .~ insertState
-                                                                & turnS .~ turnChange model
+                                                                & turnS .~ newTurn
                                                                 & previousFromPiece .~ f
                                                                 & previousToPiece .~ t
                                                                 & fromPiece .~ U(-1, -1)
                                                                 & toPiece .~ U(-1,-1)
-                                                                & movesList .~ []]
+                                                                & movesList .~ []
+                                                                & ifWin .~ newWinState] -- if a win is reached then update it
     | otherwise -> []
       where
         f = model ^. fromPiece
@@ -298,6 +294,8 @@ handleEvent wenv node model evt = case evt of
         toProjectPos = projection currentColour (getPos t)
         newState = changeHash fromProjectPos toProjectPos currentState
         insertState = replace (model ^. turnS) newState (model ^. internalStates) -- replace the old hash state with the new one
+        newWinState = winStateDetectHash newState
+        newTurn = if not newWinState then turnChange model else model ^. turnS
 
   -- quit the game and return back to the menu page
   EndGameButtonClick -> [Model $ model & turnS .~ 0 -- resetting all states
@@ -350,15 +348,18 @@ handleEvent wenv node model evt = case evt of
                       True  -> [Model $ model & displayBoard .~ newBoard
                                               & internalStates .~ insertState
                                               & gameHistory .~ newHistoryTree
-                                              & turnS .~ turnChange model
+                                              & turnS .~ newTurn
                                               & previousFromPiece .~ U(-1, -1)
                                               & previousToPiece .~ U(-1, -1)
+                                              & ifWin .~ newWinState
                                               ] -- apply the movement retrieved from the MCTS decision, and perform
                       False -> []
     where
       (newBoard, newState, newHistoryTree) = aiDecision model
       insertState = replace (model ^. turnS) newState (model ^. internalStates)
-      
+      newWinState = winStateDetectHash newState
+      newTurn = if not newWinState then turnChange model else model ^. turnS
+
 
 -- update the turn based on the order or reverting order
 turnChange :: AppModel -> Int
@@ -379,9 +380,9 @@ computerTurn sendMsg = do sendMsg ComputerAction
 -- pass the model information to the MCTS interface and accept the returned board state
 aiDecision :: AppModel -> (Board, Int, HistoryTrace)
 aiDecision model = let (root, rootIdx) = makeRoot (model ^. playersAmount) (model ^. displayBoard)
-                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, rootIdx, getRootBoard root, model ^. playersAmount, model ^. gameHistory, (5, 0.5)) currentState 100
+                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, rootIdx, getRootBoard root, model ^. playersAmount, model ^. gameHistory, (2, 0.5)) currentState 10
                    in  (newBoard, newState, nht)
-  where 
+  where
     currentState = (model ^. internalStates) !! (model ^. turnS)
 
 -- load the configuration options as well as define the initial state of the application

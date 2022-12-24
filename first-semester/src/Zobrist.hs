@@ -45,26 +45,23 @@ findOccupiedPieces :: OccupiedBoard -> [Pos]
 findOccupiedPieces board = sort $ [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
 
 -- the positions of the ending and starting states
-homeBase :: [Pos]
-homeBase = [(0,4),(0,5),(1,5),(0,6),(1,6),(2,6)]
+goalBase :: [Pos]
+goalBase = [(0,4),(0,5),(1,5),(0,6),(1,6),(2,6)]
 startBase :: [Pos]
 startBase = [(4,0),(5,0),(6,0),(5,1),(6,1),(6,2)]
 -- the hashed values of the both states
 hashInitial :: Int
 hashInitial = hash startBase
 hashEnd :: Int
-hashEnd = hash homeBase
+hashEnd = hash goalBase
 
 -- a win for a player can be detected based on comparing the hashed values
 winStateDetectHash :: Int -> Bool
 winStateDetectHash h = hashEnd == h
 
-checkPositive :: Pos -> Bool
-checkPositive (x, y) = x >= 0 && y >= 0
-
 -- given a list of positions on the pieces on the current occupied board and return a hashed value
 hash :: [Pos] -> Int
-hash ps = let posPL = filter checkPositive ps -- filter the negative positions
+hash ps = let posPL = filter (testValidPos occupiedBoardSize occupiedBoardSize) ps -- filter the negative positions
           in  evalState (hashBoardWithPos posPL) randomBoardState
 
     where
@@ -85,7 +82,7 @@ changeHash x y h = evalState (hashChange x y h) randomBoardState
                                  return $ f `par` t `pseq` foldr myXOR 0 [xv, f, t]
         
         safeGetElement :: Pos -> State StateTable Int
-        safeGetElement pos = do if not $ checkPositive pos then return 0
+        safeGetElement pos = do if not $ testValidPos occupiedBoardSize occupiedBoardSize pos then return 0
                                 else getElement pos
 
 --Hash Construct---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
