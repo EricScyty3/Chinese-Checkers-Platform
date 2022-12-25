@@ -135,7 +135,7 @@ findAllPieces :: Board -> [BoardPos]
 findAllPieces = concatMap (filter isOccupied)
 -- find the all pieces' positions on the board based on the colour
 findPiecesWithColour :: Colour -> Board -> [BoardPos]
-findPiecesWithColour colour = concatMap (filter (`compareColour` colour))        
+findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
 -- mutate a position of the whole board with certain function
 changeBoardElement :: (BoardPos -> BoardPos) -> BoardPos -> Board -> Board
 changeBoardElement f bPos board = let new = f bPos
@@ -161,81 +161,117 @@ repaintPath board start end = let colour = getColour start
                                              modifySTRef n (changeBoardElement erase start) -- erase the starting position's colour
                                              modifySTRef n (changeBoardElement (safeRepaint colour) end) -- over-write the ending position's colour
                                              readSTRef n
-                                             
+
 --Movement Operators-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Game Rules: players move their pieces one after another based on turn, 
+-- the first player that manages moving all of his pieces to the oppsite corner of the start wins the game
+-- their are two movements allowed in the game: one is to simply jump to the adjacent empty position
+-- another is to jump over one occupied position to another empty position, called chained jump, becuase this type of jump could be made multiple time for a larger distance
+-- at every turn only one of the jumps is allowed, that is, once a movement is made, the player cannot make another
+-- the bases other than the start and goal are not allowed for a player to stay long: either restricting the move to other base
+-- or allowing piece pass other bases but not allowed to settle
+-- additionally, once a piece successfully enter the goal base, it cannot move out, but is still moveable within the base
+
+
 -- enter a board position and return a list of avaliable movements/reachable positions: adjacent jump and chained jump
 destinationList :: BoardPos -> State Board [BoardPos]
 destinationList bPos = do case getColour bPos of
                             Nothing -> return [] -- invalid chosen pieces
-                            Just _  -> do adjacentMoves <- findAvaliableNeighbors bPos -- find the destinations of two jumps
-                                          chainedMoves  <- recursiveSearch [] bPos -- start with empty record
-                                          return $ adjacentMoves `par` chainedMoves `pseq` nub (adjacentMoves ++ chainedMoves) -- combine two positions list and discard the repeated ones
+                            Just c  -> do adjacentMoves <- findAvaliableNeighbors c bPos -- find the destinations of two jumps
+                                          chainedMoves  <- recursiveSearch [] c bPos -- start with empty record
+                                          let combinedList = adjacentMoves `par` chainedMoves `pseq` nub (adjacentMoves ++ chainedMoves) -- combine two positions list and discard the repeated ones
+                                          return combinedList
 
 -- detect the adjacent positions that are valid to jump to 
-findAvaliableNeighbors :: BoardPos -> State Board [BoardPos]
-findAvaliableNeighbors bPos = do neighbourList <- mapM getElement (neighborPosList (getPos bPos)) -- return the adjacent positions surrounding the entered position
-                                 return (filter isEmpty neighbourList) -- discard the positions that are occupied
+findAvaliableNeighbors :: Colour -> BoardPos -> State Board [BoardPos]
+findAvaliableNeighbors c bPos = do neighbourList <- mapM getElement (neighborPosList c (getPos bPos)) -- return the adjacent positions surrounding the entered position
+                                   return (filter isEmpty neighbourList) -- discard the positions that are occupied
     where
-        neighborPosList :: Pos -> [Pos]
-        neighborPosList (x, y) = filter (testValidPos boardWidth boardHeight)  [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)]
+        neighborPosList :: Colour -> Pos -> [Pos]
+        neighborPosList c p@(x, y) = filter (validMoveCheck c p) [(x-1, y-1), (x-2, y), (x-1, y+1), (x+1, y+1), (x+2, y), (x+1, y-1)]
+
+        validMoveCheck :: Colour -> Pos -> Pos -> Bool
+        validMoveCheck c f t = testValidPos boardWidth boardHeight t && testCorners c t && baseMoveAllow c f t
 
 -- chained jump : a list of one-over hop chained together to reach a larger jump range
 -- recursively search for the reachable destinations for chained jumps of different directions
 -- while search, a list of discovered positions is maintained to avoid cycling/repetition 
-recursiveSearch :: [BoardPos] -> BoardPos -> State Board [BoardPos]
-recursiveSearch record bPos = do chainJumpList <- jumpDirection bPos
-                                 let renewList = filter (`notElem` record) chainJumpList -- discard the positions already found
-                                     newRecord = renewList ++ record -- adding the new discovered positions to the recorded positions
-                                 recursiveList <- concatMapM (recursiveSearch newRecord) renewList -- continue the next "layer" of search based on the positions discovered at this "layer"
-                                                                                                   -- until not new positions are found
-                                 return (recursiveList ++ renewList) -- combining all found positions and return together
+recursiveSearch :: [BoardPos] -> Colour -> BoardPos -> State Board [BoardPos]
+recursiveSearch record c bPos = do chainJumpList <- jumpDirection c bPos
+                                   let renewList = filter (`notElem` record) chainJumpList -- discard the positions already found
+                                       newRecord = renewList ++ record -- adding the new discovered positions to the recorded positions
+                                   recursiveList <- concatMapM (recursiveSearch newRecord c) renewList -- continue the next "layer" of search based on the positions discovered at this "layer"
+                                   -- until not new positions are found
+                                   return (recursiveList ++ renewList) -- combining all found positions and return together
 
 -- given a board position, check the validty of all directions of one over hop
-jumpDirection :: BoardPos -> State Board [BoardPos]
-jumpDirection bpos = do reachableList <- mapM (determineValidJump bpos) [f (-1, -1), f (-2, 0), f (-1, 1), f (1, 1), f (2, 0), f (1, -1)] -- return the searched destinations
-                        return $ filter (/= bpos) reachableList -- remove the invalid moves
-                        
+jumpDirection :: Colour -> BoardPos -> State Board [BoardPos]
+jumpDirection c bpos = do reachableList <- mapM (determineValidJump c bpos) [f (-1, -1), f (-2, 0), f (-1, 1), f (1, 1), f (2, 0), f (1, -1)] -- return the searched destinations
+                          return $ filter (/= bpos) reachableList -- remove the invalid moves
+
     where
         f (a, b) (x, y) = (a+x, b+y)
 
 -- check the whether the one over hop from a position of a certain direction is valid, if it is then return the destination, otherwise, return itself
-determineValidJump :: BoardPos -> (Pos -> Pos) -> State Board BoardPos
-determineValidJump bpos f = do if not (testValidPos boardWidth boardHeight fp) ||
+determineValidJump :: Colour -> BoardPos -> (Pos -> Pos) -> State Board BoardPos
+determineValidJump c bpos f = if not $ validMoveCheck c then return bpos -- if invalid then just return the initial position 
+                              else do n1 <- getElement fp
+                                      n2 <- getElement fp2
+                                      if n1 `par` n2 `pseq` isOccupied n1 && isEmpty n2 then return n2 -- check if the pre-condition of the chained jump is satisfied
+                                      else return bpos -- if not then means it is not valid as well                                                   
+                            {-do if not (testValidPos boardWidth boardHeight fp) ||
                                   not (testValidPos boardWidth boardHeight fp2) then return bpos -- if invalid then just return the initial position 
                                else do n1 <- getElement fp
                                        n2 <- getElement fp2
                                        if n1 `par` n2 `pseq` isOccupied n1 && isEmpty n2 then return n2 -- check if the pre-condition of the chained jump is satisfied
-                                       else return bpos -- if not then means it is not valid as well 
+                                       else return bpos -- if not then means it is not valid as well-}
     where
-        fp = f (getPos bpos)
-        fp2 = (f . f) (getPos bpos)
+        pos = getPos bpos
+        fp = f pos
+        fp2 = (f . f) pos
+        -- a valid movement means both positions should within the board
+        -- and should not stay at other's bases, as well as the satisfying the restriction of goal base
+        validMoveCheck :: Colour -> Bool
+        validMoveCheck c = testValidPos boardWidth boardHeight fp2 && testCorners c fp2 && baseMoveAllow c pos fp2
 
 -- test if a piece's position is out of boarder
 testValidPos :: Int -> Int -> Pos -> Bool
 testValidPos xlimt ylimt (x, y) = x >= 0 && y >= 0 && x < xlimt && y < ylimt
 
 -- an addition check will be first projecting the board into a square occupied board for certain player and test whether it exists in that board
--- this is only for computer players to enable sufficient compute and shorter game
-testCorners :: Colour -> BoardPos -> Bool
-testCorners colour bPos = testValidPos occupiedBoardSize occupiedBoardSize (projection colour (getPos bPos))
+-- this is to ensure that the piece will only pass by other's bases but not stay long
+testCorners :: Colour -> Pos -> Bool
+testCorners colour pos = testValidPos occupiedBoardSize occupiedBoardSize (projection colour pos)
+
+-- besides, once a piece enter the goal base, it's not allowed to move out again, but could still move around within the base
+baseMoveAllow :: Colour -> Pos -> Pos -> Bool
+baseMoveAllow colour f t = let fp = projection colour f
+                               tp = projection colour t
+                           in  (fp `notElem` goalBase) || (tp `elem` goalBase)
 
 --Projection Operator----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- the positions of the ending and starting states
+goalBase :: [Pos]
+goalBase = [(0,4),(0,5),(1,5),(0,6),(1,6),(2,6)]
+startBase :: [Pos]
+startBase = [(4,0),(5,0),(6,0),(5,1),(6,1),(6,2)]
+
 -- the projection of the main (display) board to the sub-occupied board for each player
 projection :: Colour -> Pos -> Pos
 projection Green   = projectGreen
-projection Blue    = projectBlue 
-projection Purple  = projectPurple 
-projection Red     = projectRed 
-projection Orange  = projectOrange 
-projection Black   = projectBlack 
+projection Blue    = projectBlue
+projection Purple  = projectPurple
+projection Red     = projectRed
+projection Orange  = projectOrange
+projection Black   = projectBlack
 -- the projection of the sub-occupied board of certain player to the main (display) board 
 reversion :: Colour -> Pos -> Pos
-reversion Green    = reverseGreen 
-reversion Blue     = reverseBlue 
-reversion Purple   = reversePurple 
-reversion Red      = reverseRed 
-reversion Orange   = reverseOrange 
-reversion Black    = reverseBlack 
+reversion Green    = reverseGreen
+reversion Blue     = reverseBlue
+reversion Purple   = reversePurple
+reversion Red      = reverseRed
+reversion Orange   = reverseOrange
+reversion Black    = reverseBlack
 -- Below is the coordinate conversion of internal board state of each colour and the external display board state
 -- through modifying the x-y coordinates 
 {-

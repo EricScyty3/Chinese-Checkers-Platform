@@ -154,9 +154,7 @@ colouredMovesList :: Colour -> State GameTreeStatus [Transform]
 colouredMovesList colour = do board <- getBoard
                               let bs = findPiecesWithColour colour board -- all pieces of certain colour
                                   ds = evalState (do mapM destinationList bs) board -- the new positions resulting from moving the above pieces
-                                  -- an additional check of corner positions should be done for avoiding invalid positions when projecting
-                                  nds = map (filter (testCorners colour)) ds 
-                              return (pairArrange bs nds) -- zip the resulting movements with the current pieces
+                              return (pairArrange bs ds) -- zip the resulting movements with the current pieces
     where
         pairArrange :: [BoardPos] -> [[BoardPos]] -> [Transform]
         pairArrange _ [] = []

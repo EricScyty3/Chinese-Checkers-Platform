@@ -10,6 +10,7 @@ import Control.Monad.State
 import Control.Monad.Extra
 import Control.Parallel
 import Data.Containers.ListUtils
+import Data.Time
 
 
 -- basically will need a breadth-first search for preventing duplicate moves, and also, due to the difficulty of measuring the prediction in A star, BFS is somehow more accurate 
@@ -17,7 +18,10 @@ import Data.Containers.ListUtils
 -- level 0 means the initial state
 -- level 1 means a move is performed by each piece from the initial state, might exists duplications
 
--- main = print $ shortestMoves testBoard 800
+-- main = do start <- getCurrentTime
+--           print $ shortestMoves (findOccupiedPieces testBoard) 800
+--           end <- getCurrentTime
+--           print $ diffUTCTime end start
 
 testBoard :: OccupiedBoard
 testBoard = [
@@ -142,13 +146,17 @@ destinationList' p = do ps <- get
 
 -- discover the avaliable adjacent positions arround the entered one
 findAvaliableNeighbors' :: Pos -> State [Pos] [Pos]
-findAvaliableNeighbors' (x, y) = do ps <- get
-                                    let avaliableList = filter (`notElem` ps) neighborPosList
-                                    return avaliableList
+findAvaliableNeighbors' p@(x, y) = do ps <- get
+                                      let avaliableList = filter (`notElem` ps) neighborPosList
+                                      return avaliableList
     where
         neighborPosList :: [Pos]
-        neighborPosList = filter (testValidPos size size) [(x, y-1), (x-1, y-1), (x-1, y), (x, y+1), (x+1, y+1), (x+1, y)]
+        neighborPosList = filter (validMoveCheck p) [(x, y-1), (x-1, y-1), (x-1, y), (x, y+1), (x+1, y+1), (x+1, y)]
         size = occupiedBoardSize
+
+        -- check the validity of the movement
+        validMoveCheck :: Pos -> Pos -> Bool
+        validMoveCheck f t = testValidPos size size t && BFS.baseMoveAllow f t
 
 -- search for all chained jump destinations that can be reached
 recursiveSearch' :: [Pos] -> Pos -> State [Pos] [Pos]
@@ -167,13 +175,19 @@ jumpDirection' pos = do reachableList <- mapM (determineValidJump' pos) [f (0, -
 
 -- check if a one over hop is valid
 determineValidJump' :: Pos -> (Pos -> Pos) -> State [Pos] Pos
-determineValidJump' pos f = do if not (testValidPos size size fp) ||
-                                  not (testValidPos size size fp2) then return pos
-                               else do ps <- get
-                                       if fp2 `notElem` ps && fp `elem` ps then return fp2
-                                       else return pos
+determineValidJump' pos f = if not validMoveCheck then return pos
+                            else do ps <- get
+                                    if fp2 `notElem` ps && fp `elem` ps then return fp2
+                                    else return pos
     where
         fp = f pos
         fp2 = (f . f) pos
         size = occupiedBoardSize
 
+        -- check the validity of the movement
+        validMoveCheck :: Bool
+        validMoveCheck = testValidPos size size fp2 && BFS.baseMoveAllow pos fp2
+
+-- prevent piece from moving out the goal base
+baseMoveAllow :: Pos -> Pos -> Bool
+baseMoveAllow fp tp = (fp `notElem` goalBase) || (tp `elem` goalBase)

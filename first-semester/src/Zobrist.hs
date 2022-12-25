@@ -44,11 +44,6 @@ initialState = [
 findOccupiedPieces :: OccupiedBoard -> [Pos]
 findOccupiedPieces board = sort $ [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
 
--- the positions of the ending and starting states
-goalBase :: [Pos]
-goalBase = [(0,4),(0,5),(1,5),(0,6),(1,6),(2,6)]
-startBase :: [Pos]
-startBase = [(4,0),(5,0),(6,0),(5,1),(6,1),(6,2)]
 -- the hashed values of the both states
 hashInitial :: Int
 hashInitial = hash startBase
