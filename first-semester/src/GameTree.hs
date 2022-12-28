@@ -46,7 +46,7 @@ getPlayerIdx :: State GameTreeStatus PlayerIndex
 getPlayerIdx = do (pi, _, _, _, _, _) <- get; return pi
 -- based on the player's index, return the corresponding colour of the pieces
 getPlayerColour :: State GameTreeStatus Colour
-getPlayerColour = do pi <- getPlayerIdx; currentPlayerColour pi <$> getPlayerNum
+getPlayerColour = do pi <- getPlayerIdx; playerColour pi <$> getPlayerNum
 -- get the board index accumulated so far
 getBoardIdx :: State GameTreeStatus BoardIndex
 getBoardIdx = do (_, bi, _, _, _, _) <- get; return bi
@@ -71,6 +71,11 @@ updatePlayerIdx = do (pi, bi, b, pn, ht, cons) <- get; put (turnBase pn pi, bi, 
 -- change the player turns based on index from 0 to the number - 1
 turnBase :: Int -> PlayerIndex -> PlayerIndex
 turnBase players idx = if idx == players - 1 then 0 else idx + 1
+
+reverseTurnBase :: Int -> PlayerIndex -> PlayerIndex
+reverseTurnBase players idx
+  | idx == 0 = players - 1
+  | otherwise = idx - 1
 -- increment the board index by 1
 updateBoardIdx :: State GameTreeStatus ()
 updateBoardIdx = do (pi, bi, b, pn, ht, cons) <- get; put (pi, bi+1, b, pn, ht, cons)
@@ -162,8 +167,8 @@ colouredMovesList colour = do board <- getBoard
         pairArrange (b:bs) (d:ds) = zip (repeat b) d ++ pairArrange bs ds
 
 -- return the current player's colour based on the number of players
-currentPlayerColour :: PlayerIndex -> Int -> Colour
-currentPlayerColour idx number
+playerColour :: PlayerIndex -> Int -> Colour
+playerColour idx number
     | number == 2 = twoPlayersSet !! idx
     | number == 3 = threePlayersSet !! idx
     | number == 4 = fourPlayersSet !! idx

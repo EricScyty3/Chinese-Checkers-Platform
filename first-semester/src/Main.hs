@@ -121,7 +121,7 @@ titleText model
   | model ^. ifWin = show colour ++ " wins" -- print winning player's colour when the win state of a player is achieved
   | otherwise = show colour ++ "'s turn" -- print current player's turn and colour if win state is not satisfied
   where
-    colour = currentPlayerColour (model ^. turnS) (model ^. playersAmount)
+    colour = playerColour (model ^. turnS) (model ^. playersAmount)
 
 -- determine if the state of fromPiece, toPiece, previousFromPiece, previousToPiece, is changed
 ifInitialPiece :: BoardPos -> Bool
@@ -262,7 +262,7 @@ handleEvent wenv node model evt = case evt of
 
       -- get the last turn value and retrieve the information for reverting the hash state
       lastTurn = revertTurnChange model
-      lastColour = currentPlayerColour lastTurn (model ^. playersAmount)
+      lastColour = playerColour lastTurn (model ^. playersAmount)
       pfp = projection lastColour (getPos pf)
       ptp = projection lastColour (getPos pt)
 
@@ -288,7 +288,7 @@ handleEvent wenv node model evt = case evt of
         f = model ^. fromPiece
         t = model ^. toPiece
         newBoard = repaintPath (model ^. displayBoard) f t -- generate the new board state by re-colouring the two board positions
-        currentColour = currentPlayerColour (model ^. turnS) (model ^. playersAmount)
+        currentColour = playerColour (model ^. turnS) (model ^. playersAmount)
         currentState = (model ^. internalStates) !! (model ^. turnS)
         fromProjectPos = projection currentColour (getPos f)
         toProjectPos = projection currentColour (getPos t)
@@ -333,7 +333,7 @@ handleEvent wenv node model evt = case evt of
                                                       True -> [Model $ model & errorMessage .~ show currentColour ++ ": destination occupied" -- if the destination is occupied, then invalid
                                                                             & fromPiece .~ U (-1, -1)]
     where
-      currentColour = currentPlayerColour (model ^. turnS) (model ^. playersAmount)
+      currentColour = playerColour (model ^. turnS) (model ^. playersAmount)
       newMovesList = evalState (destinationList b) (model ^. displayBoard)
 
   -- reset the total player amount for computer player options

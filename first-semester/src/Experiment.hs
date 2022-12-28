@@ -1,5 +1,5 @@
 module Experiment where
--- setup a game platform for different AI players
+-- setup a draft experiment set for different AI players
 import MCTS
 import GameTree
 import Board
@@ -9,70 +9,64 @@ import Data.Ratio
 import Control.Parallel
 import Data.Time
 import Zobrist
+import System.Environment (getArgs)
+import Data.List
+
+-- retrieve the average value of a list
+mean :: [Int] -> Double
+mean xs = fromIntegral (sum xs) / fromIntegral (length xs)
+
+-- retrieve the median value of a list (regardless of the amount of certain value)
+medianValue :: [Int] -> Double
+medianValue [] = 0
+medianValue [x] = fromIntegral x
+medianValue [x, y] = fromIntegral (x+y) / 2
+medianValue xs = let minIdx = elemIndices (minimum xs) xs
+                     maxIdx = elemIndices (maximum xs) xs
+                     takeList = take (head maxIdx) xs
+                     dropList = drop (last minIdx + 1) takeList
+                 in  if null dropList then medianValue [minimum xs, maximum xs]
+                     else medianValue dropList
+
+-- get the turn where the algorithm that converges to 0 turn
+convergeTurn :: [Int] -> Int
+convergeTurn [] = 0 -- when all turns are 0
+convergeTurn xs = let x = last xs
+                  in  if x /= 0 then length xs -- when the input length is excatly equal to the output, meaning that the convergence is not reached
+                      else convergeTurn (init xs)
 
 -- random move player: just randomly choose a move regradless of the benefit
 randomMoveDecision :: GameTreeStatus -> Board
-randomMoveDecision s@(pi, _, board, pn, _, _)= let co = currentPlayerColour pi pn
+randomMoveDecision s@(pi, _, board, pn, _, _)= let co = playerColour pi pn
                                                    bs = evalState (colouredMovesList co) s
+                                                   ns = expandPolicy co bs -- the backward movement should be restricted, otherwise, no progress might be made
                                                    rm = bs !! randomMove (length bs) -- randomly choose one expanded result
                                                in  evalState (repaintBoard rm) s -- return the chosen board state
 
--- the measurement could be different of determing the performance of the search
--- such as the win rate, how long a game is needed to end, how long a decision is needed to make, or to stop the game at certain phase and see which player is closer to win
--- or the search depth it requires to end a game
-
--- additional measurement could be playout related: the median number of game simulations
--- the reason why mean might not be useful here, is that the wider sampling causes fewer simulations during the playout
-
-
 -- given a set of agruments, test the performance of the selection strategy
--- measurement: median playouts
+experiment1 :: Int -> Board -> Int -> [(Double, Double)] -> Int -> [Double]
 experiment1 _ _ _ [] _ = []
-experiment1 pn board bh (a:as) iter = let p = mean (experimentalPlayout pn board bh a iter) -- get the average of a list of median playouts
-                                          ps = experiment1 pn board bh as iter
-                                      in  p `par` ps `pseq` p:ps
+experiment1 pn board bh (a:as) iter = let t = mean (take iter (multipleCalls pn board bh a))
+                                          rs = experiment1 pn board bh as iter
+                                      in  t `par` rs `pseq` t:rs
 
--- given a board state with the same configuration and check the median amount of turns it needs to complete a playout
-experimentalPlayout _ _ _ _ 0 = []
-experimentalPlayout pn board bh cons counts = let (root, rootIdx) = makeRoot pn board
-                                                  (_, _, _, pl) = finalSelection root (0, rootIdx, board, pn, RBLeaf, cons) bh 1000
-                                                  rs = experimentalPlayout pn board bh cons (counts - 1)
-                                              in  pl `par` rs `pseq` medianValue pl:rs
-{-
-    -- given a multiple-players board, let certain players play against each other and see how well the players perform
-    -- measurments: avarage win rate, average game turns
-    experiment2 _ _ [] _ = ([], [])
-    experiment2 pn board (a:as) iter = let (wins, turns) = experimentalGameS pn board a iter
-                                        meanWins = mean wins
-                                        meanTurns = mean (map fromIntegral turns)
-                                        (mws, mts) = experiment2 pn board as iter
-                                    in  (meanWins, meanTurns) `par` (mws, mts) `pseq` (meanWins:mws, meanTurns:mts)
+-- repeat calling the MCTS function several times such that is could be statistically meaningful 
+-- the less it is, the faster it converges
+multipleCalls :: Int -> [[BoardPos]] -> Int -> (Double, Double) -> [Int]
+multipleCalls pn board bh cons = let ct = convergeTurn (singleCall pn board bh cons)
+                                 in  ct:multipleCalls pn board bh cons
 
-    -- play a match several times with same configuration
-    experimentalGameS _ _ _ 0 = ([], [])
-    experimentalGameS pn board cons counts = let (win, turns) = experimentalGame 0 pn board cons [2] 1 10
-                                                (ws, ts) = experimentalGameS pn board cons (counts - 1)
-                                            in  (win, turns) `par` (ws, ts) `pseq` (win:ws, turns:ts)
+-- given a board state, call the MCTS function for deciding the next move, and return the turns of game simulatons taken in the playout phase
+singleCall :: Int -> Board -> Int -> (Double, Double) -> [Int]
+singleCall pn board bh cons = let (root, rootIdx) = makeRoot pn board
+                                  (_, _, _, pl) = finalSelection root (0, rootIdx, board, pn, RBLeaf, cons) bh 500
+                              in  pl
 
-
-    -- a match between two types of players: random player and MCTS player, to test the performance based on win rate, game turns, and playouts
-    experimentalGame pi pn board cons mctsPi moves iter =
-                                                        let colour = currentPlayerColour pi pn
-                                                        in  if pi `notElem` mctsPi then let newBoard = randomMoveDecision (pi, 0, board, pn, RBLeaf, cons)
-                                                                                        in  if winStateDetermine colour newBoard then {-do printEoard newBoard 
-                                                                                                                                        return-} (0, getTurns moves pn)
-                                                                                            else -- do -- printEoard newBoard
-                                                                                                    experimentalGame (turnBase pn pi) pn newBoard cons mctsPi (moves+1) iter
-                                                            else let (root, rootIdx) = makeRoot pn board
-                                                                    (newBoard, _, _) = finalSelection root (pi, rootIdx, board, pn, RBLeaf, cons) iter
-                                                                in  if winStateDetermine colour newBoard then {-do printEoard newBoard 
-                                                                                                                return-} (1, getTurns moves pn)
-                                                                    else -- do -- printEoard newBoard
-                                                                            experimentalGame (turnBase pn pi) pn newBoard cons mctsPi (moves+1) iter
--}
 -- ghc -main-is Experiment Experiment.hs -O2 -fllvm -outputdir dist
-main = do start <- getCurrentTime
-          let xs = experiment1 3 (eraseBoard threePlayersSet) hashInitial [(5, 0.5)] 1
+main = do arg <- getArgs
+          start <- getCurrentTime
+          let iter = read (head arg)
+              xs = experiment1 3 (eraseBoard threePlayersSet) hashInitial [(5, 0.5)] iter
           print xs
           end <- getCurrentTime
           print $ diffUTCTime end start
