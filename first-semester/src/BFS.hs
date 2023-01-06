@@ -18,11 +18,6 @@ import Data.Time
 -- level 0 means the initial state
 -- level 1 means a move is performed by each piece from the initial state, might exists duplications
 
--- main = do start <- getCurrentTime
---           print $ shortestMoves (findOccupiedPieces testBoard) 800
---           end <- getCurrentTime
---           print $ diffUTCTime end start
-
 testBoard :: OccupiedBoard
 testBoard = [
         [0,1,0,0,1,1,0],

@@ -51,6 +51,9 @@ randomSelection xs  = let is = elemIndices (maximum xs) xs
 randomIndices :: Int -> [Int]
 randomIndices l = unsafePerformIO $ take l . nub . randomRs (0, l-1) <$> newStdGen
 
+testTree = let (root, rootIdx) = makeRoot 4 (eraseBoard fourPlayersSet)
+           in  evalState (expansion root) (0, rootIdx, getRootBoard root, 4, RBLeaf, (5, 0.5))
+
 --Stage Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- normal MCTS is divided into four phases: selection, expansion, playout and backpropagation
 -- the first phase is to select one resulting board with the maximum profit/score, which is calculated based on different formulas
@@ -132,7 +135,11 @@ evaluateMove2 :: (Pos, Pos) -> Double
 evaluateMove2 (p1, p2) = let dist1 = dist p1 (0, 6)
                              dist2 = dist p2 (0, 6)
                          in dist1 `par` dist2 `pseq` (dist1 - dist2) -- still the larger the better
-
+-- estimate the board state simply by the centroid value
+evaluateBoard1 :: Board -> Colour -> Int
+evaluateBoard1 board colour = let ps = findPiecesWithColour colour board
+                                  pp = map (projection colour . getPos) ps 
+                              in  centroid pp
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
 playoutPolicy :: Colour -> [Transform] -> State GameTreeStatus Board
 playoutPolicy colour tfs = let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs -- projected to corresponding occupied board
@@ -146,15 +153,20 @@ playoutPolicy colour tfs = let ptfs = map (\(x, y) -> (projection colour (getPos
 
 -- game simulation from a certain board state 
 playout :: Int -> State GameTreeStatus (PlayerIndex, Int)
-playout moves = if moves >= 1000 then error "too many loads"
+playout moves = if moves >= 3000 then do pn <- getPlayerNum -- avoid the potential cycling, or stop the playouts if costing too much time
+                                         bo <- getBoard
+                                         let is = [0..(pn-1)]
+                                             cs = map (`playerColour` pn) is
+                                             es = map (evaluateBoard1 bo) cs
+                                         return (is !! randomSelection es, moves) -- treat the one with the best board state as winner
                 else
                 do colour <- getPlayerColour
                    tfs <- colouredMovesList colour    -- get all of the avaliable moves
                    board <- getBoard
-                   if winStateDetermine colour board && moves == 1 then error "Cannot start playout at terminal point" -- if the started board state is already an end state then do nothing
-                   else {-if winStateDetermine colour board && moves > 1 then error ("Error: " ++ show pi ++ show moves ++ show board)
-                        else -}
-                        do nboard <- playoutPolicy colour tfs -- otherwise, choose one of the boards resulted from the current board
+                   pi <- getPlayerIdx
+                   if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)  
+                   -- if the started board state is already an end state, this means that some players take a suicidal action that cause other player to win
+                   else do nboard <- playoutPolicy colour tfs -- otherwise, choose one of the boards resulted from the current board
                            pi <- getPlayerIdx
                            pn <- getPlayerNum
                            if winStateDetermine colour nboard then return (pi, getTurns moves pn) -- if a player wins, then return the player's index
@@ -186,31 +198,40 @@ winStateDetermine c b = let hs = map (reversion c) goalBase -- get the goal posi
 -- and play simulations on the expanded node, and finally update the reviewed nodes
 mcts :: GameTree -> State GameTreeStatus (GameTree, BoardIndex, HistoryTrace, Int)
 mcts tree = do (trace, lastnode) <- selection tree [getBoardIndex tree] -- given a trace where the root is already inside it
-               -- a check is taken to ensure whether the last node is a win state
-               board <- getBoard
-               pi <- getPlayerIdx
+               -- a check is taken to ensure whether the last node is a win state, this allowing the suicidal action that cause other player to win
+               -- therefore, the check should consider all players
                pn <- getPlayerNum
-               co <- getPlayerColour
-               let ri = reverseTurnBase pn pi
-                   rc = playerColour ri pn
+               board <- getBoard
+               let winIdx = checkPlayersWinState pn board
                -- the reason why this check is necessary it that as the tree gradually grows, it will eventually reach the goal state, therefore, 
                -- need to determine them in advance, otherwise, playout might be mislead 
-               if winStateDetermine rc board then do newTree <- backpropagation ri trace [tree] lastnode -- skip the expansion and playout phases if already won
-                                                     bi <- getBoardIdx
-                                                     ht <- getHistoryTrace
-                                                     return (head newTree, bi, ht, 0) -- get the new tree and game history with playout turn equals to 0 
+               if winIdx /= -1 then do newTree <- backpropagation winIdx trace [tree] lastnode -- skip the expansion and playout phases if already won
+                                       bi <- getBoardIdx
+                                       ht <- getHistoryTrace
+                                       return (head newTree, bi, ht, 0) -- get the new tree and game history with playout turn equals to 0 
                else do expandednode <- expansion lastnode -- expand the last leaf in the trace
-                       (ntrace, playnode) <- selection expandednode trace -- additional selection of the expanded node's children
-                       board <- getBoard
-                       if winStateDetermine co board then do newTree <- backpropagation pi ntrace [tree] expandednode -- skip the playout phases if already won
-                                                             bi <- getBoardIdx
-                                                             ht <- getHistoryTrace
-                                                             return (head newTree, bi, ht, 0) -- get the new tree and game history with playout turn equals to 0 
+                       (ntrace, _) <- selection expandednode trace -- additional selection of the expanded node's children
+                       nboard <- getBoard
+                       let winIdx = checkPlayersWinState pn nboard
+                       if winIdx /= -1 then do newTree <- backpropagation winIdx ntrace [tree] expandednode -- skip the playout phases if already won
+                                               bi <- getBoardIdx
+                                               ht <- getHistoryTrace
+                                               return (head newTree, bi, ht, 0) -- get the new tree and game history with playout turn equals to 0 
                        else do (winIdx, turns) <- playout 1 -- the standard order: the playout will be done based on the board of the selected new leaf
                                newTree <- backpropagation winIdx ntrace [tree] expandednode -- treat the tree as a child by setting it into a list, and update it
                                bi <- getBoardIdx
                                ht <- getHistoryTrace
                                return (head newTree, bi, ht, turns) -- get the new tree 
+
+-- check the win state of all players, since the suicidal action is allowed and can be performed either randomly or on purpose
+checkPlayersWinState :: Int -> Board -> Int
+checkPlayersWinState pn board = let is = [0..(pn-1)]
+                                    cs = map (`playerColour` pn) is
+                                    ws = map (`winStateDetermine` board) cs
+                                in  case elemIndices True ws of
+                                        [] -> -1
+                                        [x] -> x
+                                        _ -> error "Multiple players win at the same time"
 
 -- repeating the MCTS until certain iterations are reached
 iterations :: GameTree -> GameTreeStatus -> [Int] -> Int -> (GameTree, BoardIndex, HistoryTrace, [Int])

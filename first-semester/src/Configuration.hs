@@ -14,9 +14,12 @@ import Data.STRef
 import RBTree
 import Data.Maybe
 import Data.Time
+import System.Environment
+import GHC.IO
 
 
 -- this version of configuration tends to compute all possible board states (excluding mirror images) rather than deleting some sections
+-- but could cost too long to fully compute
 -- allBoards :: [OccupiedBoard]
 -- allBoards = let p = listAllPermutations 6 (replicate 49 0, 0)
 --             in  map convertToBoard p
@@ -26,20 +29,22 @@ import Data.Time
 -- convertToBoard xs = take 7 xs:convertToBoard (drop 7 xs)
 
 -- ghc -main-is Configuration Configuration.hs -O2 -fllvm -outputdir dist
--- rm -rf dist/
--- rm Configuration
-
 -- although the processing speed of BFS is difficult to be improved, 
 -- the while process could be divided into several programs and run at the same time
 main :: IO ()
-main = do start <- getCurrentTime
+main = do arg <- getArgs
+          start <- getCurrentTime
           let (tree, size) = sufficientBoards
-              items = multipleTreesTC (splitTree tree 8)
-          tableElementsRecord items "lookup_table.txt"
+              treeNum = read (head arg) -- the amount of program being separated 
+              treeIdx = read (arg !! 1) -- which section to be computed
+              width = read (arg !! 2)   -- the width settings for search the shortest moves: normally (800,200) 
+              ts = splitTree tree treeNum
+              items = tableElementsConstruct (ts !! treeIdx) width
+          tableElementsRecord items ("lookup_table_" ++ show treeIdx ++ ".txt")
           end <- getCurrentTime
           print $ diffUTCTime end start
 
---Datsbase Construct-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Database Construct-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- record and calculate the board value for each board state
 
 -- considering processing just one huge tree could be inefficient, an alternative is to divide the tree into several smaller trees and run them in parallel
@@ -62,23 +67,16 @@ tableElementsRecord elements filePath = do filePath <- openFile filePath WriteMo
         convertToString [] = ""
         convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts) -- every line will only contain 100 items
 
--- process a list of trees that is split from a larger one in parallel
-multipleTreesTC :: [RBTree [Pos]] -> [(Int, Int, Int)]
-multipleTreesTC [] = []
-multipleTreesTC (t:ts) = let n1 = take 1 $ tableElementsConstruct t
-                             n2 = multipleTreesTC ts 
-                         in  n1 `par` n2 `pseq` n1 ++ n2
-
 -- calculate the corresponding shortest moves need to reach the goal state of a board state
 -- as well as the minimum moves of its mirror
-tableElementsConstruct :: RBTree [Pos] -> [(Int, Int, Int)]
-tableElementsConstruct RBLeaf = []
-tableElementsConstruct (RBNode _ p t1 key t2) = let left  = tableElementsConstruct t1
-                                                    right = tableElementsConstruct t2
-                                                in  left `par` right `pseq` (newElement:left ++ right)
+tableElementsConstruct :: RBTree [Pos] -> (Int, Int) -> [(Int, Int, Int)]
+tableElementsConstruct RBLeaf (a, b) = []
+tableElementsConstruct (RBNode _ p t1 key t2) (a, b) = let left  = tableElementsConstruct t1 (a, b)
+                                                           right = tableElementsConstruct t2 (a, b)
+                                                       in  left `par` right `pseq` (newElement:left ++ right)
     where
-        x = shortestMoves p 800 -- the farther it is from the goal state, the wider breadth it might need
-        y = shortestMoves (symmetric2_pos p) 200 -- the closer it is, the less wide breadth could be sufficient 
+        x = shortestMoves p a -- the farther it is from the goal state, the wider breadth it might need
+        y = shortestMoves (symmetric2_pos p) b -- the closer it is, the less wide breadth could be sufficient 
         newElement = x `par` y `pseq` (key, x, y)
 
 --Board Generations------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -99,7 +97,7 @@ Besides, according to the mirror states sharing the same shortest paths, these c
 
 -- list all needed board states for certain patterns and stored as a tree 
 sufficientBoards :: (RBTree [Pos], Int)
-sufficientBoards = let ps = listAllPermutations 6 ([], 0) -- listAllPermutations 6 (replicate 21 0, 0)
+sufficientBoards = let ps = listAllPermutations 6 ([], 0)
                    in  boardTree ps RBLeaf 0
 
 -- make use of the tree's fast search feature, to get rid of the mirror image of the board
@@ -121,7 +119,6 @@ boardTree (p:ps) rb size = let -- avoid mirror images
     [0, 0, 0, 0, 0, 1, 1] [18..19]18 -> (5, 4)
     [0, 0, 0, 0, 0, 0, 1] [20]    20 -> (6, 5)
 -}
-
 -- convert the 1-dimensional index to 2-dimensional coordinate, specifically for the 21-length list
 idx2Pos :: Int -> Pos
 idx2Pos idx
@@ -131,26 +128,6 @@ idx2Pos idx
     | 15 <= idx && idx <= 17 = (idx - 14 + 3, 3)
     | 18 <= idx && idx <= 19 = (idx - 17 + 4, 4)
     | otherwise = (6, 5)
-
-{-
-    -- convertToBoardWithSpace :: Int -> [Int] -> OccupiedBoard
-    -- convertToBoardWithSpace 6 _ = [replicate 7 0]
-    -- convertToBoardWithSpace i xs = (replicate spacer 0 ++ take (7 - spacer) xs) : convertToBoardWithSpace (i+1) (drop (7 - spacer) xs)
-    --     where
-    --         spacer = i + 1
-
-
-    -- -- treat the occupied board as a 1D list of length 21
-    -- listAllPermutations :: Int -> ([Int], Int) -> [[Int]]
-    -- listAllPermutations 0 (ls, _) = [ls]
-    -- listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. length ls - pieces] -- settle the allowed index of element for permutation
-    --                                                 nls = map (flipBoardState ls) idx -- flip 0 to 1 as indicating a piece is placed
-    --                                                 next = map (+1) idx -- backward the range as every element before this will already be manipulated 
-    --                                             in  nls `par` next `pseq` concatMap (listAllPermutations (pieces - 1)) (zip nls next)
-    --     where
-    --         flipBoardState :: [Int] -> Int -> [Int]
-    --         flipBoardState ls p = replace p 1 ls
--}
 
 -- treat the occupied board as a 1D list of length 21, and return all the possible position combinations of the pieces
 listAllPermutations :: Int -> ([Pos], Int) -> [[Pos]]
@@ -164,23 +141,24 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
         flipBoardState :: [Pos] -> Pos -> [Pos]
         flipBoardState ls p = p:ls
 
+-- construct the red-black tree based on the stored data with and hash of the board and the corresponding moves and sysmmetric board's moves
+constructTable :: [(Int, Int, Int)] -> RBTree (Int, Int) -> RBTree (Int, Int)
+constructTable [] tree = tree
+constructTable ((bh, top, bottom):xs) tree = constructTable xs (rbInsert bh (top, bottom) tree)
 
--- -- load the stored lookup table data from the file
--- loadTableElements :: [(Hash, StoredData)]
--- {-# NOINLINE loadTableElements #-}
--- loadTableElements = unsafePerformIO loadRecord
---     where
---         loadRecord :: IO [(Hash, StoredData)]
---         loadRecord = do filePath <- openFile "lookup_table.txt" ReadMode
---                         contents <- hGetContents filePath
---                         -- hClose filePath
---                         return $ convertToElement (lines contents)
+-- load the stored lookup table data from the file
+loadTableElements :: [Int] -> [(Int, Int, Int)]
+loadTableElements [] = []
+loadTableElements (x:xs) = let filename = "dataset/lookup_table_" ++ show x ++ ".txt"
+                               r = unsafePerformIO $ do filePath <- openFile filename ReadMode
+                                                        contents <- hGetContents filePath
+                                                        return $ convertToElement (lines contents)
+                               rs = loadTableElements xs
+                           in  r `par` rs `pseq` r ++ rs
+    where
+        convertToElement :: [String] -> [(Int, Int, Int)]
+        convertToElement s = concatMap read s
 
---         convertToElement :: [String] -> [(Hash, StoredData)]
---         convertToElement s = map (\(x, y, z) -> (x, [y, z])) (concatMap read s)
-
--- buildLookupTable :: RBTree
--- buildLookupTable = createTree loadTableElements
 
 -- `lp 49 6 = 13983816`
 lp u d = lm u (u-d+1) `div` lc d

@@ -71,11 +71,6 @@ updatePlayerIdx = do (pi, bi, b, pn, ht, cons) <- get; put (turnBase pn pi, bi, 
 -- change the player turns based on index from 0 to the number - 1
 turnBase :: Int -> PlayerIndex -> PlayerIndex
 turnBase players idx = if idx == players - 1 then 0 else idx + 1
-
-reverseTurnBase :: Int -> PlayerIndex -> PlayerIndex
-reverseTurnBase players idx
-  | idx == 0 = players - 1
-  | otherwise = idx - 1
 -- increment the board index by 1
 updateBoardIdx :: State GameTreeStatus ()
 updateBoardIdx = do (pi, bi, b, pn, ht, cons) <- get; put (pi, bi+1, b, pn, ht, cons)
