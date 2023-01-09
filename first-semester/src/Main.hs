@@ -374,7 +374,7 @@ revertTurnChange model
 
 -- keep calling the event for checking the computer player's movement
 computerTurn sendMsg = do sendMsg ComputerAction
-                          threadDelay $ 1000 * 1000
+                          threadDelay $ 1000 * 800 -- 1000
                           computerTurn sendMsg
 
 -- pass the model information to the MCTS interface and accept the returned board state
