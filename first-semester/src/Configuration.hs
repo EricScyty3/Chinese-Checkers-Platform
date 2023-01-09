@@ -141,6 +141,13 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
         flipBoardState :: [Pos] -> Pos -> [Pos]
         flipBoardState ls p = p:ls
 
+-- the configuration dataset of the Chinese Checkers's board
+lookupTable :: RBTree (Int, Int)
+lookupTable = let elems = loadTableElements [0 .. 15]
+              in  runST $ do n <- newSTRef RBLeaf
+                             modifySTRef n (constructTable elems)
+                             readSTRef n
+
 -- construct the red-black tree based on the stored data with and hash of the board and the corresponding moves and sysmmetric board's moves
 constructTable :: [(Int, Int, Int)] -> RBTree (Int, Int) -> RBTree (Int, Int)
 constructTable [] tree = tree
