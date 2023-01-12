@@ -12,6 +12,10 @@ import Zobrist
 import System.Environment (getArgs)
 import Data.List
 import System.IO
+import GHC.IO
+
+-- return the minimum item's index of a list
+minIdx xs = head $ elemIndices (minimum xs) xs
 
 -- retrieve the average value of a list
 mean xs = realToFrac (sum xs) / genericLength xs
@@ -65,17 +69,11 @@ singleCall pn board cons = let (root, rootIdx) = makeRoot pn board
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Experiment 2
 -- matching with the random players with different parameters of selection strategy
-experiment2 :: Int -> Board -> [(Double, Double)] -> [[Int]] -> Int -> [[(Int, Int)]]
+experiment2 :: Int -> Board -> [(Double, Double)] -> [Int] -> Int -> [[(Int, Int)]]
 experiment2 _ _ [] _ _ = []
-experiment2 pn board (a:as) is iter = let r = differentOrderGames (0, 0, board, pn, RBLeaf, a) is 1 iter
+experiment2 pn board (a:as) is iter = let r = multipleGames (0, 0, board, pn, RBLeaf, a) is 1 iter
                                           rs = experiment2 pn board as is iter
                                       in  r `par` rs `pseq` r:rs
--- repeat the game with the same selecting strategy but different player order and amount
-differentOrderGames :: GameTreeStatus -> [[Int]] -> Int -> Int -> [(Int, Int)]
-differentOrderGames _ [] _ _ = []
-differentOrderGames s (i:is) gs iter = let r = multipleGames s i gs iter
-                                           rs = differentOrderGames s is gs iter
-                                       in  r `par` rs `pseq` r ++ rs
 -- repeat the game with the same setting several times
 multipleGames :: GameTreeStatus -> [Int] -> Int -> Int -> [(Int, Int)]
 multipleGames _ _ _ 0 = []
@@ -99,21 +97,46 @@ singleGame s@(pi, bi, board, pn, ht, cons) mctsPi gs = let colour = playerColour
                                                                     else singleGame (turnBase pn pi, bi, newBoard, pn, nht, cons) mctsPi (gs+1)
 
 -- ghc -main-is Experiment Experiment.hs -O2 -fllvm -outputdir dist
--- main = do arg <- getArgs
---           start <- getCurrentTime
---           let pn = read (head arg) -- the player number
---               iter = read (arg !! 1) -- the iteration of a single call being repeated
---               xs -- construct the initial board state and run the experiment with that board
---                 | pn == 2 = experiment1 2 (eraseBoard twoPlayersSet) settings1 iter
---                 | pn == 3 = experiment1 3 (eraseBoard threePlayersSet) settings1 iter
---                 | pn == 4 = experiment1 4 (eraseBoard fourPlayersSet) settings1 iter
---                 | pn == 6 = experiment1 6 externalBoard settings1 iter
---                 | otherwise = []
---               fn = "experiment1_" ++ show pn ++ ".txt"
---           experimentRecord xs fn -- record the collected results into a file
---           end <- getCurrentTime
---           print $ diffUTCTime end start -- display the used time of the experiment
+{-
+-- the one that first targets the range of the parameters from 0 to 5
+-- and discovered that the PH constant should within 0 to 1
+main = do arg <- getArgs
+          start <- getCurrentTime
+          let pn = read (head arg) -- the player number
+              iter = read (arg !! 1) -- the iteration of a single call being repeated
+              xs -- construct the initial board state and run the experiment with that board
+                | pn == 2 = experiment1 2 (eraseBoard twoPlayersSet) settings1 iter
+                | pn == 3 = experiment1 3 (eraseBoard threePlayersSet) settings1 iter
+                | pn == 4 = experiment1 4 (eraseBoard fourPlayersSet) settings1 iter
+                | pn == 6 = experiment1 6 externalBoard settings1 iter
+                | otherwise = []
+              fn = "experiments/experiment1/experiment_" ++ show pn ++ ".txt"
+          experimentRecord xs fn -- record the collected results into a file
+          end <- getCurrentTime
+          print $ diffUTCTime end start -- display the used time of the experiment
+-}
+{-
+-- after that, try to discover a more specific range by introducing the range with double numbers
+-- discovered that (4, 0.5) has the least average value of convergence turns
+main = do arg <- getArgs
+          start <- getCurrentTime
+          let pn = read (head arg) -- the player number
+              uct = read (arg !! 1) -- the uct constant could be remained integer
+              iter = read (arg !! 2) -- the iteration of a single call being repeated
+              xs -- construct the initial board state and run the experiment with that board
+                | pn == 2 = experiment1 2 (eraseBoard twoPlayersSet) (settings1_2 uct) iter
+                | pn == 3 = experiment1 3 (eraseBoard threePlayersSet) (settings1_2 uct) iter
+                | pn == 4 = experiment1 4 (eraseBoard fourPlayersSet) (settings1_2 uct) iter
+                | pn == 6 = experiment1 6 externalBoard (settings1_2 uct) iter
+                | otherwise = []
+              fn = "experiments/experiment1/experiment_" ++ show pn ++ "_" ++ show uct ++ ".txt"
+          experimentRecord xs fn -- record the collected results into a file
+          end <- getCurrentTime
+          print $ diffUTCTime end start -- display the used time of the experiment
+-}
 
+-- simulation several game mathcing against the mcts and random player of different turn order
+-- known that "" achieved the least median turns to end a game against random player
 main = do arg <- getArgs
           start <- getCurrentTime
           let pn = read (head arg) -- the player number
@@ -125,15 +148,20 @@ main = do arg <- getArgs
                 | otherwise = []
               it = read (arg !! 1)
               is = read (arg !! 2)
-              xs = experiment2 pn bo settings1 is {-(settings2 pn 2)-} it
-              fn = "experiment2_" ++ show pn ++ "_" ++ show is ++ ".txt"
+              xs = experiment2 pn bo settings1 is it
+              fn = "experiments/experiment2/experiment_" ++ show pn ++ "_" ++ show is ++ ".txt"
           experimentRecord xs fn
           end <- getCurrentTime
           print $ diffUTCTime end start -- display the used time of the experiment
 
+
 -- systematic test for optimising the parameters for game tree evaluation based on playout convergence
+-- first notices that the second parameter should be between 0 and 1
 settings1 :: [(Double, Double)]
 settings1 = [(x, y) | x <- map fromRational [0 .. 5], y <- map fromRational [0 .. 5]]
+-- held the second stage of test
+settings1_2 :: Int -> [(Double, Double)]
+settings1_2 x = [(fromIntegral x, y) | y <- map fromRational [0, 0.1 .. 1]]
 
 -- systematic test for optimising the parameters for game tree evaluation based on matches information
 settings2 :: Int -> Int -> [[Int]]
@@ -158,3 +186,46 @@ experimentRecord xs filePath = do filePath <- openFile filePath WriteMode
     where
         convertToString [] = ""
         convertToString (x:xs) = show x ++ "\n" ++ convertToString xs
+
+-- load the experiment 1 results from the file and discover any the suitable range of the parameters
+loadExperiment1Results :: Int -> [((Double, Double), Double)]
+loadExperiment1Results pn = let filename = "experiments/experiment1/experiment_" ++ show pn ++ ".txt"
+                                r = unsafePerformIO $ do filePath <- openFile filename ReadMode
+                                                         contents <- hGetContents filePath
+                                                         return $ map read (lines contents)
+                                m = zip settings1 (map mean r) -- assoicated with the parameters tested in the experiment
+                            in  filter ((/=500) . snd) m -- take the parameters that provide a promising speed of convergence
+
+-- load the results from the second stage of the experiment 1, and get a more specific range
+loadExperiment1Results2 :: Int -> [Int] -> [((Double, Double), Double)]
+loadExperiment1Results2 _ [] = []
+loadExperiment1Results2 pn (x:xs) = let filename = "experiments/experiment1/experiment_" ++ show pn ++ "_" ++ show x ++ ".txt"
+                                        r = unsafePerformIO $ do filePath <- openFile filename ReadMode
+                                                                 contents <- hGetContents filePath
+                                                                 return $ map read (lines contents)
+                                        m = zip (settings1_2 x) (map mean r) -- assoicated with the parameters tested in the experiment
+                                        s = filter ((/=500) . snd) m -- take the parameters that provide a promising speed of convergence
+                                        s' = loadExperiment1Results2 pn xs -- load the rest of the files
+                                    in  s `par` s' `pseq` s ++ s' -- concat them together
+
+-- return the average wins and average turns for a game of each setting
+experiment2State :: Int -> [((Double, Double), (Double, Double))]
+experiment2State pn = let ls = concatExperiment2Result pn [0 .. length settings1 - 1]
+                          ns = map (\(x, y) -> (mean x, medianValue (sort y))) ls
+                      in  filter ((==1) . fst . snd) (zip settings1 ns)
+-- then combine the rows together, and splite the wins and turns 
+concatExperiment2Result :: Int -> [Int] -> [([Int], [Int])]
+concatExperiment2Result _ [] = []
+concatExperiment2Result pn (i:is) = let r = loadExperiment2Results pn (settings2 pn 2) i
+                                        (w, t) = unzip r
+                                        rs = concatExperiment2Result pn is
+                                    in  (w, t) `par` rs `pseq` (w, t):rs
+-- first load a row from each file, which representing a setting of the algorithm, totally 36
+loadExperiment2Results :: Int -> [[Int]] -> Int -> [(Int, Int)]
+loadExperiment2Results _ [] _ = []
+loadExperiment2Results pn (x:xs) idx = let filename = "experiments/experiment2/experiment_" ++ show pn ++ "_" ++ show x ++ ".txt"
+                                           r = unsafePerformIO $ do filePath <- openFile filename ReadMode
+                                                                    contents <- hGetContents filePath
+                                                                    return $ read (lines contents !! idx)
+                                           rs = loadExperiment2Results pn xs idx
+                                       in  r `par` rs `pseq` r ++ rs

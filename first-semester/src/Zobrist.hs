@@ -12,6 +12,20 @@ import Control.Parallel
 type StateTable = [[Int]]
 
 -- board state table: each position can only have one state, either occupied or not, and if a position is occupied, the stored value will be applied
+{- 
+randomBoardState = randomBoardColumn randomList 0
+    where
+        -- construct the matrix 
+        randomBoardColumn :: [Int] -> Int -> StateTable
+        randomBoardColumn _  7 = []
+        randomBoardColumn [] _ = []
+        randomBoardColumn xs i = take 7 xs : randomBoardColumn (drop 7 xs) (i+1)
+        
+        -- static random list without duplicate values
+        randomList :: [Int]
+        randomList = nub $ randomRs (1, 2^32) (mkStdGen 42)
+-}
+
 randomBoardState :: StateTable
 randomBoardState = [
                     [3292324401, 233489048,  2624610400, 1597242128, 1980104913, 1321694675, 3441975186],
@@ -35,10 +49,10 @@ initialState = [
                 [0, 0, 0, 0, 1, 1, 1],
                 [0, 0, 0, 0, 0, 1, 1],
                 [0, 0, 0, 0, 0, 0, 1],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0]]
+                [0, 0, 2, 0, 0, 0, 0],
+                [0, 0, 0, 2, 0, 0, 0],
+                [0, 4, 0, 0, 0, 0, 0],
+                [0, 0, 0, 3, 3, 0, 0]]
 
 -- find the occupied positions of the board/find the pieces' positions on the occupied board
 findOccupiedPieces :: OccupiedBoard -> [Pos]

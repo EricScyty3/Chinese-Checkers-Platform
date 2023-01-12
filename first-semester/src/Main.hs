@@ -52,7 +52,7 @@ import Monomer
       WidgetEnv,
       WidgetNode,
       AppEventResponse,
-      EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline), CmbPaddingB (paddingB), CmbOnClick (onClick), CmbBorder (border), black, gray )
+      EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline), CmbPaddingB (paddingB), CmbOnClick (onClick), CmbBorder (border), black, gray, lightTheme )
 import TextShow
 import Board
 import Control.Monad.State
@@ -331,7 +331,7 @@ handleEvent wenv node model evt = case evt of
                                                                         False -> [Model $ model & errorMessage .~ show currentColour ++ ": destination unreacbable" -- if the desintation is not in the list, then invalid
                                                                                                 & fromPiece .~ U (-1, -1)]
                                                       True -> [Model $ model & errorMessage .~ show currentColour ++ ": destination occupied" -- if the destination is occupied, then invalid
-                                                                            & fromPiece .~ U (-1, -1)]
+                                                                             & fromPiece .~ U (-1, -1)]
     where
       currentColour = playerColour (model ^. turnS) (model ^. playersAmount)
       newMovesList = evalState (destinationList b) (model ^. displayBoard)
@@ -380,7 +380,7 @@ computerTurn sendMsg = do sendMsg ComputerAction
 -- pass the model information to the MCTS interface and accept the returned board state
 aiDecision :: AppModel -> (Board, Int, HistoryTrace)
 aiDecision model = let (root, rootIdx) = makeRoot (model ^. playersAmount) (model ^. displayBoard)
-                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, rootIdx, getRootBoard root, model ^. playersAmount, model ^. gameHistory, (2, 0.5)) currentState 10
+                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, rootIdx, getRootBoard root, model ^. playersAmount, model ^. gameHistory, (5, 0.5)) currentState 10
                    in  (newBoard, newState, nht)
   where
     currentState = (model ^. internalStates) !! (model ^. turnS)
@@ -392,7 +392,7 @@ main = do startApp model handleEvent buildUI config
     config = [
       appWindowTitle "Program",
       appWindowIcon "./assets/images/icon.png",
-      appTheme darkTheme,
+      appTheme {-lightTheme-} darkTheme,
       appFontDef "Regular" "./assets/fonts/Roboto-Regular.ttf",
       appFontDef "Medium" "./assets/fonts/Roboto-Medium.ttf",
       appFontDef "Bold" "./assets/fonts/Roboto-Bold.ttf",
