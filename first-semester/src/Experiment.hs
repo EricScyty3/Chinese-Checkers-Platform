@@ -140,12 +140,7 @@ main = do arg <- getArgs
 main = do arg <- getArgs
           start <- getCurrentTime
           let pn = read (head arg) -- the player number
-              bo -- construct the initial board state
-                | pn == 2 = eraseBoard twoPlayersSet
-                | pn == 3 = eraseBoard threePlayersSet
-                | pn == 4 = eraseBoard fourPlayersSet
-                | pn == 6 = externalBoard
-                | otherwise = []
+              bo = eraseBoard (playerColourList pn) -- initial board settings
               it = read (arg !! 1)
               is = read (arg !! 2)
               xs = experiment2 pn bo settings1 is it

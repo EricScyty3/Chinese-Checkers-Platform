@@ -6,6 +6,7 @@ import Board
 import Control.Monad.State
 import Control.Monad.Extra
 import Control.Parallel
+import System.Random
 
 
 -- a list of unique random integers 
@@ -49,10 +50,10 @@ initialState = [
                 [0, 0, 0, 0, 1, 1, 1],
                 [0, 0, 0, 0, 0, 1, 1],
                 [0, 0, 0, 0, 0, 0, 1],
-                [0, 0, 2, 0, 0, 0, 0],
-                [0, 0, 0, 2, 0, 0, 0],
-                [0, 4, 0, 0, 0, 0, 0],
-                [0, 0, 0, 3, 3, 0, 0]]
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0]]
 
 -- find the occupied positions of the board/find the pieces' positions on the occupied board
 findOccupiedPieces :: OccupiedBoard -> [Pos]

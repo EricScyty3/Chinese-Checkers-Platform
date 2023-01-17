@@ -30,15 +30,12 @@ occupiedBoardSize :: Int
 occupiedBoardSize = 7
 
 -- the colour corresponding to each player with different number of players allowed
-twoPlayersSet   :: [Colour]
-twoPlayersSet   = [Green, Red]
-threePlayersSet :: [Colour]
-threePlayersSet = [Green, Purple, Orange]
-fourPlayersSet  :: [Colour]
-fourPlayersSet  = [Blue, Purple, Orange, Black]
-sixPlayersSet   :: [Colour]
-sixPlayersSet   = [Green, Blue, Purple, Red, Orange, Black]
-
+playerColourList :: Int -> [Colour]
+playerColourList 2 = [Green, Red]
+playerColourList 3 = [Green, Purple, Orange]
+playerColourList 4 = [Blue, Purple, Orange, Black]
+playerColourList 6 = [Green, Blue, Purple, Red, Orange, Black]
+playerColourList _ = []
 
 --Basic Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- determine the color of a piece
@@ -394,8 +391,10 @@ printBoard b = do putStrLn ""
                   printBoard' b
     where
         printBoard' [] = putStrLn ""
-        printBoard' (x:xs) = do print x
+        printBoard' (x:xs) = do print x -- putStrLn (convertWithTabs x)
                                 printBoard' xs
+        convertWithTabs [] = ""
+        convertWithTabs (x:xs) = show x ++ "\t" ++ convertWithTabs xs
 
 -- main board printing
 printEoard :: Board -> IO ()
@@ -411,6 +410,7 @@ printEoard b = do putStrLn ""
         skipZero :: Char -> Char
         skipZero '0' = ' '
         skipZero ',' = ' '
+        -- skipZero '9' = '0'
         skipZero a = a
 
 -- transform the board positions into numerical values
@@ -422,6 +422,12 @@ testDisplay = map testDisplay'
         testDisplay' (x:xs) = case getColour x of
                                 Just c -> colourToIndex c + 1:testDisplay' xs
                                 _ -> 0:testDisplay' xs
-
+                                {-Just Green -> 1:testDisplay' xs
+                                Just Red -> 9:testDisplay' xs
+                                Just _ -> 0:testDisplay' xs
+                                Nothing -> case isEmpty x of 
+                                            True -> 9:testDisplay' xs
+                                            False -> 0:testDisplay' xs-} 
+                                
         colourToIndex :: Colour -> Int
-        colourToIndex colour = fromMaybe 0 (elemIndex colour sixPlayersSet)
+        colourToIndex colour = fromMaybe 0 (elemIndex colour (playerColourList 6))

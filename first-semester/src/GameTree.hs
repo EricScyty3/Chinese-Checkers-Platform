@@ -12,9 +12,9 @@ import Control.Parallel
 
 type Wins = Int
 type PlayerIndex = Int
-type BoardIndex = Int 
+type BoardIndex = Int
 -- the index of a board state is not only used to determine a board but also useful when determining a node since the index is unique
-type Transform = (BoardPos, BoardPos) 
+type Transform = (BoardPos, BoardPos)
 -- the conversion between two boards it done through knowing the changed positions
 
 -- the game tree contains two main types: leaf and internal node with at least one child
@@ -33,7 +33,7 @@ type HistoryTrace = RBTree [Wins]
 
 -- the game status
 type GameTreeStatus = (PlayerIndex, -- current player of the turn
-                       BoardIndex, -- the unique id for indicating a board
+                       BoardIndex, -- the unique id for indicating a board (the node)
                        Board, -- the board state delivered from the parent
                        Int, -- the total players
                        HistoryTrace, -- the history performance of each move played in the past
@@ -163,11 +163,11 @@ colouredMovesList colour = do board <- getBoard
 
 -- return the current player's colour based on the number of players
 playerColour :: PlayerIndex -> Int -> Colour
-playerColour idx number
-    | number == 2 = twoPlayersSet !! idx
-    | number == 3 = threePlayersSet !! idx
-    | number == 4 = fourPlayersSet !! idx
-    | otherwise = sixPlayersSet !! idx
+playerColour idx number = playerColourList number !! idx
+    -- | number == 2 = twoPlayersSet !! idx
+    -- | number == 3 = threePlayersSet !! idx
+    -- | number == 4 = fourPlayersSet !! idx
+    -- | otherwise = sixPlayersSet !! idx
 
 -- edit a certain wins for a node by incrementing 1 for a win
 editNodeValue :: PlayerIndex -> GameTree -> GameTree
@@ -198,7 +198,7 @@ averageScore i t = if getVisits t == 0 then 0 -- if not visit is made then just 
 estimateNodeUCT :: Int -> GameTree -> State GameTreeStatus Double
 estimateNodeUCT parentVisits node = if getVisits node == 0 then return 0
                                     else do constant <- getUCTCons
-                                            return $ constant * 
+                                            return $ constant *
                                                      sqrt (log (fromIntegral parentVisits) / fromIntegral (getVisits node))
 
 -- consider additionally the similar move not only from parent nodes but the history
@@ -222,7 +222,7 @@ estimateNodePH node = let (from, to) = getTransform node -- first get the transf
 -- when estimating a node, skip if the entered node is root, otherwise, apply the formulas above
 estimateNode :: Int -> GameTree -> State GameTreeStatus Double
 estimateNode pv node = if isRoot node then return 0
-                       else do   
+                       else do
                           pi <- getPlayerIdx
                           let mean = averageScore pi node
                           uct <- estimateNodeUCT pv node

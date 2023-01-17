@@ -67,6 +67,8 @@ import GameTree
 import RBTree ( RBTree(RBLeaf) )
 import MCTS
 import Control.Concurrent
+import Configuration (LookupTable, lookupTable)
+import Data.List (elemIndex)
 
 -- the GUI for the game platform allowing user to set player and board configuration
 
@@ -103,7 +105,7 @@ data AppModel = AppModel {
 -- the event that the model triggers and handles, the different actions that the handler could react to
 data AppEvent
   = AppInit -- the initialisation of the model status
-  | MoveCheck BoardPos -- determine if a movement input is valid, if it is then render it, otherwise, display an error message
+  | MoveCheck BoardPos Int -- determine if a movement input is valid, if it is then render it, otherwise, display an error message
   | StartGameButtonClick -- initialise the game configuration depending on user's settings
   | RenderMove  -- show the change of the movement
   | CancelMove  -- cancel the last played movement
@@ -118,15 +120,23 @@ makeLenses 'AppModel
 titleText :: AppModel -> String
 titleText model
   | not (model ^. startGame) = "Haskell Chinese Checkers" -- print welcome text at the menu page
-  | model ^. ifWin = show colour ++ " wins" -- print winning player's colour when the win state of a player is achieved
-  | otherwise = show colour ++ "'s turn" -- print current player's turn and colour if win state is not satisfied
+  | model ^. ifWin = name ++ show turn ++ " wins" -- print winning player's colour when the win state of a player is achieved
+  | otherwise = name ++ show turn ++ "'s turn" -- print current player's turn and colour if win state is not satisfied
   where
-    colour = playerColour (model ^. turnS) (model ^. playersAmount)
+    turn = model ^. turnS
+    name = if turn `elem` model ^. computerIdxList then "Computer Player " else "Player "
+    -- colour = playerColour (model ^. turnS) (model ^. playersAmount)
 
 -- determine if the state of fromPiece, toPiece, previousFromPiece, previousToPiece, is changed
 ifInitialPiece :: BoardPos -> Bool
 ifInitialPiece (U (-1, -1)) = True
 ifInitialPiece _ = False
+
+-- check the player index of the a certain piece
+getPlayerIndex :: Int -> BoardPos -> Int
+getPlayerIndex pn ch = case getColour ch of 
+                            Nothing -> (-1)
+                            Just c  -> fromMaybe (-1) (elemIndex c (playerColourList pn))
 
 -- construct the graphical layout of the application
 buildUI
@@ -141,17 +151,23 @@ buildUI wenv model = widgetTree where
     -- place a spacer if the position type is "U"
     | isSpacer ch = spacer
     -- otherwise, place a buttom with colour representing the a board position
-    | otherwise = button_ "" (MoveCheck ch) [onClick RenderMove] `styleBasic` [radius 45, bgColor white, border 2 white, textSize 20, -- empty positions will be coloured in white
-                                                                               styleIf (compareColour ch Red)    (bgColor red),
-                                                                               styleIf (compareColour ch Blue)   (bgColor blue),
-                                                                               styleIf (compareColour ch Green)  (bgColor green),
-                                                                               styleIf (compareColour ch Purple) (bgColor purple),
-                                                                               styleIf (compareColour ch Orange) (bgColor darkOrange),
-                                                                               styleIf (compareColour ch Black)  (bgColor black),
-                                                                               styleIf (ch == piece || ch `elem` model ^. movesList) (border 2 pieceColour)]
-                                                                               -- ont only the pieces are in colour, but also the avaliable moves
-                                                                               -- additionally, the clicked position and movement positions will be in boarder colour while others are in white
+    | otherwise = button_ (T.pack tpi) (MoveCheck ch pi) [onClick RenderMove] `styleBasic` 
+                                                                         [radius 45, bgColor white, border 2 white, textSize 20, textColor white, -- empty positions will be coloured in white
+                                                                          styleIf (compareColour ch Red)    (bgColor red),                                                                 
+                                                                          styleIf (compareColour ch Blue)   (bgColor blue),
+                                                                          styleIf (compareColour ch Green)  (bgColor green),
+                                                                          styleIf (compareColour ch Purple) (bgColor purple),
+                                                                          styleIf (compareColour ch Orange) (bgColor darkOrange),
+                                                                          styleIf (compareColour ch Black)  (bgColor black),
+                                                                          styleIf (ch == piece || ch `elem` model ^. movesList) (bgColor pieceColour),
+                                                                          styleIf (ch == piece) (border 2 pieceColour)
+                                                                          ]
+                                                                          -- ont only the pieces are in colour, but also the avaliable moves
+                                                                          -- additionally, the clicked position and movement positions will be in boarder colour while others are in white
     where
+      pn = model ^. playersAmount
+      pi = getPlayerIndex pn ch
+      tpi = if pi == (-1) then "" else show pi
       piece = model ^. fromPiece
       pieceColour
         | compareColour piece Red = red
@@ -224,31 +240,19 @@ handleEvent wenv node model evt = case evt of
   -- setup the game board according to the options in the menu page: 
   -- declare that the game is started letting certain subjects to be visiable or invisiable
   -- generate the game board based on the chosen players number, and the corresponding length of hash state
-  StartGameButtonClick
-    | model ^. playersAmount == 2 -> [Model $ model & startGame .~ True
-                                                    & displayBoard .~ eraseBoard twoPlayersSet
-                                                    & internalStates .~ replicate 2 hashInitial
-                                                    & computerIdxList .~ idxList]
-    | model ^. playersAmount == 3 -> [Model $ model & startGame .~ True
-                                                    & displayBoard .~ eraseBoard threePlayersSet
-                                                    & internalStates .~ replicate 3 hashInitial
-                                                    & computerIdxList .~ idxList]
-    | model ^. playersAmount == 4 -> [Model $ model & startGame .~ True
-                                                    & displayBoard .~ eraseBoard fourPlayersSet
-                                                    & internalStates .~ replicate 4 hashInitial
-                                                    & computerIdxList .~ idxList]
-    | otherwise -> [Model $ model & startGame .~ True
-                                  & displayBoard .~ externalBoard
-                                  & internalStates .~ replicate 6 hashInitial
-                                  & computerIdxList .~ idxList]
+  StartGameButtonClick -> [Model $ model & startGame .~ True
+                                         & displayBoard .~ eraseBoard (playerColourList pn)
+                                         & internalStates .~ replicate pn hashInitial
+                                         & computerIdxList .~ idxList]
     where
       -- get the computer players indices randomly
-      idxList = take (model ^. computerPlayersAmount) (randomIndices (model ^. playersAmount))
+      pn = model ^. playersAmount 
+      idxList = take (model ^. computerPlayersAmount) (randomIndices pn)
 
   -- the event of cancel the last piece change made, and revert it to the previous board state   
   -- movement cancel is not allowed to be made over a player, meaning that once another player makes the move, you can no longer cancel yours                             
   CancelMove
-    | model ^. ifWin -> [] -- ignore if the win state is confirmed
+    | model ^. ifWin || model ^. computerIdxList /= [] -> [] -- ignore if the win state is confirmed or computer player involves
     | not (ifInitialPiece pf) && not (ifInitialPiece pt) -> [Model $ model & displayBoard .~ newBoard -- reset the board, hash, and turn states
                                                                            & internalStates .~ insertState
                                                                            & previousFromPiece .~ U(-1, -1)
@@ -312,28 +316,29 @@ handleEvent wenv node model evt = case evt of
   -- the movement check, how a movement is passed is done as follows:
   -- first enter the starting point, and check for the correctness
   -- then enter the destination, if no error is made then process, otherwise, discard that and print the error message 
-  MoveCheck b -> case model ^. ifWin || (model ^. turnS `elem` model ^. computerIdxList) of -- if already won or it's computer's turn, then do nothing
+  MoveCheck b pi -> case model ^. ifWin || (model ^. turnS `elem` model ^. computerIdxList) of -- if already won or it's computer's turn, then do nothing
                   True ->  []
                   False -> case ifInitialPiece $ model ^. fromPiece of -- if first time for entering starting position
-                              True  -> if Just currentColour == getColour b then [Model $ model & fromPiece .~ b     -- check if the entered position is valid for the current player
-                                                                                                & errorMessage .~ "" -- if valid, then checkout the avaliable movements
-                                                                                                & movesList .~ newMovesList]
-                                      else [Model $ model & errorMessage .~ show currentColour ++ ": invalid start"
-                                                          & fromPiece .~ U (-1, -1)] -- if not, then discard this, and wait for another valid input
+                              True  -> if turn == pi then [Model $ model & fromPiece .~ b     -- check if the entered position is valid for the current player
+                                                                         & errorMessage .~ "" -- if valid, then checkout the avaliable movements
+                                                                         & movesList .~ newMovesList]
+                                       else [Model $ model & errorMessage .~ show "Player " ++ show turn ++ ": invalid start"
+                                                           & fromPiece .~ U (-1, -1)] -- if not, then discard this, and wait for another valid input
 
                               False -> case model ^. fromPiece == b of -- otherwise, this position is clicked twice, and is an invalid movement
-                                          True  -> [Model $ model & errorMessage .~ show currentColour ++ ": no move made"
+                                          True  -> [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": no move made"
                                                                   & fromPiece .~ U (-1, -1)]
                                           False -> case isOccupied b of -- if not, then check whether the second clicked position (destination) is avaliable/reachable from the first entered position
                                                       False -> case b `elem` model ^. movesList of
                                                                         True  -> [Model $ model & toPiece .~ b
                                                                                                 & errorMessage .~ ""] -- if reachable, then this movement will then be rendered
-                                                                        False -> [Model $ model & errorMessage .~ show currentColour ++ ": destination unreacbable" -- if the desintation is not in the list, then invalid
+                                                                        False -> [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination unreacbable" -- if the desintation is not in the list, then invalid
                                                                                                 & fromPiece .~ U (-1, -1)]
-                                                      True -> [Model $ model & errorMessage .~ show currentColour ++ ": destination occupied" -- if the destination is occupied, then invalid
+                                                      True -> [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination occupied" -- if the destination is occupied, then invalid
                                                                              & fromPiece .~ U (-1, -1)]
     where
-      currentColour = playerColour (model ^. turnS) (model ^. playersAmount)
+      turn = model ^. turnS
+      -- currentColour = playerColour (model ^. turnS) (model ^. playersAmount)
       newMovesList = evalState (destinationList b) (model ^. displayBoard)
 
   -- reset the total player amount for computer player options
@@ -373,6 +378,7 @@ revertTurnChange model
   | otherwise = model ^. turnS - 1
 
 -- keep calling the event for checking the computer player's movement
+computerTurn :: (AppEvent -> IO a) -> IO b
 computerTurn sendMsg = do sendMsg ComputerAction
                           threadDelay $ 1000 * 800 -- 1000
                           computerTurn sendMsg
@@ -392,7 +398,7 @@ main = do startApp model handleEvent buildUI config
     config = [
       appWindowTitle "Program",
       appWindowIcon "./assets/images/icon.png",
-      appTheme {-lightTheme-} darkTheme,
+      appTheme darkTheme,
       appFontDef "Regular" "./assets/fonts/Roboto-Regular.ttf",
       appFontDef "Medium" "./assets/fonts/Roboto-Medium.ttf",
       appFontDef "Bold" "./assets/fonts/Roboto-Bold.ttf",

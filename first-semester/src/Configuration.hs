@@ -17,30 +17,21 @@ import Data.Time
 import System.Environment
 import GHC.IO
 
-
--- this version of configuration tends to compute all possible board states (excluding mirror images) rather than deleting some sections
--- but could cost too long to fully compute
--- allBoards :: [OccupiedBoard]
--- allBoards = let p = listAllPermutations 6 (replicate 49 0, 0)
---             in  map convertToBoard p
-
--- convertToBoard :: [Int] -> OccupiedBoard
--- convertToBoard [] = []
--- convertToBoard xs = take 7 xs:convertToBoard (drop 7 xs)
-
 -- ghc -main-is Configuration Configuration.hs -O2 -fllvm -outputdir dist
 -- although the processing speed of BFS is difficult to be improved, 
 -- the while process could be divided into several programs and run at the same time
 main :: IO ()
-main = do arg <- getArgs
+main = do -- arg <- getArgs
           start <- getCurrentTime
           let (tree, size) = sufficientBoards
+              {-
               treeNum = read (head arg) -- the amount of program being separated 
               treeIdx = read (arg !! 1) -- which section to be computed
               width = read (arg !! 2)   -- the width settings for search the shortest moves: normally (800,200) 
               ts = splitTree tree treeNum
               items = tableElementsConstruct (ts !! treeIdx) width
           tableElementsRecord items ("lookup_table_" ++ show treeIdx ++ ".txt")
+          -}
           end <- getCurrentTime
           print $ diffUTCTime end start
 
@@ -111,6 +102,7 @@ boardTree (p:ps) rb size = let -- avoid mirror images
                                else boardTree ps rb size -- otherwise, skip
 
 
+
 {-
     [0, 1, 1, 1, 1, 1, 1] [0 .. 5] 0 -> (1, 0)
     [0, 0, 1, 1, 1, 1, 1] [6 ..10] 6 -> (2, 1)
@@ -129,6 +121,18 @@ idx2Pos idx
     | 18 <= idx && idx <= 19 = (idx - 17 + 4, 4)
     | otherwise = (6, 5)
 
+-- this version of configuration tends to compute all possible board states (excluding mirror images) rather than deleting some sections
+-- but could cost too long to fully compute
+nIdx2Pos :: Int -> Pos
+nIdx2Pos idx
+    | 0  <= idx && idx <= 6  = (idx, 0)
+    | 7  <= idx && idx <= 13 = (idx - 7, 1)
+    | 14 <= idx && idx <= 20 = (idx - 14, 2)
+    | 21 <= idx && idx <= 27 = (idx - 21, 3)
+    | 28 <= idx && idx <= 34 = (idx - 28, 4)
+    | 35 <= idx && idx <= 41 = (idx - 35, 5)
+    | otherwise = (idx - 42, 6)
+
 -- treat the occupied board as a 1D list of length 21, and return all the possible position combinations of the pieces
 listAllPermutations :: Int -> ([Pos], Int) -> [[Pos]]
 listAllPermutations 0 (ls, _) = [ls]
@@ -141,27 +145,25 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
         flipBoardState :: [Pos] -> Pos -> [Pos]
         flipBoardState ls p = p:ls
 
+type LookupTable = RBTree (Int, Int)
 -- the configuration dataset of the Chinese Checkers's board
-lookupTable :: RBTree (Int, Int)
-lookupTable = let elems = loadTableElements [0 .. 15]
+lookupTable :: LookupTable
+lookupTable = let elems = loadTableElements
               in  runST $ do n <- newSTRef RBLeaf
                              modifySTRef n (constructTable elems)
                              readSTRef n
 
 -- construct the red-black tree based on the stored data with and hash of the board and the corresponding moves and sysmmetric board's moves
-constructTable :: [(Int, Int, Int)] -> RBTree (Int, Int) -> RBTree (Int, Int)
+constructTable :: [(Int, Int, Int)] -> LookupTable -> LookupTable
 constructTable [] tree = tree
 constructTable ((bh, top, bottom):xs) tree = constructTable xs (rbInsert bh (top, bottom) tree)
 
 -- load the stored lookup table data from the file
-loadTableElements :: [Int] -> [(Int, Int, Int)]
-loadTableElements [] = []
-loadTableElements (x:xs) = let filename = "dataset/lookup_table_" ++ show x ++ ".txt"
-                               r = unsafePerformIO $ do filePath <- openFile filename ReadMode
-                                                        contents <- hGetContents filePath
-                                                        return $ convertToElement (lines contents)
-                               rs = loadTableElements xs
-                           in  r `par` rs `pseq` r ++ rs
+loadTableElements :: [(Int, Int, Int)]
+loadTableElements = let filename = "dataset/lookup_table.txt"
+                    in  unsafePerformIO $ do filePath <- openFile filename ReadMode
+                                             contents <- hGetContents filePath
+                                             return $ convertToElement (lines contents)
     where
         convertToElement :: [String] -> [(Int, Int, Int)]
         convertToElement s = concatMap read s

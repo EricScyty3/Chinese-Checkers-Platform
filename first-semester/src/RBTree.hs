@@ -35,7 +35,19 @@ rbSearch h RBLeaf = Nothing
 rbSearch h (RBNode _ v t1 x t2)
     | h > x = rbSearch h t2
     | h < x = rbSearch h t1
-    | otherwise = Just v
+    | otherwise = Just v   
+
+-- returns the minimum key value of node in a tree
+rbMin :: RBTree a -> Maybe Key
+rbMin RBLeaf = Nothing
+rbMin (RBNode _ _ RBLeaf x _) = Just x
+rbMin (RBNode _ _ lt x _) = rbMin lt
+
+-- returns the maximum key value of node in a tree
+rbMax :: RBTree a -> Maybe Key
+rbMax RBLeaf = Nothing
+rbMax (RBNode _ _ _ x RBLeaf) = Just x
+rbMax (RBNode _ _ _ x rt) = rbMax rt
 
 -- balances a tree when there are 2 consecutive red nodes 
 -- parameters: root node colour, left subtree, root node index, root node value, right subtree

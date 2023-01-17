@@ -51,14 +51,12 @@ randomSelection xs  = let is = elemIndices (maximum xs) xs
 randomIndices :: Int -> [Int]
 randomIndices l = unsafePerformIO $ take l . nub . randomRs (0, l-1) <$> newStdGen
 
-testTree = let (root, rootIdx) = makeRoot 4 (eraseBoard fourPlayersSet)
-           in  evalState (expansion root) (0, rootIdx, getRootBoard root, 4, RBLeaf, (5, 0.5))
-
 --Stage Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- normal MCTS is divided into four phases: selection, expansion, playout and backpropagation
 -- the first phase is to select one resulting board with the maximum profit/score, which is calculated based on different formulas
 -- select the nodes based on the maximum strategy from the root of the game tree to a leaf, and produce a list of traversed nodes
 -- need to be noticed that the terminal node (the winning node) is also a leaf, therefore, terminate the selection when meeting a leaf is sufficient as long as it is always a leaf
+-- decisive move check could be added in the phases of selection and playout for reliable result, but if looking for diverse result, this could be ignored
 selection :: GameTree -> Trace -> State GameTreeStatus (Trace, GameTree) -- the initial trace should already include the root node as it will always be selected
 selection gametree trace = let childrenList = getChildren gametree
                            in  if null childrenList then return (trace, gametree)   -- return the node and trace for the next stage when meeting a leaf (the leaf might be a terminal point)
@@ -158,7 +156,7 @@ playout moves = if moves >= 3000 then do pn <- getPlayerNum -- avoid the potenti
                                          let is = [0..(pn-1)]
                                              cs = map (`playerColour` pn) is
                                              es = map (evaluateBoard1 bo) cs
-                                         return (is !! randomSelection es, moves) -- treat the one with the best board state as winner
+                                         return (is !! randomSelection es, moves) -- treat the one with the best board state (not move state) as winner
                 else
                 do colour <- getPlayerColour
                    tfs <- colouredMovesList colour    -- get all of the avaliable moves
@@ -204,7 +202,7 @@ mcts tree = do (trace, lastnode) <- selection tree [getBoardIndex tree] -- given
                board <- getBoard
                let winIdx = checkPlayersWinState pn board
                -- the reason why this check is necessary it that as the tree gradually grows, it will eventually reach the goal state, therefore, 
-               -- need to determine them in advance, otherwise, playout might be mislead 
+               -- need to determine them in advance, otherwise, playout might be misled 
                if winIdx /= -1 then do newTree <- backpropagation winIdx trace [tree] lastnode -- skip the expansion and playout phases if already won
                                        bi <- getBoardIdx
                                        ht <- getHistoryTrace
