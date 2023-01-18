@@ -17,6 +17,8 @@ import Data.Time
 import System.Environment
 import GHC.IO
 
+type LookupTable = RBTree (Int, Int) -- the structure of the lookup tree
+
 -- ghc -main-is Configuration Configuration.hs -O2 -fllvm -outputdir dist
 -- although the processing speed of BFS is difficult to be improved, 
 -- the while process could be divided into several programs and run at the same time
@@ -145,7 +147,14 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
         flipBoardState :: [Pos] -> Pos -> [Pos]
         flipBoardState ls p = p:ls
 
-type LookupTable = RBTree (Int, Int)
+-- determine if a board configuration is at the opening, endgame or midgame state
+ifOpening :: [Pos] -> Bool -- requires a symmetric operation to search in the lookup tree
+ifOpening ps = centroid ps <= (-6)
+ifEndgame :: [Pos] -> Bool -- requires two symmetric opertation to search in the lookup tree
+ifEndgame ps = centroid ps >= 6
+ifMidgame :: [Pos] -> Bool -- cannot be found in the lookup tree, might need additional evaluation function
+ifMidgame ps = not (ifOpening ps) && not (ifEndgame ps)
+
 -- the configuration dataset of the Chinese Checkers's board
 lookupTable :: LookupTable
 lookupTable = let elems = loadTableElements

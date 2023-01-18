@@ -83,11 +83,11 @@ expansion n = let cs = getChildren n
 expandPolicy :: Colour -> [Transform] -> [Transform]
 expandPolicy co xs
     | not $ null front = front  -- if front moves are avaliable then just expand them   
-    | otherwise = nonfront      -- else, the non-frontward moves are accepted
+    | otherwise = xs      -- else, the non-frontward moves are accepted
     where
         -- the avaliable movements are divided into two categories: frontward, and non-frontward
         front = filter ((> 0) . distanceChange) xs
-        nonfront = filter ((<= 0) . distanceChange) xs
+        -- nonfront = filter ((<= 0) . distanceChange) xs
         -- project the position from main board to the occupied board of certain colour
         distanceChange (x, y) = evaluateMove2 (projection co (getPos x), projection co (getPos y))
 

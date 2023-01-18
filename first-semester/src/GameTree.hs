@@ -164,10 +164,6 @@ colouredMovesList colour = do board <- getBoard
 -- return the current player's colour based on the number of players
 playerColour :: PlayerIndex -> Int -> Colour
 playerColour idx number = playerColourList number !! idx
-    -- | number == 2 = twoPlayersSet !! idx
-    -- | number == 3 = threePlayersSet !! idx
-    -- | number == 4 = fourPlayersSet !! idx
-    -- | otherwise = sixPlayersSet !! idx
 
 -- edit a certain wins for a node by incrementing 1 for a win
 editNodeValue :: PlayerIndex -> GameTree -> GameTree
