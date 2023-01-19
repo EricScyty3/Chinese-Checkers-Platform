@@ -48,6 +48,19 @@ randomMoveDecision s@(pi, _, board, pn, _, _)= let co = playerColour pi pn
                                                in  evalState (repaintBoard rm) s -- return the chosen board state                                  
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Experiment 1
+-- run for one turn for different player on board, give an initial impression
+main = do arg <- getArgs
+          start <- getCurrentTime
+          let x2 = singleCall 2 (eraseBoard (playerColourList 2)) (5, 0.5)
+              x3 = singleCall 3 (eraseBoard (playerColourList 3)) (5, 0.5)
+              x4 = singleCall 4 (eraseBoard (playerColourList 4)) (5, 0.5)
+              x6 = singleCall 6 (eraseBoard (playerColourList 6)) (5, 0.5)
+              fn = "experiments/experiment0/experiment.txt"
+              tx = (x2 `par` x3 `pseq` x2 : [x3]) ++ (x4 `par` x6 `pseq` x4 : [x6])
+          experimentRecord tx fn
+          end <- getCurrentTime
+          print $ diffUTCTime end start
+
 -- given a set of agruments, collect how the playouts converge with the selection strategy of different parameters
 experiment1 :: Int -> Board -> [(Double, Double)] -> Int -> [[Int]]
 experiment1 _ _ [] _ = []
@@ -97,47 +110,38 @@ singleGame s@(pi, bi, board, pn, ht, cons) mctsPi gs = let colour = playerColour
                                                                     else singleGame (turnBase pn pi, bi, newBoard, pn, nht, cons) mctsPi (gs+1)
 
 -- ghc -main-is Experiment Experiment.hs -O2 -fllvm -outputdir dist
-{-
 -- the one that first targets the range of the parameters from 0 to 5
 -- and discovered that the PH constant should within 0 to 1
-main = do arg <- getArgs
+{-
+       do arg <- getArgs
           start <- getCurrentTime
           let pn = read (head arg) -- the player number
               iter = read (arg !! 1) -- the iteration of a single call being repeated
-              xs -- construct the initial board state and run the experiment with that board
-                | pn == 2 = experiment1 2 (eraseBoard twoPlayersSet) settings1 iter
-                | pn == 3 = experiment1 3 (eraseBoard threePlayersSet) settings1 iter
-                | pn == 4 = experiment1 4 (eraseBoard fourPlayersSet) settings1 iter
-                | pn == 6 = experiment1 6 externalBoard settings1 iter
-                | otherwise = []
+              xs = experiment1 pn (eraseBoard (playerColourList pn)) settings1 iter
+              -- construct the initial board state and run the experiment with that board
               fn = "experiments/experiment1/experiment_" ++ show pn ++ ".txt"
           experimentRecord xs fn -- record the collected results into a file
           end <- getCurrentTime
           print $ diffUTCTime end start -- display the used time of the experiment
 -}
-{-
 -- after that, try to discover a more specific range by introducing the range with double numbers
 -- discovered that (4, 0.5) has the least average value of convergence turns
-main = do arg <- getArgs
+{-
+       do arg <- getArgs
           start <- getCurrentTime
           let pn = read (head arg) -- the player number
               uct = read (arg !! 1) -- the uct constant could be remained integer
               iter = read (arg !! 2) -- the iteration of a single call being repeated
-              xs -- construct the initial board state and run the experiment with that board
-                | pn == 2 = experiment1 2 (eraseBoard twoPlayersSet) (settings1_2 uct) iter
-                | pn == 3 = experiment1 3 (eraseBoard threePlayersSet) (settings1_2 uct) iter
-                | pn == 4 = experiment1 4 (eraseBoard fourPlayersSet) (settings1_2 uct) iter
-                | pn == 6 = experiment1 6 externalBoard (settings1_2 uct) iter
-                | otherwise = []
+              xs = experiment1 pn (eraseBoard (playerColourList pn)) (settings1_2 uct) iter
               fn = "experiments/experiment1/experiment_" ++ show pn ++ "_" ++ show uct ++ ".txt"
           experimentRecord xs fn -- record the collected results into a file
           end <- getCurrentTime
           print $ diffUTCTime end start -- display the used time of the experiment
 -}
-
 -- simulation several game mathcing against the mcts and random player of different turn order
--- known that "" achieved the least median turns to end a game against random player
-main = do arg <- getArgs
+-- known that "" achieved the least median turns to end a game against random player in a 3-player game
+{-
+       do arg <- getArgs
           start <- getCurrentTime
           let pn = read (head arg) -- the player number
               bo = eraseBoard (playerColourList pn) -- initial board settings
@@ -148,8 +152,7 @@ main = do arg <- getArgs
           experimentRecord xs fn
           end <- getCurrentTime
           print $ diffUTCTime end start -- display the used time of the experiment
-
-
+-}
 -- systematic test for optimising the parameters for game tree evaluation based on playout convergence
 -- first notices that the second parameter should be between 0 and 1
 settings1 :: [(Double, Double)]

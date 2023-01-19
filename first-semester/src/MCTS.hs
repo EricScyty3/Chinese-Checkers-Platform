@@ -120,11 +120,12 @@ backpropagation pi xs cs new = let (bi, ys) = pop xs -- check the if any child n
 
 -- simple move evalutor of how close the changed piece is to the goal state, 
 -- using centroid function in BFS, that the closer it is, the larger it will be
+{-
 evaluateMove :: (Pos, Pos) -> Int
 evaluateMove (p1, p2) = let cen1 = centroidPos p1
                             cen2 = centroidPos p2
                         in  cen1 `par` cen2 `pseq` (cen2 - cen1) -- the larger, the closer the new position is to the goal state
-
+-}
 -- an addition move evaluator is to measure the forward distance to the goal base
 dist :: Pos -> Pos -> Double
 dist (x1, y1) (x2, y2) = sqrt (fromIntegral (x1 - x2)^2 + fromIntegral (y1 - y2)^2)
@@ -151,26 +152,27 @@ playoutPolicy colour tfs = let ptfs = map (\(x, y) -> (projection colour (getPos
 
 -- game simulation from a certain board state 
 playout :: Int -> State GameTreeStatus (PlayerIndex, Int)
-playout moves = if moves >= 3000 then do pn <- getPlayerNum -- avoid the potential cycling, or stop the playouts if costing too much time
-                                         bo <- getBoard
-                                         let is = [0..(pn-1)]
-                                             cs = map (`playerColour` pn) is
-                                             es = map (evaluateBoard1 bo) cs
-                                         return (is !! randomSelection es, moves) -- treat the one with the best board state (not move state) as winner
-                else
-                do colour <- getPlayerColour
-                   tfs <- colouredMovesList colour    -- get all of the avaliable moves
-                   board <- getBoard
-                   pi <- getPlayerIdx
-                   if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)  
-                   -- if the started board state is already an end state, this means that some players take a suicidal action that cause other player to win
-                   else do nboard <- playoutPolicy colour tfs -- otherwise, choose one of the boards resulted from the current board
+playout moves = do pn <- getPlayerNum
+                   if getTurns moves pn >= 1000 
+                   then do -- avoid the potential cycling, or stop the playouts if costing too much time
+                           bo <- getBoard
+                           let is = [0..(pn-1)]
+                               cs = map (`playerColour` pn) is
+                               es = map (evaluateBoard1 bo) cs
+                           return (is !! randomSelection es, getTurns moves pn) -- treat the one with the best board state (not move state) as winner
+                    else
+                        do colour <- getPlayerColour
+                           tfs <- colouredMovesList colour    -- get all of the avaliable moves
+                           board <- getBoard
                            pi <- getPlayerIdx
-                           pn <- getPlayerNum
-                           if winStateDetermine colour nboard then return (pi, getTurns moves pn) -- if a player wins, then return the player's index
-                           else do updatePlayerIdx -- otherwise, keep simulating on the next turn
-                                   updateBoard nboard
-                                   playout (moves + 1)
+                           if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)  
+                            -- if the started board state is already an end state, this means that some players take a suicidal action that cause other player to win
+                           else do nboard <- playoutPolicy colour tfs -- otherwise, choose one of the boards resulted from the current board
+                                   pi <- getPlayerIdx
+                                   if winStateDetermine colour nboard then return (pi, getTurns moves pn) -- if a player wins, then return the player's index
+                                   else do updatePlayerIdx -- otherwise, keep simulating on the next turn
+                                           updateBoard nboard
+                                           playout (moves + 1)
 
 getTurns :: Int -> Int -> Int
 getTurns moves pn = ceiling (fromIntegral moves / fromIntegral pn)
@@ -186,10 +188,10 @@ winStateDetermine c b = let hs = map (reversion c) goalBase -- get the goal posi
         isFull = foldr ((&&) . isOccupied) True
         existColour :: Colour -> [BoardPos] -> Bool
         existColour c bs = Just c `elem` map Board.getColour bs
-
+        {-
         standardWinState :: Colour -> [BoardPos] -> Bool
         standardWinState c bs = let ps = map (projection c . getPos) bs
-                                in  winStateDetectHash (hash ps)
+                                in  winStateDetectHash (hash ps)-}
 
 --MCTS Body--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the MCTS structure that first selects the node with largest profits, then expands it, 
