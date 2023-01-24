@@ -19,21 +19,20 @@ import GHC.IO
 
 type LookupTable = RBTree (Int, Int) -- the structure of the lookup tree
 
--- ghc -main-is Configuration Configuration.hs -O2 -fllvm -outputdir dist
+-- ghc -main-is Configuration Configuration.hs -O2 -fllvm -outputdir dist -o executable/computeShortestPath
 -- although the processing speed of BFS is difficult to be improved, 
 -- the while process could be divided into several programs and run at the same time
 main :: IO ()
-main = do -- arg <- getArgs
+main = do arg <- getArgs
           start <- getCurrentTime
           let (tree, size) = sufficientBoards
-              {-
               treeNum = read (head arg) -- the amount of program being separated 
               treeIdx = read (arg !! 1) -- which section to be computed
-              width = read (arg !! 2)   -- the width settings for search the shortest moves: normally (800,200) 
+              width = read (arg !! 2)   -- the width settings for search the shortest moves, normally '(800,200)' 
               ts = splitTree tree treeNum
               items = tableElementsConstruct (ts !! treeIdx) width
-          tableElementsRecord items ("lookup_table_" ++ show treeIdx ++ ".txt")
-          -}
+          tableElementsRecord items ("./dataset/lookup_table_" ++ show treeIdx ++ ".txt")
+          print (length ts)
           end <- getCurrentTime
           print $ diffUTCTime end start
 
@@ -46,7 +45,7 @@ splitTree :: RBTree a -> Int -> [RBTree a]
 splitTree RBLeaf _ = [RBLeaf]
 splitTree t 1 = [t]
 splitTree (RBNode c ps t1 key t2) len = let left  = rbInsert key ps t1
-                                            right = RBTree.repaint RBTree.Black t2
+                                            right = t2
                                         in  left `par` right `pseq` (splitTree left (len `div` 2) ++ splitTree right (len `div` 2))
 
 -- record the board state tree with its hashed as well as the corresponding minimum moves into a file
@@ -63,7 +62,7 @@ tableElementsRecord elements filePath = do filePath <- openFile filePath WriteMo
 -- calculate the corresponding shortest moves need to reach the goal state of a board state
 -- as well as the minimum moves of its mirror
 tableElementsConstruct :: RBTree [Pos] -> (Int, Int) -> [(Int, Int, Int)]
-tableElementsConstruct RBLeaf (a, b) = []
+tableElementsConstruct RBLeaf _ = []
 tableElementsConstruct (RBNode _ p t1 key t2) (a, b) = let left  = tableElementsConstruct t1 (a, b)
                                                            right = tableElementsConstruct t2 (a, b)
                                                        in  left `par` right `pseq` (newElement:left ++ right)
@@ -102,9 +101,6 @@ boardTree (p:ps) rb size = let -- avoid mirror images
                                hash2 = hash p2
                            in  if isNothing $ hash1 `par` hash2 `pseq` rbSearch hash2 rb then boardTree ps (rbInsert hash1 p rb) (size+1) -- add if not duplicated
                                else boardTree ps rb size -- otherwise, skip
-
-
-
 {-
     [0, 1, 1, 1, 1, 1, 1] [0 .. 5] 0 -> (1, 0)
     [0, 0, 1, 1, 1, 1, 1] [6 ..10] 6 -> (2, 1)
@@ -125,15 +121,15 @@ idx2Pos idx
 
 -- this version of configuration tends to compute all possible board states (excluding mirror images) rather than deleting some sections
 -- but could cost too long to fully compute
-nIdx2Pos :: Int -> Pos
-nIdx2Pos idx
-    | 0  <= idx && idx <= 6  = (idx, 0)
-    | 7  <= idx && idx <= 13 = (idx - 7, 1)
-    | 14 <= idx && idx <= 20 = (idx - 14, 2)
-    | 21 <= idx && idx <= 27 = (idx - 21, 3)
-    | 28 <= idx && idx <= 34 = (idx - 28, 4)
-    | 35 <= idx && idx <= 41 = (idx - 35, 5)
-    | otherwise = (idx - 42, 6)
+-- nIdx2Pos :: Int -> Pos
+-- nIdx2Pos idx
+--     | 0  <= idx && idx <= 6  = (idx, 0)
+--     | 7  <= idx && idx <= 13 = (idx - 7, 1)
+--     | 14 <= idx && idx <= 20 = (idx - 14, 2)
+--     | 21 <= idx && idx <= 27 = (idx - 21, 3)
+--     | 28 <= idx && idx <= 34 = (idx - 28, 4)
+--     | 35 <= idx && idx <= 41 = (idx - 35, 5)
+--     | otherwise = (idx - 42, 6)
 
 -- treat the occupied board as a 1D list of length 21, and return all the possible position combinations of the pieces
 listAllPermutations :: Int -> ([Pos], Int) -> [[Pos]]
@@ -169,7 +165,7 @@ constructTable ((bh, top, bottom):xs) tree = constructTable xs (rbInsert bh (top
 
 -- load the stored lookup table data from the file
 loadTableElements :: [(Int, Int, Int)]
-loadTableElements = let filename = "dataset/lookup_table.txt"
+loadTableElements = let filename = "./dataset/lookup_table.txt"
                     in  unsafePerformIO $ do filePath <- openFile filename ReadMode
                                              contents <- hGetContents filePath
                                              return $ convertToElement (lines contents)

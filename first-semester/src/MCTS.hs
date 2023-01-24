@@ -224,6 +224,7 @@ mcts tree = do (trace, lastnode) <- selection tree [getBoardIndex tree] -- given
                                return (head newTree, bi, ht, turns) -- get the new tree 
 
 -- check the win state of all players, since the suicidal action is allowed and can be performed either randomly or on purpose
+-- any value other than -1 means a win is reached, otherwise, nothing
 checkPlayersWinState :: Int -> Board -> Int
 checkPlayersWinState pn board = let is = [0..(pn-1)]
                                     cs = map (`playerColour` pn) is
