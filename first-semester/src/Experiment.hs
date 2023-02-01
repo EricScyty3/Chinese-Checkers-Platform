@@ -56,19 +56,21 @@ experimentRecord xs filePath = do filePath <- openFile filePath WriteMode
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Experiment 0
 -- run for one turn for different player on board, give an initial impression
--- ghc -main-is Experiment Experiment.hs -O2 -fllvm -outputdir dist -o executable/experiment0
--- main = do arg <- getArgs
---           start <- getCurrentTime
---           let iter = read $ head arg
---               x2 = singleCall 2 (eraseBoard (playerColourList 2)) (5, 0.5) iter
---               x3 = singleCall 3 (eraseBoard (playerColourList 3)) (5, 0.5) iter
---               x4 = singleCall 4 (eraseBoard (playerColourList 4)) (5, 0.5) iter
---               x6 = singleCall 6 (eraseBoard (playerColourList 6)) (5, 0.5) iter
---               fn = "./experiments/experiment0/experiment.txt"
---               tx = (x2 `par` x3 `pseq` x2 : [x3]) ++ (x4 `par` x6 `pseq` x4 : [x6])
---           experimentRecord tx fn
---           end <- getCurrentTime
---           print $ diffUTCTime end start
+{-
+main = do arg <- getArgs
+          start <- getCurrentTime
+          let iter = read $ head arg
+              cons = read (arg !! 1)
+              x2 = singleCall 2 (eraseBoard (playerColourList 2)) cons iter
+              x3 = singleCall 3 (eraseBoard (playerColourList 3)) cons iter
+              x4 = singleCall 4 (eraseBoard (playerColourList 4)) cons iter
+              x6 = singleCall 6 (eraseBoard (playerColourList 6)) cons iter
+              fn = "./experiments/experiment0/experiment.txt"
+              tx = (x2 `par` x3 `pseq` x2 : [x3]) ++ (x4 `par` x6 `pseq` x4 : [x6])
+          experimentRecord tx fn
+          end <- getCurrentTime
+          print $ diffUTCTime end start
+-}
 -- load the data collected from the experiment 0
 loadExperiment0Record :: [[Int]]
 loadExperiment0Record = let filename = "./experiments/experiment0/experiment.txt"
@@ -79,7 +81,7 @@ loadExperiment0Record = let filename = "./experiments/experiment0/experiment.txt
 -- pre-compute the raw data, calculating the average value, median value, and the turns of convergence
 analyseData :: [[Int]] -> [[Double]]
 analyseData [] = []
-analyseData (x:xs) = let a = mean x
+analyseData (x:xs) = let a = mean (filter (/=0) x)
                          b = getMedianValue x -- here applies value-sensitive median becuase too many zeros might cover the median value
                          c = fromIntegral $ convergeTurn x
                      in  [a, b, c]:analyseData xs
@@ -91,32 +93,32 @@ singleCall pn board cons iter = let (root, rootIdx) = makeRoot pn board
                                 in  pl
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Experiment 1   
--- ghc -main-is Experiment Experiment.hs -O2 -fllvm -outputdir dist -o executable/experiment1
 -- the one that first targets the range of the parameters from 0 to 5
--- main = do arg <- getArgs
---           start <- getCurrentTime
---           let pn = read (head arg) -- the player number
---               iter = read (arg !! 1) -- the iteration of a single call being repeated
---               -- construct the initial board state and run the experiment with that board
---               xs = experiment1 pn (eraseBoard (playerColourList pn)) settings1 iter
---               fn = "./experiments/experiment1/experiment_" ++ show pn ++ ".txt"
---           experimentRecord xs fn -- record the collected results into a file
---           end <- getCurrentTime
---           print $ diffUTCTime end start -- display the used time of the experiment
-
--- ghc -main-is Experiment Experiment.hs -O2 -fllvm -outputdir dist -o executable/experiment1_2
+{-
+main = do arg <- getArgs
+          start <- getCurrentTime
+          let pn = read (head arg) -- the player number
+              iter = read (arg !! 1) -- the iteration of a single call being repeated
+              -- construct the initial board state and run the experiment with that board
+              xs = experiment1 pn (eraseBoard (playerColourList pn)) settings1 iter
+              fn = "./experiments/experiment1/experiment_" ++ show pn ++ ".txt"
+          experimentRecord xs fn -- record the collected results into a file
+          end <- getCurrentTime
+          print $ diffUTCTime end start -- display the used time of the experiment
+-}
 -- after that, try to discover a more specific range by introducing the range with double numbers
--- main = do arg <- getArgs
---           start <- getCurrentTime
---           let pn = read (head arg) -- the player number
---               uct = read (arg !! 1) -- the uct constant could be remained integer
---               iter = read (arg !! 2) -- the iteration of a single call being repeated
---               xs = experiment1 pn (eraseBoard (playerColourList pn)) (settings1_2 uct) iter
---               fn = "experiments/experiment1/experiment_" ++ show pn ++ "_" ++ show uct ++ ".txt"
---           experimentRecord xs fn -- record the collected results into a file
---           end <- getCurrentTime
---           print $ diffUTCTime end start -- display the used time of the experiment     
-
+{-
+main = do arg <- getArgs
+          start <- getCurrentTime
+          let pn = read (head arg) -- the player number
+              uct = read (arg !! 1) -- the uct constant could be remained integer
+              iter = read (arg !! 2) -- the iteration of a single call being repeated
+              xs = experiment1 pn (eraseBoard (playerColourList pn)) (settings1_2 uct) iter
+              fn = "experiments/experiment1/experiment_" ++ show pn ++ "_" ++ show uct ++ ".txt"
+          experimentRecord xs fn -- record the collected results into a file
+          end <- getCurrentTime
+          print $ diffUTCTime end start -- display the used time of the experiment     
+-}
 -- list all potential parameter pairs for the combination of UCT and Progressive History
 settings1 :: [(Double, Double)]
 settings1 = [(x, y) | x <- map fromRational [0 .. 5], y <- map fromRational [0 .. 5]]
@@ -156,22 +158,20 @@ multipleCalls pn board cons iter = let r = convergeTurn (singleCall pn board con
                                    in  r `par` rs `pseq` r:rs
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Experiment 2
--- ghc -main-is Experiment Experiment.hs -O2 -outputdir dist -o experiment2
 -- simulation several game mathcing against the mcts and random player of different turn order
--- main = do arg <- getArgs
---           start <- getCurrentTime
---           let pn = 3 -- the board is of 3 players
---               uct = read (head arg) -- the uct constant
---               bo = eraseBoard (playerColourList pn) -- initial board
---               it = read (arg !! 1) -- trials for single game
---               -- is = read (arg !! 2) -- the positions of the mcts player
---               xs = experiment2 pn bo (settings1_2 uct) (settings2 pn 2) it
---               fn = {-"experiments/experiment2/-}"experiment2_" ++ show uct ++ ".txt"
---           experimentRecord xs fn
---           -- print xs
---           end <- getCurrentTime
---           print $ diffUTCTime end start -- display the used time of the experiment
-
+{-
+main = do arg <- getArgs
+          start <- getCurrentTime
+          let pn = 3 -- the board is of 3 players
+              uct = read (head arg) -- the uct constant
+              bo = eraseBoard (playerColourList pn) -- initial board
+              it = read (arg !! 1) -- trials for single game
+              xs = experiment2 pn bo (settings1_2 uct) (settings2 pn 2) it
+              fn = "experiments/experiment2/experiment2_" ++ show uct ++ ".txt"
+          experimentRecord xs fn
+          end <- getCurrentTime
+          print $ diffUTCTime end start -- display the used time of the experiment
+-}
 -- the order of players given the invovled players amount, 
 -- for instance, in a 3-player game or 2 players types: random and mcts, there are 6 assignments where the mcts players could loacted at: [2],[1],[1,2],[0],[0,2],[0,1]
 settings2 :: Int -> Int -> [[Int]]

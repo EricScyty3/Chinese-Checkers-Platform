@@ -320,7 +320,7 @@ handleEvent wenv node model evt = case evt of
                               True  -> if turn == pi then [Model $ model & fromPiece .~ b     -- check if the entered position is valid for the current player
                                                                          & errorMessage .~ "" -- if valid, then checkout the avaliable movements
                                                                          & movesList .~ newMovesList]
-                                       else [Model $ model & errorMessage .~ show "Player " ++ show turn ++ ": invalid start"
+                                       else [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": invalid start"
                                                            & fromPiece .~ U (-1, -1)] -- if not, then discard this, and wait for another valid input
 
                               False -> case model ^. fromPiece == b of -- otherwise, this position is clicked twice, and is an invalid movement
@@ -384,7 +384,7 @@ computerTurn sendMsg = do sendMsg ComputerAction
 -- pass the model information to the MCTS interface and accept the returned board state
 aiDecision :: AppModel -> (Board, Int, HistoryTrace)
 aiDecision model = let (root, rootIdx) = makeRoot (model ^. playersAmount) (model ^. displayBoard)
-                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, rootIdx, getRootBoard root, model ^. playersAmount, model ^. gameHistory, (5, 0.5)) currentState 10
+                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, rootIdx, getRootBoard root, model ^. playersAmount, model ^. gameHistory, (3, 0.9)) currentState 10
                    in  (newBoard, newState, nht)
   where
     currentState = (model ^. internalStates) !! (model ^. turnS)

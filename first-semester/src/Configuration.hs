@@ -19,9 +19,10 @@ import GHC.IO
 
 type LookupTable = RBTree (Int, Int) -- the structure of the lookup tree
 
--- ghc -main-is Configuration Configuration.hs -O2 -fllvm -outputdir dist -o executable/computeShortestPath
+-- ghc -main-is Configuration Configuration.hs -O2 -fllvm -outputdir dist -o executables/buildTree
 -- although the processing speed of BFS is difficult to be improved, 
 -- the while process could be divided into several programs and run at the same time
+{-
 main :: IO ()
 main = do arg <- getArgs
           start <- getCurrentTime
@@ -35,7 +36,7 @@ main = do arg <- getArgs
           print (length ts)
           end <- getCurrentTime
           print $ diffUTCTime end start
-
+-}
 --Database Construct-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- record and calculate the board value for each board state
 
