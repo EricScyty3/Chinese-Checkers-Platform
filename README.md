@@ -1,7 +1,6 @@
 # Prototype of Chinese Checkers
 
-| <img src="../Library/CloudStorage/OneDrive-TheUniversityofNottingham/2022-2023 Research/My Notebook/images/pic2.png" alt="pic2" style="zoom:25%;" /> |
-| :----------------------------------------------------------: |
+<img src="./images/pic2.png" alt="pic2" style="height:45%; width:45%" />
 
 A prototype of Haskell Chinese Checkers game with multiple players allowed as well as embedded Monte-Carlo Tree Search algorithm. This user guide is structured in three parts: installation, the launch of the application, and the executable files.  
 
@@ -68,15 +67,13 @@ After the players are settled, pressing the "Start Game" button will enter the g
 | <img src="./images/pic5.png" alt="pic5" style="zoom:25%;" /> | <img src="./images/pic2.png" alt="pic2" style="zoom:25%;" /> | <img src="./images/pic11.png" alt="pic11" style="zoom:25%;" /> |
 | :----------------------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: |
 
-Besides, if the user allows computer players to be involved, the hint text will explicitly show that which player is AI.
+Besides, if the user allows computer players to be involved, the hint text will explicitly show which player is AI.
 
-| <img src="./images/pic10.png" alt="pic10" style="zoom:25%;" /> |
-| :----------------------------------------------------------: |
+<img src="./images/pic10.png" alt="pic10" style="height:45%; width:45%" />
 
 To move, a player needs to first click one's piece and then click a free space as the destination of the movement. 
 
-| <img src="./images/pic3.png" alt="pic3" style="zoom:25%;" /> |
-| :----------------------------------------------------------: |
+<img src="./images/pic3.png" alt="pic3" style="height:45%; width:45%" />
 
 Once the player first clicks a valid position, the resulting available list of destinations will be marked in the corresponding colour as shown above. If an entering movement is invalid, then there will be an error message posted, and the player will need to re-enter another movement. The invalid situations include double-clicking a position, taking a free space at the start of the movement, trying to reach a destination that is too far, or the destination is already occupied by another player. 
 
