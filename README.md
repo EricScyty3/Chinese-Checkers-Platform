@@ -1,8 +1,9 @@
 # Prototype of Chinese Checkers
 
 <div align="center">
-    <img src="./images/pic2.png" alt="pic2" width="50%" />
+    <img src="./images/pic2.png" alt="pic2" width="40%" />
 </div>
+
 
 A prototype of Haskell Chinese Checkers game with multiple players allowed as well as embedded Monte-Carlo Tree Search algorithm. This user guide is structured in three parts: installation, the launch of the application, and the executable files.  
 
@@ -24,6 +25,8 @@ After you clone the project or extract the file, you will see an executable name
 ./app
 ```
 
+The executable file can be directly run on MacOS without additional action and if you are and Mac user and not interested in how to set up the environment, you can skip the next section, where the instruction of the application is described. 
+
 ### Stack Environment
 
 Since the application introduces a third-party library for displaying the graphical interface, if you want to make a change to the program and test it, you will need to set up a stack environment.
@@ -34,7 +37,7 @@ To build up the environment, navigate to the folder called "first-semester" and 
 stack build
 ```
 
-It will construct the necessary libraries used in this program and set up an environment under this folder, mostly the GUI library called "Monomer". Here is the link to the Git of [monomer](https://github.com/fjvallarino/monomer) and the link to its [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md), in case you'd like to set up such an environment individually. Notice that, you might be required to install additional packages based on your operating system, so please have a look at the [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md). This might take around 10 minutes to fully install all libraries and packages. 
+It will construct the necessary libraries used in this program and set up an environment under this folder, mainly for setting the environment for the GUI library called "Monomer". Here is the link to the GitHub of the [monomer](https://github.com/fjvallarino/monomer) and the link to its [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md), in case you'd like to set up such an environment individually. Notice that, you might be required to install additional packages based on your operating system, so please have a look at the [installation instructions](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md). This might take around 10 minutes to fully install all libraries and packages after you enter the command. 
 
 If no error appears after the build command, you can then run `stack run Main`, then the application will successfully execute. Initially, it's the same as the app executable, but can be recompiled if you modify the code. Run `stack run Main` every time you make a change to the code, and the program will recompile and generate a new executable based on that. Normally, a path to the produced executable would be provided in the hidden folder ".stack-work".
 
@@ -61,28 +64,38 @@ Once you have set up all the packages listed above, you can access any hs script
 
 Once you enter the application, you will see a menu page listing the option of available players allowed in the game. The first row of radios displays the option of total players of a range of $[2, 3, 4, 6]$The second row displays the available computer players, which are restricted to less than the total number of players.   
 
-| <img src="./images/pic4.png" alt="pic4" style="zoom:25%;" /> | <img src="./images/pic1.png" alt="pic1" style="zoom:25%;" /> |
-| :----------------------------------------------------------: | :----------------------------------------------------------: |
+<div align="center">
+    <img src="./images/pic4.png" alt="pic4" width="40%" />
+    <img src="./images/pic1.png" alt="pic1" width="40%" />
+</div>
 
 After the players are settled, pressing the "Start Game" button will enter the game, a corresponding board will be generated. For different players, there are ways to distinguish between them. Each player's pieces are numbered with the same index and in the same colour. To simplify the game, there will be a hint text shown above to remind the player of the certain index to action as well as the winner of the game.
 
-| <img src="./images/pic5.png" alt="pic5" style="zoom:25%;" /> | <img src="./images/pic2.png" alt="pic2" style="zoom:25%;" /> | <img src="./images/pic11.png" alt="pic11" style="zoom:25%;" /> |
-| :----------------------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: |
+<div align="center">
+    <img src="./images/pic5.png" alt="pic5" width="30%" />
+    <img src="./images/pic2.png" alt="pic2" width="30%" />
+    <img src="./images/pic11.png" alt="pic11" width="30%" />
+</div>
 
 Besides, if the user allows computer players to be involved, the hint text will explicitly show which player is AI.
 <div align="center">
-    <img src="./images/pic10.png" alt="pic2" width="50%" />
+    <img src="./images/pic10.png" alt="pic2" width="40%" />
 </div>
+
 
 To move, a player needs to first click one's piece and then click a free space as the destination of the movement. 
 <div align="center">
-    <img src="./images/pic3.png" alt="pic2" width="50%" />
+    <img src="./images/pic3.png" alt="pic2" width="40%" />
 </div>
 Once the player first clicks a valid position, the resulting available list of destinations will be marked in the corresponding colour as shown above. If an entering movement is invalid, then there will be an error message posted, and the player will need to re-enter another movement. The invalid situations include double-clicking a position, taking a free space at the start of the movement, trying to reach a destination that is too far, or the destination is already occupied by another player. 
 
-| <img src="./images/pic6.png" alt="pic6" style="zoom:25%;" /> | <img src="./images/pic7.png" alt="pic7" style="zoom:25%;" /> |
-| :----------------------------------------------------------: | :----------------------------------------------------------: |
-| <img src="./images/pic8.png" alt="pic8" style="zoom:25%;" /> | <img src="./images/pic9.png" alt="pic9" style="zoom:25%;" /> |
+<div align="center">
+    <img src="./images/pic6.png" alt="pic6" width="30%" />
+    <img src="./images/pic7.png" alt="pic7" width="30%" />
+  	<br>
+    <img src="./images/pic8.png" alt="pic8" width="30%" />
+    <img src="./images/pic9.png" alt="pic9" width="30%" />
+</div>
 
 Once the game is finished, the user can close the game or continue the next one with a different setting. Press the "Quit" button, and the page will be returned to the menu, where the user could make a different configuration. 
 
