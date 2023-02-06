@@ -126,7 +126,7 @@ This executable is used for generating the entities for the lookup table. Since 
 Run the executable, which requires 3 arguments:
 
 * how many subsections do you want to split into: $n$
-* the index of the generated subsections: $[0, n-1]$
+* the index of the generated subsection: $[0, n-1]$
 * the width used for the heuristic algorithm: $(w_1,w_2)$
 
 For instance,
@@ -135,7 +135,7 @@ For instance,
 ./buildTree 16 0 (800,200)
 ```
 
-The above command declares that the total entities of $27,228$ are roughly divided into $16$ groups: $[s_0, s_1, ...s_{15}]$, and the computation will be made on the first group ($s_0$). $(800,200)$ are the parameters used by the shortest path search algorithm that processes a breadth-first search to find the minimum moves of a board configuration to reach the win state, $800$ is the width for searching the opening of the game while $200$ is for the ending.   
+The above command declares that the total entities of $27,228$ are roughly divided into $16$ groups: $[s_0, s_1, ...s_{15}]$, and the computation will be made on the first group ($s_0$). $(800,200)$ are the parameters used by the shortest path search algorithm that processes a breadth-first search to find the minimum moves of a board configuration to reach the win state, $800$ is the generation size for searching the opening of the game while $200$ is for the ending.   
 
 Normally, this will take a lot of time to compute all $16$ subsections, even though several programs can be run separately at the same time. The collected data will be stored in a txt file "first-semester/src/dataset/lookup_table_0.txt" based on the given index, in this case, it is $0$. 
 
@@ -165,7 +165,7 @@ The above command will assign $500$ iterations to the search and a pair of param
 
 ### experiment1 & experiment1_2
 
-The experiment is divided into two parts here, it runs based on a similar pattern as the previous one but rather than just a single trial, it allows the user to define how many trials a certain parameter pair should run. The experiment tests the performance of the algorithm by trying different combinations of parameters, $C$ and $W$, while the first part only tests the integer combination and the second allows double values. 
+The experiment is divided into two parts here, it runs based on a similar pattern as the previous one but rather than just a single trial, it allows the user to define how many trials a certain parameter pair should run with default iterations. The experiment tests the performance of the algorithm by trying different combinations of parameters, $C$ and $W$, while the first part only tests the integer combination and the second allows double values. 
 
 For the first part of the experiment, the range is set from 0 to 5 for both parameters, such that there is a total of $36$ pairs of integral values. On the other hand, the second section provides 10 pairs that given a known $C$ combining it with a list of $Ws$: $[0.1, 0.2, ...1.0]$ .
 
@@ -182,7 +182,7 @@ For "experiment1", for every $36$ parameter pairs, there are 500 trials to run w
 
 The final experiment holds a match between an MCTS player and a random player on a three-player board. The experiment collects the wins achieved by the MCTS player and the turns taken by a game, combining these, the win rate of a parameter pair and how fast it takes on average to end the game become clear to evaluate the performance. 
 
-For instance, to run the experiment with the combined pairs of a given $C = 3$ and a list of $W$ from $[0.1, 0.2, ..., 1.0]$, while each pair is run with $500$ games, the corresponding command should be as follows:
+For instance, to run the experiment with the combined pairs of a given $C = 3$ and a list of $W$ from $[0.1, 0.2, ..., 1.0]$, while each pair is run with $500$ games and default iterations for the search, the corresponding command should be as follows:
 
 ```bash
 ./experiment2 3 500
