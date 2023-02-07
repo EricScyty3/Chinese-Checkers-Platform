@@ -1,7 +1,7 @@
 # Prototype of Chinese Checkers
 
 <div align="center">
-    <img src="./images/pic2.png" alt="pic2" width="40%" />
+    <img src="./first-semester/images/pic2.png" alt="pic2" width="40%" />
 </div>
 
 
@@ -65,36 +65,36 @@ Once you have set up all the packages listed above, you can access any hs script
 Once you enter the application, you will see a menu page listing the option of available players allowed in the game. The first row of radios displays the option of total players of a range of $[2, 3, 4, 6]$The second row displays the available computer players, which are restricted to less than the total number of players.   
 
 <div align="center">
-    <img src="./images/pic4.png" alt="pic4" width="40%" />
-    <img src="./images/pic1.png" alt="pic1" width="40%" />
+    <img src="./first-semester/images/pic4.png" alt="pic4" width="40%" />
+    <img src="./first-semester/images/pic1.png" alt="pic1" width="40%" />
 </div>
 
 After the players are settled, pressing the "Start Game" button will enter the game, a corresponding board will be generated. For different players, there are ways to distinguish between them. Each player's pieces are numbered with the same index and in the same colour. To simplify the game, there will be a hint text shown above to remind the player of the certain index to action as well as the winner of the game.
 
 <div align="center">
-    <img src="./images/pic5.png" alt="pic5" width="30%" />
-    <img src="./images/pic2.png" alt="pic2" width="30%" />
-    <img src="./images/pic11.png" alt="pic11" width="30%" />
+    <img src="./first-semester/images/pic5.png" alt="pic5" width="30%" />
+    <img src="./first-semester/images/pic2.png" alt="pic2" width="30%" />
+    <img src="./first-semester/images/pic11.png" alt="pic11" width="30%" />
 </div>
 
 Besides, if the user allows computer players to be involved, the hint text will explicitly show which player is AI.
 <div align="center">
-    <img src="./images/pic10.png" alt="pic2" width="40%" />
+    <img src="./first-semester/images/pic10.png" alt="pic2" width="40%" />
 </div>
 
 
 To move, a player needs to first click one's piece and then click a free space as the destination of the movement. 
 <div align="center">
-    <img src="./images/pic3.png" alt="pic2" width="40%" />
+    <img src="./first-semester/images/pic3.png" alt="pic2" width="40%" />
 </div>
 Once the player first clicks a valid position, the resulting available list of destinations will be marked in the corresponding colour as shown above. If an entering movement is invalid, then there will be an error message posted, and the player will need to re-enter another movement. The invalid situations include double-clicking a position, taking a free space at the start of the movement, trying to reach a destination that is too far, or the destination is already occupied by another player. 
 
 <div align="center">
-    <img src="./images/pic6.png" alt="pic6" width="30%" />
-    <img src="./images/pic7.png" alt="pic7" width="30%" />
+    <img src="./first-semester/images/pic6.png" alt="pic6" width="30%" />
+    <img src="./first-semester/images/pic7.png" alt="pic7" width="30%" />
   	<br>
-    <img src="./images/pic8.png" alt="pic8" width="30%" />
-    <img src="./images/pic9.png" alt="pic9" width="30%" />
+    <img src="./first-semester/images/pic8.png" alt="pic8" width="30%" />
+    <img src="./first-semester/images/pic9.png" alt="pic9" width="30%" />
 </div>
 
 Once the game is finished, the user can close the game or continue the next one with a different setting. Press the "Quit" button, and the page will be returned to the menu, where the user could make a different configuration. 
