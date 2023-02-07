@@ -9,7 +9,7 @@ A prototype of Haskell Chinese Checkers game with multiple players allowed as we
 
 All the executable files provided here are generated from a MacOS environment, therefore, if you are a user of a different platform, you may want to build up the environment first such that application could be run. 
 
-Please make sure that you've already installed sufficient Haskell environments such as GHC, Cabal and Stack, if not, then you might want to have a look at how to [install](https://www.haskell.org/ghcup/) them easily.  
+Please make sure that you've already installed sufficient Haskell environments such as GHC (8.10.7), Cabal (3.6.2.0) and Stack (2.9.1), if not, then you might want to have a look at how to [install](https://www.haskell.org/ghcup/) them easily.  
 
 ## Installation
 
