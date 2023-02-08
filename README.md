@@ -9,7 +9,7 @@ A prototype of Haskell Chinese Checkers game with multiple players allowed as we
 
 All the executable files provided here are generated from a MacOS environment, therefore, if you are a user of a different platform, you may want to build up the environment first such that application could be run. 
 
-Please make sure that you've already installed sufficient Haskell environments such as GHC (8.10.7), Cabal (3.6.2.0) and Stack (2.9.1), if not, then you might want to have a look at how to [install](https://www.haskell.org/ghcup/) them easily.  
+Please make sure that you've already installed sufficient Haskell environments such as GHC (8.10.7), Cabal (3.6.2.0) and Stack (2.9.1), if not, then you might want to have a look at how to [install](https://www.haskell.org/ghcup/) them easily. Besides, it is also required for the user to install certain libraries to ensure the executable file provided can run correctly.
 
 ## Installation
 
@@ -19,19 +19,34 @@ To install the application, the folder needs to be cloned from the git or downlo
 git clone git@projects.cs.nott.ac.uk:scyty3/msc-project.git <your-app-name>
 ```
 
-After you clone the project or extract the file, you will see an executable named "app", which is the main body of the application and can be launched through the below command:
+After you clone the project or extract the file, you will see an executable named "app", which is the main body of the application and can be launched through the below command.
 
 ```bash
 ./app
 ```
 
-The executable file can be directly run on MacOS without additional action and if you are and Mac user and not interested in how to set up the environment, you can skip the next section, where the instruction of the application is described. 
+To be noticed, you must install additional packages so that the executable can be run based on the necessary libraries, so please look at the [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md). For Mac users, the following commands are required to install the `sdl2` and `glew`.
+
+```bash
+brew install sdl2
+brew install glew
+```
+
+The installation is done through [Homebrew](https://brew.sh), in case you haven't installed it.
+
+Besides, package `pkg-config` is also needed if not yet installed.
+
+```bash
+brew install pkg-config
+```
+
+After that, the executable file should be able to run directly on Mac. And if you're interested in how to set up the environment, you can go to the next section, where the complete instruction for the application is described. 
 
 ### Stack Environment
 
 Since the application introduces a third-party library for displaying the graphical interface, if you want to make a change to the program and test it, you will need to set up a stack environment.
 
-To build up the environment, navigate to the folder called "first-semester" and run the following command:
+To build up the environment, navigate to the folder called "first-semester" and run the following command.
 
 ```bash
 stack build
@@ -52,7 +67,7 @@ If you want to access certain hs scripts and run the function individually, you 
   - `containers`
   - `time`
 
-They could be set up through the command `cabal install`, for instance, to add the package 'random', the following command should be entered under folder "first-semester/src":
+They could be set up through the command `cabal install`, for instance, to add the package 'random', the following command should be entered under folder "first-semester/src".
 
 ```bash
 cabal install random
@@ -182,7 +197,7 @@ For "experiment1", for every $36$ parameter pairs, there are 500 trials to run w
 
 The final experiment holds a match between an MCTS player and a random player on a three-player board. The experiment collects the wins achieved by the MCTS player and the turns taken by a game, combining these, the win rate of a parameter pair and how fast it takes on average to end the game become clear to evaluate the performance. 
 
-For instance, to run the experiment with the combined pairs of a given $C = 3$ and a list of $W$ from $[0.1, 0.2, ..., 1.0]$, while each pair is run with $500$ games and default iterations for the search, the corresponding command should be as follows:
+For instance, to run the experiment with the combined pairs of a given $C = 3$ and a list of $W$ from $[0.1, 0.2, ..., 1.0]$, while each pair is run with $500$ games and default iterations for the search, the corresponding command should be as follows.
 
 ```bash
 ./experiment2 3 500
