@@ -25,7 +25,7 @@ After you clone the project or extract the file, you will see an executable name
 ./app
 ```
 
-To be noticed, you must install additional packages so that the executable can be run based on the necessary libraries, so please look at the [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md). For Mac users, the following commands are required to install the `sdl2` and `glew`.
+To be noticed, you must install additional packages so that the GUI library can be run, so please look at the [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md). For Mac users, the following commands are required to install the `sdl2` and `glew`.
 
 ```bash
 brew install sdl2
@@ -52,7 +52,7 @@ To build up the environment, navigate to the folder called "first-semester" and 
 stack build
 ```
 
-It will construct the necessary libraries used in this program and set up an environment under this folder, mainly for setting the environment for the GUI library called "Monomer". Here is the link to the GitHub of the [monomer](https://github.com/fjvallarino/monomer) and the link to its [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md), in case you'd like to set up such an environment individually. Notice that, you might be required to install additional packages based on your operating system, so please have a look at the [installation instructions](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md). This might take around 10 minutes to fully install all libraries and packages after you enter the command. 
+It will construct the necessary libraries used in this program and set up an environment under this folder, mainly for setting the environment for the GUI library called "Monomer". Here is the link to the GitHub of the [monomer](https://github.com/fjvallarino/monomer) and the link to its [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md), in case you'd like to set up such an environment individually. Notice that, you might be required to install additional packages based on your operating system as mentioned above, so please have a look at the [installation instructions](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md). This might take around 10 minutes to fully install all libraries and packages after you enter the command. 
 
 If no error appears after the build command, you can then run `stack run Main`, then the application will successfully execute. Initially, it's the same as the app executable, but can be recompiled if you modify the code. Run `stack run Main` every time you make a change to the code, and the program will recompile and generate a new executable based on that. Normally, a path to the produced executable would be provided in the hidden folder ".stack-work".
 
