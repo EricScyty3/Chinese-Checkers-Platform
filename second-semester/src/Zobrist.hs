@@ -7,6 +7,8 @@ import Control.Monad.State
 import Control.Monad.Extra
 import Control.Parallel
 import System.Random
+import Data.STRef
+import Control.Monad.ST
 
 
 -- a list of unique random integers 
@@ -90,10 +92,18 @@ changeHash x y h = evalState (hashChange x y h) randomBoardState
         hashChange fp tp xv = do f <- safeGetElement fp -- if the position is negative, then treat it as 0
                                  t <- safeGetElement tp
                                  return $ f `par` t `pseq` foldr myXOR 0 [xv, f, t]
-        
+
         safeGetElement :: Pos -> State StateTable Int
         safeGetElement pos = do if not $ testValidPos occupiedBoardSize occupiedBoardSize pos then return 0
                                 else getElement pos
+
+flipBoards ::  [Pos] -> [(Pos, Pos)] -> [[Pos]]
+flipBoards _ [] = []
+flipBoards ps (x:xs) = flipBoard x ps:flipBoards ps xs
+
+flipBoard :: (Pos, Pos) -> [Pos] -> [Pos]
+flipBoard (x, y) ps = let idx = head $ elemIndices x ps
+                      in  replace idx y ps
 
 --Hash Construct---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- transform a decimal integer into a binary list

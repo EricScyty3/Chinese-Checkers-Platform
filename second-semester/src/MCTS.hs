@@ -12,6 +12,7 @@ import RBTree
 import Data.Time
 import BFS
 import System.Environment
+import Configuration
 
 -- a list of node that is chosen along with the selection, used for updating the tree information as well as the history movements
 type Trace = [BoardIndex]
@@ -81,7 +82,8 @@ expansion n = let cs = getChildren n
 
 -- the strategy of how a board could lead to different resulting boards
 expandPolicy :: Colour -> [Transform] -> [Transform]
-expandPolicy co xs
+expandPolicy co xs = xs -- change to fully expanding
+{-
     | not $ null front = front  -- if front moves are avaliable then just expand them   
     | otherwise = xs      -- else, the non-frontward moves are accepted
     where
@@ -90,7 +92,7 @@ expandPolicy co xs
         -- nonfront = filter ((<= 0) . distanceChange) xs
         -- project the position from main board to the occupied board of certain colour
         distanceChange (x, y) = evaluateMove2 (projection co (getPos x), projection co (getPos y))
-
+-}
 -- after the selection, expansion, and playout is done, a win is known from the game simulation in playout stage, and should be update to the selected nodes
 -- update the game tree stored wins for certain player, as well as replacing the new expanded node to the game tree
 -- the process containing traversing child nodes from the root until reaching the last node in the trace
@@ -130,44 +132,74 @@ evaluateMove (p1, p2) = let cen1 = centroidPos p1
 dist :: Pos -> Pos -> Double
 dist (x1, y1) (x2, y2) = sqrt (fromIntegral (x1 - x2)^2 + fromIntegral (y1 - y2)^2)
 -- return the distance of a piece to the goal state, the evaluation is more straightforward as only considering the distance
-evaluateMove2 :: (Pos, Pos) -> Double
-evaluateMove2 (p1, p2) = let dist1 = dist p1 (0, 6)
-                             dist2 = dist p2 (0, 6)
-                         in dist1 `par` dist2 `pseq` (dist1 - dist2) -- still the larger the better
--- estimate the board state simply by the centroid value
-evaluateBoard1 :: Board -> Colour -> Int
-evaluateBoard1 board colour = let ps = findPiecesWithColour colour board
-                                  pp = map (projection colour . getPos) ps 
-                              in  centroid pp
+moveEvaluation :: (Pos, Pos) -> Double
+moveEvaluation (p1, p2) = let dist1 = dist p1 (0, 6)
+                              dist2 = dist p2 (0, 6)
+                           in dist1 `par` dist2 `pseq` (dist1 - dist2) -- still the larger the better
+-- -- estimate the board state simply by the centroid value
+-- evaluateBoard :: Board -> Colour -> Int
+-- evaluateBoard board colour = let ps = findPiecesWithColour colour board
+--                                  pp = map (projection colour . getPos) ps 
+--                              in  centroid pp
+
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
-playoutPolicy :: Colour -> [Transform] -> State GameTreeStatus Board
-playoutPolicy colour tfs = let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs -- projected to corresponding occupied board
-                               sl   = map evaluateMove2 ptfs -- measure change of distance made by the movements 
-                           in  if randomPercentage 95 then do let cidx = randomSelection sl
-                                                                  cft  = tfs !! cidx
-                                                              repaintBoard cft -- get the board that lead to largest distance increment 
-                               else do let cidx = randomMove (length tfs) -- 5% of chance for randomly play a move
-                                           cft  = tfs !! cidx
-                                       repaintBoard cft
+-- policy 1: board evaluator based 
+playoutPolicy1 :: Colour -> [Transform] -> State GameTreeStatus Board
+playoutPolicy1 colour tfs = -- random choice
+                           if not (randomPercentage 95) then do let idx = randomMove (length tfs)
+                                                                    tf  = tfs !! idx
+                                                                repaintBoard tf -- randomly choose a movement and generate the resulting board
+                           -- evaluate the candidates and choose the optimal one
+                           else do eboard <- getBoard
+                                   -- project the external board to the internal positions
+                                   let ps = map (projection colour . getPos) (findPiecesWithColour colour eboard)
+                                       ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
+                                       bs = flipBoards ps ptfs
+                                       ss = map boardEvaluation bs
+                                       idx = randomSelection ss
+                                       ft  = tfs !! idx
+                                   repaintBoard ft
+-- policy 2: move evaluator based 
+playoutPolicy2 :: Colour -> [Transform] -> State GameTreeStatus Board
+playoutPolicy2 colour tfs = -- random choice
+                           if not (randomPercentage 95) then do let idx = randomMove (length tfs)
+                                                                    tf  = tfs !! idx
+                                                                repaintBoard tf -- randomly choose a movement and generate the resulting board
+                           -- evaluate the candidates and choose the optimal one
+                           else do eboard <- getBoard
+                                   -- project the external board to the internal positions
+                                   let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
+                                       ss = map moveEvaluation ptfs
+                                       idx = randomSelection ss
+                                       ft  = tfs !! idx
+                                   repaintBoard ft
+
+allProject :: [[Pos]] -> [Colour] -> [[Pos]]
+allProject _ [] = []
+allProject [] _ = []
+allProject (x:xs) (c:cs) = map (projection c) x:allProject xs cs
 
 -- game simulation from a certain board state 
 playout :: Int -> State GameTreeStatus (PlayerIndex, Int)
 playout moves = do pn <- getPlayerNum
-                   if getTurns moves pn >= 1000 
+                   if getTurns moves pn >= 1000
                    then do -- avoid the potential cycling, or stop the playouts if costing too much time
                            bo <- getBoard
-                           let is = [0..(pn-1)]
+                           let
+                               is = [0..(pn-1)]
                                cs = map (`playerColour` pn) is
-                               es = map (evaluateBoard1 bo) cs
+                               externalPieces = map (map getPos . (`findPiecesWithColour` bo)) cs
+                               internalPieces = allProject externalPieces cs
+                               es = map boardEvaluation internalPieces
                            return (is !! randomSelection es, getTurns moves pn) -- treat the one with the best board state (not move state) as winner
                     else
                         do colour <- getPlayerColour
                            tfs <- colouredMovesList colour    -- get all of the avaliable moves
                            board <- getBoard
                            pi <- getPlayerIdx
-                           if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)  
+                           if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)
                             -- if the started board state is already an end state, this means that some players take a suicidal action that cause other player to win
-                           else do nboard <- playoutPolicy colour tfs -- otherwise, choose one of the boards resulted from the current board
+                           else do nboard <- playoutPolicy1 colour tfs -- otherwise, choose one of the boards resulted from the current board
                                    pi <- getPlayerIdx
                                    if winStateDetermine colour nboard then return (pi, getTurns moves pn) -- if a player wins, then return the player's index
                                    else do updatePlayerIdx -- otherwise, keep simulating on the next turn

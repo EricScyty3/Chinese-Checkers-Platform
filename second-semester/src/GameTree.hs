@@ -145,9 +145,10 @@ searchNode i t = let ls = searchNode' i (getRootBoard t) t
 -- given pieces change, generate a new board 
 repaintBoard :: Transform-> State GameTreeStatus Board
 repaintBoard (start, end) = do board <- getBoard
-                               let colour = Board.getColour start
+                               return (repaintPath board start end) -- recolour the start and end positions
+                               {-let colour = Board.getColour start
                                    eboard = changeBoardElement erase start board -- erase the start position
-                               return (eboard `par` colour `pseq` changeBoardElement (safeRepaint colour) end eboard) -- recolour the end position
+                               return (eboard `par` colour `pseq` changeBoardElement (safeRepaint colour) end eboard)-} 
 
 -- given a certain piece's colour, return a list of avaliable movements (transforms)
 colouredMovesList :: Colour -> State GameTreeStatus [Transform]
