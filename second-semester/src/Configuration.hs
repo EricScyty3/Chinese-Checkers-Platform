@@ -144,29 +144,31 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
         flipBoardState :: [Pos] -> Pos -> [Pos]
         flipBoardState ls p = p:ls
 
--- a mixed-strategy evalutor that combines both shortest path and centroid heurisitics
+-- compute a list of board configurations, with a mixed-strategy evalutor that combines both shortest path and centroid heurisitics
+boardEvaluations :: [[Pos]] -> [Int]
+boardEvaluations ps = if ifExistMidgame ps then map centroid ps
+                      else map boardEvaluation ps
+
+-- search for a shortest path for a certain board configuration
 boardEvaluation :: [Pos] -> Int
-boardEvaluation ps = let x = evalState (evaluateBoard ps) lookupTable
-                     in  if x == (-28) then centroid ps
-                         else x
+boardEvaluation ps = case evalState (evaluateBoard ps (isOpening ps)) lookupTable of
+                        Nothing -> error "Cannot find such board configuration"
+                        Just x  -> x
+
 -- search for the shortest path value of a certain board configuration
--- the maximum value is 28, the goal state
-evaluateBoard :: [Pos] -> State LookupTable Int
-evaluateBoard ps = do lt <- get
-                      -- if the entered board is at the opening stage
-                      if isOpening ps then do xs <- getShortestPath ps; return (28 - getFst xs)
-                      else if isEndgame ps then do xs <- getShortestPath (symmetric2_pos ps); return (28 - getSnd xs)
-                      else return (-28) -- if during the midgame, then should apply alternative heuristic
+evaluateBoard :: [Pos] -> Bool -> State LookupTable (Maybe Int)
+evaluateBoard ps flag = do lt <- get
+                           -- if the entered board is at the opening stage
+                           if flag then do xs <- getShortestPath ps; return (getFst xs)
+                           else do xs <- getShortestPath (symmetric2_pos ps); return (getSnd xs)
     where
-        getFst :: Maybe (Int, Int) -> Int
-        getFst (Just (x, _)) = x
-        getFst Nothing = -28
+        getFst :: Maybe (Int, Int) -> Maybe Int
+        getFst (Just (x, _)) = Just x
+        getFst Nothing = Nothing
 
-        getSnd :: Maybe (Int, Int) -> Int
-        getSnd (Just (_, y)) = y
-        getSnd Nothing = -28
-
-
+        getSnd :: Maybe (Int, Int) -> Maybe Int
+        getSnd (Just (_, y)) = Just y
+        getSnd Nothing = Nothing
 
 -- determine if a board configuration is at the opening, endgame or midgame state
 isOpening :: [Pos] -> Bool -- requires a symmetric operation to search in the lookup tree
@@ -175,6 +177,9 @@ isEndgame :: [Pos] -> Bool -- requires two symmetric opertation to search in the
 isEndgame ps = centroid ps >= 6
 isMidgame :: [Pos] -> Bool -- cannot be found in the lookup tree, might need additional evaluation function
 isMidgame ps = not (isOpening ps) && not (isEndgame ps)
+
+ifExistMidgame :: [[Pos]] -> Bool
+ifExistMidgame = any isMidgame
 
 -- load the content based on the entered board state
 getShortestPath :: [Pos] -> State LookupTable (Maybe (Int, Int))

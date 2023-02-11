@@ -60,6 +60,9 @@ initialState = [
 -- find the occupied positions of the board/find the pieces' positions on the occupied board
 findOccupiedPieces :: OccupiedBoard -> [Pos]
 findOccupiedPieces board = sort $ [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
+-- project the positions of the pieces on the exnterl board  into internal board
+convertToInternalBoard :: Board -> Colour -> [Pos]
+convertToInternalBoard eboard colour = map (projection colour . getPos) (findPiecesWithColour colour eboard)
 
 -- the hashed values of the both states
 hashInitial :: Int

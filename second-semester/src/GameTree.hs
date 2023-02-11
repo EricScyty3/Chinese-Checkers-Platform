@@ -26,60 +26,63 @@ data GameTree = GRoot BoardIndex Board [Wins] [GameTree] |
                 GLeaf BoardIndex Transform [Wins]  |
                 GNode BoardIndex Transform [Wins] [GameTree]
                 deriving (Eq, Show)
-
+-- the options of playout policy
+data PlayoutPolicy = MoveEvaluator | BoardEvaluator | ShallowSearch deriving (Eq, Show)
 -- in addition to the game tree itself, a history trace of how a move performs in previous game is also maintained
 -- which could be useful at the early stage of movement selection when no much moves are experienced 
 type HistoryTrace = RBTree [Wins]
-
 -- the game status
 type GameTreeStatus = (PlayerIndex, -- current player of the turn
                        BoardIndex, -- the unique id for indicating a board (the node)
                        Board, -- the board state delivered from the parent
                        Int, -- the total players
                        HistoryTrace, -- the history performance of each move played in the past
-                       (Double, Double)) -- the arguments for selection strategy
+                       (Double, Double), -- the arguments for selection strategy
+                       PlayoutPolicy) -- the arguments for playout strategy
 
 --Encapsulation----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- since the game state is warpped in the state monad, several toolkits are applied to access and modify and game state 
 -- get the current player's index
 getPlayerIdx :: State GameTreeStatus PlayerIndex
-getPlayerIdx = do (pi, _, _, _, _, _) <- get; return pi
+getPlayerIdx = do (pi, _, _, _, _, _, _) <- get; return pi
 -- based on the player's index, return the corresponding colour of the pieces
 getPlayerColour :: State GameTreeStatus Colour
 getPlayerColour = do pi <- getPlayerIdx; playerColour pi <$> getPlayerNum
 -- get the board index accumulated so far
 getBoardIdx :: State GameTreeStatus BoardIndex
-getBoardIdx = do (_, bi, _, _, _, _) <- get; return bi
+getBoardIdx = do (_, bi, _, _, _, _, _) <- get; return bi
 -- return the board from the state
 getBoard :: State GameTreeStatus Board
-getBoard = do (_, _, b, _, _, _) <- get; return b
+getBoard = do (_, _, b, _, _, _, _) <- get; return b
 -- return the player's amount from the state
 getPlayerNum :: State GameTreeStatus Int
-getPlayerNum = do (_, _, _, pn, _, _) <- get; return pn
+getPlayerNum = do (_, _, _, pn, _, _, _) <- get; return pn
 -- return the history of moves' information from the state
 getHistoryTrace :: State GameTreeStatus HistoryTrace
-getHistoryTrace = do (_, _, _, _, ht, _) <- get; return ht
+getHistoryTrace = do (_, _, _, _, ht, _, _) <- get; return ht
 -- return the two argurmant of selection strategy: UCT and PH
 getUCTCons :: State GameTreeStatus Double
-getUCTCons = do (_, _, _, _, _, (uct, _)) <- get; return uct
+getUCTCons = do (_, _, _, _, _, (uct, _), _) <- get; return uct
 getPHCons :: State GameTreeStatus Double
-getPHCons = do (_, _, _, _, _, (_, ph)) <- get; return ph
+getPHCons = do (_, _, _, _, _, (_, ph), _) <- get; return ph
+getPlayoutPolicy :: State GameTreeStatus PlayoutPolicy 
+getPlayoutPolicy = do (_, _, _, _, _, _, pp) <- get; return pp
 
 -- update the player index based on the turn order
 updatePlayerIdx :: State GameTreeStatus ()
-updatePlayerIdx = do (pi, bi, b, pn, ht, cons) <- get; put (turnBase pn pi, bi, b, pn, ht, cons)
+updatePlayerIdx = do (pi, bi, b, pn, ht, cons, pp) <- get; put (turnBase pn pi, bi, b, pn, ht, cons, pp)
 -- change the player turns based on index from 0 to the number - 1
 turnBase :: Int -> PlayerIndex -> PlayerIndex
 turnBase players idx = if idx == players - 1 then 0 else idx + 1
 -- increment the board index by 1
 updateBoardIdx :: State GameTreeStatus ()
-updateBoardIdx = do (pi, bi, b, pn, ht, cons) <- get; put (pi, bi+1, b, pn, ht, cons)
+updateBoardIdx = do (pi, bi, b, pn, ht, cons, pp) <- get; put (pi, bi+1, b, pn, ht, cons, pp)
 -- update the current board that it transformed by parent node
 updateBoard :: Board -> State GameTreeStatus ()
-updateBoard b = do (pi, bi, _, pn, ht, cons) <- get; put (pi, bi, b, pn, ht, cons)
+updateBoard b = do (pi, bi, _, pn, ht, cons, pp) <- get; put (pi, bi, b, pn, ht, cons, pp)
 -- add or eidt the moves performed in previous games
 updateHistoryTrace :: HistoryTrace -> State GameTreeStatus ()
-updateHistoryTrace ht = do (pi, bi, b, pn, _, cons) <- get; put (pi, bi, b, pn, ht, cons)
+updateHistoryTrace ht = do (pi, bi, b, pn, _, cons, pp) <- get; put (pi, bi, b, pn, ht, cons, pp)
 
 -- determine the game tree node type: root, node, and leaf
 getNodeType :: GameTree -> String
@@ -138,7 +141,7 @@ searchNode i t = let ls = searchNode' i (getRootBoard t) t
         -- start from root and keep updateing the board while searching for the specific node with certain index
         searchNode' :: BoardIndex -> Board -> GameTree -> [(GameTree, Board)]
         searchNode' index board tree = let newBoard = (if isRoot tree then board
-                                                       else evalState (repaintBoard $ getTransform tree) (0, 0, board, 0, RBLeaf, (0, 0)))
+                                                       else evalState (repaintBoard $ getTransform tree) (0, 0, board, 0, RBLeaf, (0, 0), BoardEvaluator))
                                        in  if getBoardIndex tree == index then [(tree, newBoard)] -- return the found node and corresponding board
                                            else if null $ getChildren tree then [] -- return empty list if reaching leaf
                                                 else concatMap (searchNode' index newBoard) (getChildren tree) -- expand the search to each child node
@@ -201,30 +204,33 @@ estimateNodeUCT parentVisits node = if getVisits node == 0 then return 0
 -- consider additionally the similar move not only from parent nodes but the history
 -- that is, the average score of a certain move being performed
 -- tree-only PH: only consider the moves selected in the selection stages rather than both selection and playout stages
-estimateNodePH :: GameTree -> State GameTreeStatus Double
-estimateNodePH node = let (from, to) = getTransform node -- first get the transformed positions for searching the history
-                      in  case Board.getColour from of
-                            Nothing -> error "Estimate: cannot determine current player's colour"
-                            Just colour -> do pi <- getPlayerIdx
-                                              ht <- getHistoryTrace
-                                              constant <- getPHCons
-                                              let pf = projection colour (getPos from) -- project the positions to occupied board
-                                                  pt = projection colour (getPos to)
-                                              case pf `par` pt `pseq` rbSearch (hash [pf, pt]) ht of -- and find if similar move has been made in the past
-                                                    Nothing -> return 0
-                                                    Just wins -> return $ fromIntegral (wins !! pi) / fromIntegral (sum wins)
-                                                                          * constant / fromIntegral (getVisits node - (getWins node !! pi) + 1)
-                                                                          -- if it does, then return the calculated result
+estimateNodePH :: GameTree -> [Pos] -> Colour -> State GameTreeStatus Double
+estimateNodePH node ps colour 
+                       = let (from, to) = getTransform node -- first get the transformed positions for searching the history
+                         in  do pi <- getPlayerIdx
+                                ht <- getHistoryTrace
+                                constant <- getPHCons
+                                let pf = projection colour (getPos from) -- project the positions to occupied board
+                                    pt = projection colour (getPos to)
+                                    -- extension: hash the whole internal board state
+                                    nb = pf `par` pt `pseq` flipBoard (pf, pt) ps 
+                                case rbSearch (hash nb) ht of -- and find if similar move has been made in the past
+                                    Nothing -> return 0
+                                    Just wins -> return $ fromIntegral (wins !! pi) / fromIntegral (sum wins)
+                                                            * constant / fromIntegral (getVisits node - (getWins node !! pi) + 1)
+                                                            -- if it does, then return the calculated result
 
 -- when estimating a node, skip if the entered node is root, otherwise, apply the formulas above
 estimateNode :: Int -> GameTree -> State GameTreeStatus Double
 estimateNode pv node = if isRoot node then return 0
-                       else do
-                          pi <- getPlayerIdx
-                          let mean = averageScore pi node
-                          uct <- estimateNodeUCT pv node
-                          ph  <- estimateNodePH node
-                          return $ uct `par` ph `pseq` mean + uct + ph
+                       else do pi <- getPlayerIdx
+                               colour <- getPlayerColour
+                               eboard <- getBoard
+                               let mean = averageScore pi node
+                                   ps = convertToInternalBoard eboard colour 
+                               uct <- estimateNodeUCT pv node
+                               ph  <- estimateNodePH node ps colour
+                               return $ uct `par` ph `pseq` mean + uct + ph
 
 -- since the history trace should be updated as well every time a selection is made
 editHT :: GameTree -> PlayerIndex -> Int -> HistoryTrace -> HistoryTrace
