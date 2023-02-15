@@ -60,7 +60,8 @@ initialState = [
 -- find the occupied positions of the board/find the pieces' positions on the occupied board
 findOccupiedPieces :: OccupiedBoard -> [Pos]
 findOccupiedPieces board = sort $ [(x, y) | (y, row) <- zip [0..] board, x <- elemIndices 1 row]
--- project the positions of the pieces on the exnterl board  into internal board
+-- project the positions of the pieces on the exnterl board into internal board
+-- instead of a full table, a list of occupied positions could be more efficient to represent the internal board
 convertToInternalBoard :: Board -> Colour -> [Pos]
 convertToInternalBoard eboard colour = map (projection colour . getPos) (findPiecesWithColour colour eboard)
 
@@ -100,12 +101,13 @@ changeHash x y h = evalState (hashChange x y h) randomBoardState
         safeGetElement pos = do if not $ testValidPos occupiedBoardSize occupiedBoardSize pos then return 0
                                 else getElement pos
 
+-- given a positions changes, generate a list of resulting boards
 flipBoards ::  [Pos] -> [(Pos, Pos)] -> [[Pos]]
 flipBoards _ [] = []
-flipBoards ps (x:xs) = flipBoard x ps:flipBoards ps xs
-
-flipBoard :: (Pos, Pos) -> [Pos] -> [Pos]
-flipBoard (x, y) ps = let idx = head $ elemIndices x ps
+flipBoards ps (x:xs) = flipBoard ps x:flipBoards ps xs
+-- given a positions change, reflect that onto the internal board
+flipBoard :: [Pos] -> (Pos, Pos) -> [Pos]
+flipBoard ps (x, y) = let idx = head $ elemIndices x ps
                       in  replace idx y ps
 
 --Hash Construct---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

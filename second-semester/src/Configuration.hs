@@ -146,21 +146,20 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
 
 -- compute a list of board configurations, with a mixed-strategy evalutor that combines both shortest path and centroid heurisitics
 boardEvaluations :: [[Pos]] -> [Int]
-boardEvaluations ps = if ifExistMidgame ps then map centroid ps
+boardEvaluations ps = if ifExistMidgame ps then map ((28-) . centroid) ps
                       else map boardEvaluation ps
 
--- search for a shortest path for a certain board configuration
+-- search for a shortest path for a certain board configuration based on the lookup table
 boardEvaluation :: [Pos] -> Int
-boardEvaluation ps = case evalState (evaluateBoard ps (isOpening ps)) lookupTable of
+boardEvaluation ps = case evaluateBoard ps (isOpening ps) of
                         Nothing -> error "Cannot find such board configuration"
-                        Just x  -> x
+                        Just x  -> 28 - x
 
 -- search for the shortest path value of a certain board configuration
-evaluateBoard :: [Pos] -> Bool -> State LookupTable (Maybe Int)
-evaluateBoard ps flag = do lt <- get
-                           -- if the entered board is at the opening stage
-                           if flag then do xs <- getShortestPath ps; return (getFst xs)
-                           else do xs <- getShortestPath (symmetric2_pos ps); return (getSnd xs)
+evaluateBoard :: [Pos] -> Bool -> Maybe Int
+evaluateBoard ps flag = -- if the entered board is at the opening stage
+                        if flag then getFst (getShortestPath ps) -- the opening value is stored at the first position
+                        else getSnd (getShortestPath (symmetric2_pos ps)) -- the endgame value is stored at the second position
     where
         getFst :: Maybe (Int, Int) -> Maybe Int
         getFst (Just (x, _)) = Just x
@@ -177,18 +176,16 @@ isEndgame :: [Pos] -> Bool -- requires two symmetric opertation to search in the
 isEndgame ps = centroid ps >= 6
 isMidgame :: [Pos] -> Bool -- cannot be found in the lookup tree, might need additional evaluation function
 isMidgame ps = not (isOpening ps) && not (isEndgame ps)
-
 ifExistMidgame :: [[Pos]] -> Bool
 ifExistMidgame = any isMidgame
 
 -- load the content based on the entered board state
-getShortestPath :: [Pos] -> State LookupTable (Maybe (Int, Int))
-getShortestPath ps = do lt <- get
-                        let x1 = rbSearch (hash ps) lt
-                            x2 = rbSearch (hash (symmetric1_pos ps)) lt
-                        if  x1 `par` x2 `pseq` isJust x1 then return x1
-                        else if isJust x2 then return x2
-                        else return Nothing
+getShortestPath :: [Pos] -> Maybe (Int, Int)
+getShortestPath ps = let x1 = rbSearch (hash ps) lookupTable
+                         x2 = rbSearch (hash (symmetric1_pos ps)) lookupTable
+                     in  if x1 `par` x2 `pseq` isJust x1 then x1
+                         else if isJust x2 then x2
+                         else Nothing
 
 -- the configuration dataset of the Chinese Checkers's board
 lookupTable :: LookupTable
