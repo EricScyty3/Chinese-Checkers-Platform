@@ -153,6 +153,11 @@ moveEvaluation (p1, p2) = let dist1 = dist p1 (0, 6)
                               dist2 = dist p2 (0, 6)
                            in dist1 `par` dist2 `pseq` (dist1 - dist2) -- still the larger the better
 
+-- compute a list of board configurations, with a mixed-strategy evalutor that combines both shortest path and centroid heurisitics
+boardEvaluations :: [[Pos]] -> [Int]
+boardEvaluations ps = if ifExistMidgame ps then map centroid ps
+                      else map boardEvaluation ps
+
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
 switchPolicy :: PlayoutPolicy -> Colour -> [Transform] -> State GameTreeStatus Transform
 switchPolicy policyIndex colour tfs = if not (randomPercentage 95) 
@@ -188,10 +193,11 @@ allProject (x:xs) (c:cs) = map (projection c) x:allProject xs cs
 playout :: Int ->State GameTreeStatus (PlayerIndex, Int)
 playout moves = do pn <- getPlayerNum
                    if getTurns moves pn >= 1000 then do -- avoid the potential cycling, or stop the playouts if costing too much time
-                                                        psList <- getInternalBoard
+                                                        {-psList <- getInternalBoard
                                                         let scoreList = boardEvaluations psList
                                                         -- treat the one with the best board state (not move state) as winner
-                                                        return (randomSelection scoreList, getTurns moves pn) 
+                                                        return (randomSelection scoreList, getTurns moves pn) -}
+                                                        error "Exceeded"
                    else do colour <- getPlayerColour
                            tfs <- colouredMovesList colour    -- get all of the avaliable moves
                            board <- getBoard
@@ -300,17 +306,18 @@ finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts =
                                                                       -- the game history is maintained globally for the next call
 
 testRun iterations evaluator = 
-                        do let (nboard, _, _, _) = finalSelection (GRoot 0 []) (0, 1, eboard, ps, pn, RBLeaf, (3, 0.9), evaluator) 0 iterations
+                        do let (nboard, _, _, turns) = finalSelection (GRoot 0 []) (0, 1, eboard, ps, pn, RBLeaf, (3, 0.9), evaluator) 0 iterations
                            printEoard nboard
+                           print turns
     where 
         pn = 3
         eboard = eraseBoard (playerColourList pn)
         ps = initialInternalBoard eboard pn
 
--- main = do arg <- getArgs
---           start <- getCurrentTime
---           let iter = read (head arg) 
---               eval = read (arg !! 1)
---           testRun iter eval
---           end <- getCurrentTime
---           print $ "Time cost: " ++ show (diffUTCTime end start)
+main = do arg <- getArgs
+          start <- lookupTable `pseq` getCurrentTime
+          let iter = read (head arg) 
+              eval = read (arg !! 1)
+          testRun iter eval
+          end <- getCurrentTime
+          print $ "Time cost: " ++ show (diffUTCTime end start)
