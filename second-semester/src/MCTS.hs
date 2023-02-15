@@ -193,11 +193,11 @@ allProject (x:xs) (c:cs) = map (projection c) x:allProject xs cs
 playout :: Int ->State GameTreeStatus (PlayerIndex, Int)
 playout moves = do pn <- getPlayerNum
                    if getTurns moves pn >= 1000 then do -- avoid the potential cycling, or stop the playouts if costing too much time
-                                                        {-psList <- getInternalBoard
+                                                        psList <- getInternalBoard
                                                         let scoreList = boardEvaluations psList
                                                         -- treat the one with the best board state (not move state) as winner
-                                                        return (randomSelection scoreList, getTurns moves pn) -}
-                                                        error "Exceeded"
+                                                        return (randomSelection scoreList, getTurns moves pn)
+                                                        
                    else do colour <- getPlayerColour
                            tfs <- colouredMovesList colour    -- get all of the avaliable moves
                            board <- getBoard
