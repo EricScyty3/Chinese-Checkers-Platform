@@ -7,7 +7,7 @@
 /Users/eric/msc-project/second-semester/README.md:
   hash: 1d6cf2b93321175aaedacb2a4cea3033bec26bbabedc00742adef36a0f783431
 /Users/eric/msc-project/second-semester/monomer-starter.cabal:
-  hash: 00c34a24c452cb139a9a86d0970896428a398378d0418b69a199866929e857aa
+  hash: 5c96ebead8b6598cba6cfd81839a573dd02285d331d6020efb73664488c3b457
 /Users/eric/msc-project/second-semester/package.yaml:
   hash: a6bc811414a38fc01c424333014f848dc804b4ddc10ed51a166d926834db8d98
 /Users/eric/msc-project/second-semester/src/BFS.hs:
@@ -15,16 +15,18 @@
 /Users/eric/msc-project/second-semester/src/Board.hs:
   hash: 4264cd17e26c4a039ddbed5371ced1c9d04b684a5321d0d48c771af0000bacd8
 /Users/eric/msc-project/second-semester/src/Configuration.hs:
-  hash: 5b773afce0f4950500fc1c7bfb94c7df060fedd34bb57d19d153401217d3f45a
+  hash: 7808b4f9e50a7b4478fa32dea5d2b3aa1d27b593de3c811d2119df1a2e1132c6
 /Users/eric/msc-project/second-semester/src/Experiment.hs:
-  hash: b279d729fef9acf8f385004dd2bbb999f8d15153b942e91ae8a72222bd1e7d12
+  hash: 36063c7903644c78ab345255e1463d897693b0c4d386b2b6d9b10f15eaff5a05
 /Users/eric/msc-project/second-semester/src/GameTree.hs:
-  hash: e446b17d76a3276a094f1d83c4d15f362ab6190ec3e20c427944e52e8f8b31e3
+  hash: 8ad98cc6d90d3a745bfaf095beb138d42a6f8f7c3957d38b57aa50c33a3d3df4
 /Users/eric/msc-project/second-semester/src/MCTS.hs:
-  hash: 4cab0bac7c31bafac451160e7b1c91b765f895112e102150224f609f07ec7f10
+  hash: e55680e703e14c393f679b5a865341228abfa08daaa8a6a042e0e341b5998e34
 /Users/eric/msc-project/second-semester/src/Main.hs:
-  hash: 63589dc269e695b5457a52eda551cd2c7d03f9414922a276931e3bf917e32baa
+  hash: 70b355af34193609929c5a344daf3c1b346e364b74f501e6189a7cf76b635dfc
+/Users/eric/msc-project/second-semester/src/Minimax.hs:
+  hash: f7f01318394e7f9b262681600d8ba841ec3d1c7d1ba9cb7cd128f252673a1f58
 /Users/eric/msc-project/second-semester/src/RBTree.hs:
   hash: 3b09836d24ea6e19165bd31feb33a8f9aafcbf494015400200a503c3ffe65f4a
 /Users/eric/msc-project/second-semester/src/Zobrist.hs:
-  hash: e5bf35adfe2d497e861ee3aeddea8caa7c3b4ecf4163636e9684d5dd04f7ff5a
+  hash: d7a3e7b6aedaba54ead66844d7e0a55e5a3227839fcfb16f542ce7e58ced825a

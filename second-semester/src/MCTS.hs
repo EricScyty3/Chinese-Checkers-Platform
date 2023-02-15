@@ -45,7 +45,7 @@ randomSelection xs  = let is = elemIndices (maximum xs) xs
                       in  if length is == 1 then head is
                           else let ri = randomMove (length is)  -- random index of the maximum values' indices
                                in  is !! ri -- return the maximum value's index for selecting
-
+                          
 -- get a list of non-repeated random values of a range
 randomIndices :: Int -> [Int]
 randomIndices l = unsafePerformIO $ take l . nub . randomRs (0, l-1) <$> newStdGen
@@ -154,41 +154,30 @@ moveEvaluation (p1, p2) = let dist1 = dist p1 (0, 6)
                            in dist1 `par` dist2 `pseq` (dist1 - dist2) -- still the larger the better
 
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
-switchPolicy :: PlayoutPolicy -> Colour -> [Transform] -> State GameTreeStatus Board
+switchPolicy :: PlayoutPolicy -> Colour -> [Transform] -> State GameTreeStatus Transform
 switchPolicy policyIndex colour tfs = if not (randomPercentage 95) 
                                       then do let idx = randomMove (length tfs)
-                                                  tf  = tfs !! idx
-                                              repaintBoard tf -- randomly choose a movement and generate the resulting board
+                                              return (tfs !! idx) -- randomly choose a movement and generate the resulting board  
                                       else case policyIndex of
                                             -- board evaluator
-                                            BoardEvaluator -> playoutPolicy1 colour tfs
+                                            BoardEvaluator -> playoutPolicy1 tfs
                                             -- move evaluator
-                                            MoveEvaluator -> playoutPolicy2 colour tfs
+                                            MoveEvaluator -> playoutPolicy2 tfs
                                             ShallowSearch -> error "Not yet prepared"
     where
         -- policy 1: board evaluator based 
-        playoutPolicy1 :: Colour -> [Transform] -> State GameTreeStatus Board
-        playoutPolicy1 colour tfs = do psList <- mapM modifyCurrentInternalBoard tfs
-                                       let scoreList = boardEvaluations psList
-                                           idx = randomSelection scoreList
-                                           ft  = tfs !! idx
-                                       -- update the internal state
-                                       new <- modifyCurrentInternalBoard ft
-                                       updateCurrentInternalBoard new
-                                       -- return the resulting board
-                                       repaintBoard ft
+        playoutPolicy1 :: [Transform] -> State GameTreeStatus Transform
+        playoutPolicy1 tfs = do psList <- mapM modifyCurrentInternalBoard tfs
+                                let scoreList = boardEvaluations psList
+                                    idx = randomSelection scoreList
+                                return (tfs !! idx)
         -- policy 2: move evaluator based 
-        playoutPolicy2 :: Colour -> [Transform] -> State GameTreeStatus Board
-        playoutPolicy2 colour tfs = do -- project the external board to the internal positions
-                                       let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
-                                           scoreList = map moveEvaluation ptfs
-                                           idx = randomSelection scoreList
-                                           ft  = tfs !! idx
-                                       -- update the internal state
-                                       new <- modifyCurrentInternalBoard ft
-                                       updateCurrentInternalBoard new
-                                       -- return the resulting board
-                                       repaintBoard ft
+        playoutPolicy2 :: [Transform] -> State GameTreeStatus Transform
+        playoutPolicy2 tfs = do colour <- getPlayerColour -- project the external board to the internal positions
+                                let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
+                                    scoreList = map moveEvaluation ptfs
+                                    idx = randomSelection scoreList
+                                return (tfs !! idx)
 
 allProject :: [[Pos]] -> [Colour] -> [[Pos]]
 allProject _ [] = []
@@ -210,7 +199,12 @@ playout moves = do pn <- getPlayerNum
                            pp <- getPlayoutPolicy
                            if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)
                             -- if the started board state is already an end state, this means that some players take a suicidal action that cause other player to win
-                           else do nboard <- switchPolicy pp colour tfs -- otherwise, choose one of the boards resulted from the current board
+                           else do tf <- switchPolicy pp colour tfs -- otherwise, choose one of the boards resulted from the current board
+                                   -- update internal board state
+                                   newps <- modifyCurrentInternalBoard tf
+                                   updateCurrentInternalBoard newps
+                                   -- reflect the change onto external board
+                                   nboard <- repaintBoard tf
                                    pi <- getPlayerIdx
                                    if winStateDetermine colour nboard then return (pi, getTurns moves pn) -- if a player wins, then return the player's index
                                    else do updatePlayerIdx -- otherwise, keep simulating on the next turn
@@ -305,19 +299,18 @@ finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts =
                                                                       -- while playouts are treated as one of the measurements in experiments
                                                                       -- the game history is maintained globally for the next call
 
-{-
-testRun iterations = do let (nboard, ntree) = finalSelection (GRoot 0 []) (0, 1, eboard, ps, pn, RBLeaf, (3, 0.9), MoveEvaluator) iterations
-                        printEoard nboard
-                        print (map (averageScore 0) (getChildren ntree))
-                        
+testRun iterations evaluator = 
+                        do let (nboard, _, _, _) = finalSelection (GRoot 0 []) (0, 1, eboard, ps, pn, RBLeaf, (3, 0.9), evaluator) 0 iterations
+                           printEoard nboard
     where 
         pn = 3
         eboard = eraseBoard (playerColourList pn)
         ps = initialInternalBoard eboard pn
 
-main = do arg <- getArgs
-          start <- getCurrentTime
-          let iter = read (head arg) 
-          testRun iter
-          end <- getCurrentTime
-          print $ "Time cost: " ++ show (diffUTCTime end start) -}
+-- main = do arg <- getArgs
+--           start <- getCurrentTime
+--           let iter = read (head arg) 
+--               eval = read (arg !! 1)
+--           testRun iter eval
+--           end <- getCurrentTime
+--           print $ "Time cost: " ++ show (diffUTCTime end start)

@@ -14,6 +14,7 @@ import Data.List
 import System.IO
 import GHC.IO
 
+{-
 -- retrieve the average value of a list
 mean xs = realToFrac (sum xs) / genericLength xs
 
@@ -248,4 +249,4 @@ loadExperiment2Record uct = let filename = "./experiments/experiment2/experiment
                             in  filter ((==1) . extractFirst . snd) xs -- removes the ones that fail reaching win rate of 100%
     where
         extractFirst :: (a, b, c) -> a
-        extractFirst (a,_,_) = a
+        extractFirst (a,_,_) = a -}

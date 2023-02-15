@@ -102,9 +102,9 @@ changeHash x y h = evalState (hashChange x y h) randomBoardState
                                 else getElement pos
 
 -- given a positions changes, generate a list of resulting boards
-flipBoards ::  [Pos] -> [(Pos, Pos)] -> [[Pos]]
-flipBoards _ [] = []
-flipBoards ps (x:xs) = flipBoard ps x:flipBoards ps xs
+-- flipBoards ::  [Pos] -> [(Pos, Pos)] -> [[Pos]]
+-- flipBoards _ [] = []
+-- flipBoards ps (x:xs) = flipBoard ps x:flipBoards ps xs
 -- given a positions change, reflect that onto the internal board
 flipBoard :: [Pos] -> (Pos, Pos) -> [Pos]
 flipBoard ps (x, y) = let idx = head $ elemIndices x ps

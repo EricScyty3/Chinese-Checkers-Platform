@@ -25,6 +25,7 @@ executable app
       Experiment
       GameTree
       MCTS
+      Minimax
       RBTree
       Zobrist
       Paths_monomer_starter

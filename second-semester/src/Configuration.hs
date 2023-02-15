@@ -109,6 +109,7 @@ boardTree (p:ps) rb size = let -- avoid mirror images
     [0, 0, 0, 0, 1, 1, 1] [15..17]15 -> (4, 3)
     [0, 0, 0, 0, 0, 1, 1] [18..19]18 -> (5, 4)
     [0, 0, 0, 0, 0, 0, 1] [20]    20 -> (6, 5)
+    [0, 0, 0, 0, 0, 0, 0]
 -}
 -- convert the 1-dimensional index to 2-dimensional coordinate, specifically for the 21-length list
 idx2Pos :: Int -> Pos
@@ -152,7 +153,7 @@ boardEvaluations ps = if ifExistMidgame ps then map ((28-) . centroid) ps
 -- search for a shortest path for a certain board configuration based on the lookup table
 boardEvaluation :: [Pos] -> Int
 boardEvaluation ps = case evaluateBoard ps (isOpening ps) of
-                        Nothing -> error "Cannot find such board configuration"
+                        Nothing -> error ("Cannot find such board configuration: " ++ show ps)
                         Just x  -> 28 - x
 
 -- search for the shortest path value of a certain board configuration
@@ -169,11 +170,14 @@ evaluateBoard ps flag = -- if the entered board is at the opening stage
         getSnd (Just (_, y)) = Just y
         getSnd Nothing = Nothing
 
+isOpeningPos :: Pos -> Bool
+isOpeningPos p = centroidPos p <= -1
+
 -- determine if a board configuration is at the opening, endgame or midgame state
 isOpening :: [Pos] -> Bool -- requires a symmetric operation to search in the lookup tree
-isOpening ps = centroid ps <= (-6)
+isOpening = all ((<= -1) . centroidPos)
 isEndgame :: [Pos] -> Bool -- requires two symmetric opertation to search in the lookup tree
-isEndgame ps = centroid ps >= 6
+isEndgame = all ((>= 1) . centroidPos)
 isMidgame :: [Pos] -> Bool -- cannot be found in the lookup tree, might need additional evaluation function
 isMidgame ps = not (isOpening ps) && not (isEndgame ps)
 ifExistMidgame :: [[Pos]] -> Bool

@@ -8,6 +8,7 @@ import Control.Monad.ST
 import Data.STRef
 import RBTree
 import Control.Parallel
+import Data.Maybe
 
 
 type Wins = Int
@@ -26,7 +27,7 @@ data GameTree = GRoot BoardIndex [GameTree] |
                 GNode BoardIndex Transform [Wins] [GameTree]
                 deriving (Eq, Show)
 -- the options of playout policy
-data PlayoutPolicy = MoveEvaluator | BoardEvaluator | ShallowSearch deriving (Eq, Show)
+data PlayoutPolicy = MoveEvaluator | BoardEvaluator | ShallowSearch deriving (Eq, Show, Read)
 -- in addition to the game tree itself, a history trace of how a move performs in previous game is also maintained
 -- which could be useful at the early stage of movement selection when no much moves are experienced 
 type HistoryTrace = RBTree [Wins]

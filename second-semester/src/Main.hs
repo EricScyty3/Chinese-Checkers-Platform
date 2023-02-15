@@ -383,11 +383,15 @@ computerTurn sendMsg = do sendMsg ComputerAction
 
 -- pass the model information to the MCTS interface and accept the returned board state
 aiDecision :: AppModel -> (Board, Int, HistoryTrace)
-aiDecision model = let (root, rootIdx) = makeRoot (model ^. playersAmount) (model ^. displayBoard)
-                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, rootIdx, getRootBoard root, model ^. playersAmount, model ^. gameHistory, (3, 0.9)) currentState 10
+aiDecision model = let root = GRoot 0 []  -- makeRoot (model ^. playersAmount) (model ^. displayBoard)
+                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, 1, eboard, ps, pn, ht, (3, 0.9), BoardEvaluator) currentState 10
                    in  (newBoard, newState, nht)
   where
     currentState = (model ^. internalStates) !! (model ^. turnS)
+    eboard = model ^. displayBoard
+    pn = model ^. playersAmount
+    ht = model ^. gameHistory
+    ps = initialInternalBoard eboard pn
 
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
