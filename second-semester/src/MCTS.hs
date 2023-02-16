@@ -83,7 +83,8 @@ expansion :: GameTree -> State GameTreeStatus GameTree
 expansion n = let cs = getChildren n
               in  if not (null cs) then error "Can only expand not expanded node" -- return n -- no need to expand if already has children, mostly expanding for leaf
                   else do co <- getPlayerColour
-                          ts <- colouredMovesList co
+                          pi <- getPlayerIdx
+                          ts <- colouredMovesList pi
                           cs <- mapM makeLeaf (expandPolicy co ts) -- generate the leaf node for movement that is accepted for expanding
                           return (editNodeChildren cs n) -- the new resulting nodes will become the children of the expanded node 
 
@@ -198,11 +199,11 @@ playout moves = do pn <- getPlayerNum
                                                         -- treat the one with the best board state (not move state) as winner
                                                         return (randomSelection scoreList, getTurns moves pn)
                                                         
-                   else do colour <- getPlayerColour
-                           tfs <- colouredMovesList colour    -- get all of the avaliable moves
+                   else do pi <- getPlayerIdx
+                           tfs <- colouredMovesList pi    -- get all of the avaliable moves
                            board <- getBoard
-                           pi <- getPlayerIdx
                            pp <- getPlayoutPolicy
+                           colour <- getPlayerColour
                            if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)
                             -- if the started board state is already an end state, this means that some players take a suicidal action that cause other player to win
                            else do tf <- switchPolicy pp colour tfs -- otherwise, choose one of the boards resulted from the current board
@@ -313,11 +314,11 @@ testRun iterations evaluator =
         pn = 3
         eboard = eraseBoard (playerColourList pn)
         ps = initialInternalBoard eboard pn
-
+{-
 main = do arg <- getArgs
           start <- lookupTable `pseq` getCurrentTime
           let iter = read (head arg) 
               eval = read (arg !! 1)
           testRun iter eval
           end <- getCurrentTime
-          print $ "Time cost: " ++ show (diffUTCTime end start)
+          print $ "Time cost: " ++ show (diffUTCTime end start) -}

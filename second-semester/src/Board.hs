@@ -264,6 +264,13 @@ reversion Purple   = reversePurple
 reversion Red      = reverseRed
 reversion Orange   = reverseOrange
 reversion Black    = reverseBlack
+appendColour :: Colour -> Pos -> BoardPos
+appendColour Green p = G p
+appendColour Blue p = B p
+appendColour Purple p = P p
+appendColour Red p = R p
+appendColour Orange p = O p
+appendColour Black p = K p
 -- Below is the coordinate conversion of internal board state of each colour and the external display board state
 -- through modifying the x-y coordinates 
 {-
@@ -427,7 +434,7 @@ testDisplay = map testDisplay'
                                 Just _ -> 0:testDisplay' xs
                                 Nothing -> case isEmpty x of 
                                             True -> 9:testDisplay' xs
-                                            False -> 0:testDisplay' xs-} 
-                                
+                                            False -> 0:testDisplay' xs-}
+
         colourToIndex :: Colour -> Int
         colourToIndex colour = fromMaybe 0 (elemIndex colour (playerColourList 6))

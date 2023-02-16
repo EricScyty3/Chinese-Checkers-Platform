@@ -186,16 +186,19 @@ repaintBoard :: Transform-> State GameTreeStatus Board
 repaintBoard (start, end) = do board <- getBoard; return (repaintPath board start end) -- recolour the start and end positions
 
 -- given a certain piece's colour, return a list of avaliable movements (transforms)
-colouredMovesList :: Colour -> State GameTreeStatus [Transform]
-colouredMovesList colour = do board <- getBoard
-                              let bs = findPiecesWithColour colour board -- all pieces of certain colour
-                                  ds = evalState (do mapM destinationList bs) board -- the new positions resulting from moving the above pieces
-                              return (pairArrange bs ds) -- zip the resulting movements with the current pieces
-    where
-        pairArrange :: [BoardPos] -> [[BoardPos]] -> [Transform]
-        pairArrange _ [] = []
-        pairArrange [] _ = []
-        pairArrange (b:bs) (d:ds) = zip (repeat b) d ++ pairArrange bs ds
+colouredMovesList :: PlayerIndex -> State GameTreeStatus [Transform]
+colouredMovesList idx = do board <- getBoard
+                           psL <- getInternalBoard 
+                           pn <- getPlayerNum
+                           let ps = psL !! idx
+                               colour = playerColour idx pn
+                               bs = ps `par` colour `pseq` map (appendColour colour . reversion colour) ps -- invert the internal positions to external ones
+                               ds = evalState (do mapM destinationList bs) board -- the new positions resulting from moving the above pieces
+                           return (pairArrange bs ds) -- zip the resulting movements with the current pieces
+pairArrange :: [BoardPos] -> [[BoardPos]] -> [Transform]
+pairArrange _ [] = []
+pairArrange [] _ = []
+pairArrange (b:bs) (d:ds) = zip (repeat b) d ++ pairArrange bs ds
 
 -- return the current player's colour based on the number of players
 playerColour :: PlayerIndex -> Int -> Colour
