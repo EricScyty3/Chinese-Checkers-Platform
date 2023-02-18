@@ -147,9 +147,9 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
 
 -- search for a shortest path for a certain board configuration based on the lookup table
 boardEvaluation :: [Pos] -> Int
-boardEvaluation ps = case evaluateBoard ps (isOpening ps) of
-                        Nothing -> error ("Cannot find such board configuration: " ++ show ps)
-                        Just x  -> 28 - x
+boardEvaluation ps = if isMidgame ps then centroid ps else (case evaluateBoard ps (isOpening ps) of
+                                                               Nothing -> error ("Cannot find such board configuration: " ++ show ps)
+                                                               Just x  -> 28 - x)
 
 -- search for the shortest path value of a certain board configuration
 evaluateBoard :: [Pos] -> Bool -> Maybe Int

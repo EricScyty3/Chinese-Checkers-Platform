@@ -96,12 +96,11 @@ setInternalBoard :: [[Pos]] -> State GameTreeStatus ()
 setInternalBoard ps = do (pi, bi, b, _, pn, ht, cons, pp) <- get; put (pi, bi, b, ps, pn, ht, cons, pp)
 -- given a position change, modify the corresponding board hash to generate a new one
 modifyCurrentInternalBoard :: Transform -> State GameTreeStatus [Pos]
-modifyCurrentInternalBoard (from, to) = do ps <- getCurrentInternalBoard
-                                           colour <- getPlayerColour
-                                           let pf = projection colour (getPos from) 
-                                               pt = projection colour (getPos to)
-                                               newps = pf `par` pt `pseq` flipBoard ps (pf, pt)
-                                           return newps
+modifyCurrentInternalBoard tf = do ps <- getCurrentInternalBoard
+                                   colour <- getPlayerColour
+                                   let ptf = projectMove colour tf
+                                       newps = flipBoard ps ptf
+                                   return newps
 -- update the list of internal board hash values
 updateCurrentInternalBoard :: [Pos] -> State GameTreeStatus ()
 updateCurrentInternalBoard ps = do psL <- getInternalBoard
@@ -112,11 +111,13 @@ updateCurrentInternalBoard ps = do psL <- getInternalBoard
 setHistoryTrace :: HistoryTrace -> State GameTreeStatus ()
 setHistoryTrace ht = do (pi, bi, b, ps, pn, _, cons, pp) <- get; put (pi, bi, b, ps, pn, ht, cons, pp)
 
+{-
 -- determine the game tree node type: root, node, and leaf
 getNodeType :: GameTree -> String
 getNodeType GRoot {} = "Root"
 getNodeType GNode {} = "Node"
 getNodeType GLeaf {} = "Leaf"
+-}
 -- check whether a node is a root
 isRoot :: GameTree -> Bool
 isRoot GRoot {} = True
@@ -183,7 +184,7 @@ searchNode i t = let ls = searchNode' i (getRootBoard t) t
 -}
 -- given pieces change, generate a new board 
 repaintBoard :: Transform-> State GameTreeStatus Board
-repaintBoard (start, end) = do board <- getBoard; return (repaintPath board start end) -- recolour the start and end positions
+repaintBoard tf = do board <- getBoard; return (repaintPath board tf) -- recolour the start and end positions
 
 -- given a certain piece's colour, return a list of avaliable movements (transforms)
 colouredMovesList :: PlayerIndex -> State GameTreeStatus [Transform]

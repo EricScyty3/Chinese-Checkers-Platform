@@ -97,7 +97,7 @@ expandPolicy co xs
         -- the avaliable movements are divided into two categories: frontward, and non-frontward
         front = filter ((> 0) . distanceChange) xs
         -- project the position from main board to the occupied board of certain colour
-        distanceChange (x, y) = moveEvaluation (projection co (getPos x), projection co (getPos y))
+        distanceChange tf = moveEvaluation (projectMove co tf)
 
 -- after the selection, expansion, and playout is done, a win is known from the game simulation in playout stage, and should be update to the selected nodes
 -- update the game tree stored wins for certain player, as well as replacing the new expanded node to the game tree
@@ -180,16 +180,16 @@ switchPolicy policyIndex colour tfs = if not (randomPercentage 95)
         -- policy 2: move evaluator based 
         playoutPolicy2 :: [Transform] -> State GameTreeStatus Transform
         playoutPolicy2 tfs = do colour <- getPlayerColour -- project the external board to the internal positions
-                                let ptfs = map (\(x, y) -> (projection colour (getPos x), projection colour (getPos y))) tfs
+                                let ptfs = map (projectMove colour) tfs
                                     scoreList = map moveEvaluation ptfs
                                     idx = randomSelection scoreList
                                 return (tfs !! idx)
-
+{-
 allProject :: [[Pos]] -> [Colour] -> [[Pos]]
 allProject _ [] = []
 allProject [] _ = []
 allProject (x:xs) (c:cs) = map (projection c) x:allProject xs cs
-
+-}
 -- game simulation from a certain board state 
 playout :: Int ->State GameTreeStatus (PlayerIndex, Int)
 playout moves = do pn <- getPlayerNum
@@ -298,7 +298,8 @@ finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts =
                                                                            colour = playerColour pi pn
                                                                            (from, to) = getTransform chosenNode
                                                                            newBoard = evalState (repaintBoard (from, to)) s
-                                                                           newBoardHash = changeHash (projection colour (getPos from)) (projection colour (getPos to)) bhash
+                                                                           (pfrom, pto) = projectMove colour (from ,to)
+                                                                           newBoardHash = changeHash pfrom pto bhash
                                                                        in  newBoard `par` newBoardHash `pseq` (newBoard, newBoardHash, nht, playoutTurns)
                                                                            
                                                                       -- depending on the need, several information could be returned 

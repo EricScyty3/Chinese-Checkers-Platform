@@ -153,12 +153,12 @@ eraseBoard colourList = runST $ do n <- newSTRef externalBoard
                                 Just c  -> if c `notElem` cs then erase x:eraseRow cs xs
                                            else x:eraseRow cs xs
 -- given two positions, modify there colours to build a route/path
-repaintPath :: Board -> BoardPos -> BoardPos -> Board
-repaintPath board start end = let colour = getColour start
-                              in  runST $ do n <- newSTRef board
-                                             modifySTRef n (changeBoardElement erase start) -- erase the starting position's colour
-                                             modifySTRef n (changeBoardElement (safeRepaint colour) end) -- over-write the ending position's colour
-                                             readSTRef n
+repaintPath :: Board -> (BoardPos, BoardPos) -> Board
+repaintPath board (start, end) = let colour = getColour start
+                                 in  runST $ do n <- newSTRef board
+                                                modifySTRef n (changeBoardElement erase start) -- erase the starting position's colour
+                                                modifySTRef n (changeBoardElement (safeRepaint colour) end) -- over-write the ending position's colour
+                                                readSTRef n
 
 --Movement Operators-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Game Rules: players move their pieces one after another based on turn, 
@@ -239,7 +239,7 @@ testCorners colour pos = testValidPos occupiedBoardSize occupiedBoardSize (proje
 baseMoveAllow :: Colour -> Pos -> Pos -> Bool
 baseMoveAllow colour f t = let fp = projection colour f
                                tp = projection colour t
-                           in  (fp `notElem` goalBase) || (tp `elem` goalBase)
+                           in  fp `par` tp `pseq` (fp `notElem` goalBase) || (tp `elem` goalBase)
 
 --Projection Operator----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the positions of the ending and starting states
@@ -247,6 +247,10 @@ goalBase :: [Pos]
 goalBase = [(0,4),(0,5),(1,5),(0,6),(1,6),(2,6)]
 startBase :: [Pos]
 startBase = [(4,0),(5,0),(6,0),(5,1),(6,1),(6,2)]
+
+-- project the movement to the internal board 
+projectMove :: Colour -> (BoardPos, BoardPos) -> (Pos, Pos)
+projectMove colour (x, y) = (projection colour (getPos x), projection colour (getPos y))
 
 -- the projection of the main (display) board to the sub-occupied board for each player
 projection :: Colour -> Pos -> Pos
