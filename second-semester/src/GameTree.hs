@@ -15,7 +15,6 @@ type Wins = Int
 type PlayerIndex = Int
 type BoardIndex = Int
 -- the index of a board state is not only used to determine a board but also useful when determining a node since the index is unique
-type Transform = (BoardPos, BoardPos)
 -- the conversion between two boards it done through knowing the changed positions
 
 -- the game tree contains two main types: leaf and internal node with at least one child

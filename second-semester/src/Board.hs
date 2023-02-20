@@ -14,7 +14,7 @@ type Pos = (Int, Int)
 data BoardPos = G Pos | B Pos | P Pos | R Pos | O Pos | K Pos | E Pos | U Pos deriving (Eq, Show)
 type Board = [[BoardPos]]
 type OccupiedBoard = [[Int]] -- for occupied board, only occupied state is needed
-
+type Transform = (BoardPos, BoardPos)
 
 
 -- the board setting for displaying
@@ -153,7 +153,7 @@ eraseBoard colourList = runST $ do n <- newSTRef externalBoard
                                 Just c  -> if c `notElem` cs then erase x:eraseRow cs xs
                                            else x:eraseRow cs xs
 -- given two positions, modify there colours to build a route/path
-repaintPath :: Board -> (BoardPos, BoardPos) -> Board
+repaintPath :: Board -> Transform -> Board
 repaintPath board (start, end) = let colour = getColour start
                                  in  runST $ do n <- newSTRef board
                                                 modifySTRef n (changeBoardElement erase start) -- erase the starting position's colour
@@ -249,7 +249,7 @@ startBase :: [Pos]
 startBase = [(4,0),(5,0),(6,0),(5,1),(6,1),(6,2)]
 
 -- project the movement to the internal board 
-projectMove :: Colour -> (BoardPos, BoardPos) -> (Pos, Pos)
+projectMove :: Colour -> Transform -> (Pos, Pos)
 projectMove colour (x, y) = (projection colour (getPos x), projection colour (getPos y))
 
 -- the projection of the main (display) board to the sub-occupied board for each player
