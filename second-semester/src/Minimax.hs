@@ -3,7 +3,7 @@ module Minimax where
 import Board
 import Control.Monad.State
 import GameTree
-import Configuration (boardEvaluation)
+import Configuration (boardEvaluation, lookupTable)
 import Control.Parallel
 import Zobrist
 import MCTS
@@ -31,7 +31,7 @@ type AlphaBeta = (Int, Int) -- the alpha and beta value, alhpa value represents 
 
 -- ghc -main-is Minimax Minimax.hs -O2 -outputdir dist
 main = do arg <- getArgs
-          start <- getCurrentTime
+          start <- lookupTable `pseq` getCurrentTime
           print $ mEvaluation (read $ head arg) iStatus
         --   a <- startFromRoot (read $ head arg) iStatus
         --   print a
@@ -49,46 +49,47 @@ iStatus = (0, 0, eboard, internalBoards, pn, (-999, 999))
 -- getNodeType (ri, pi, _, _, _, _) = if ri == pi then Max else Min
 
 -- the pruning is available based on evaluating the nodes below
--- normally, when a Min node's value is larger than any parent(Max)'s alpha value, that branch can be pruned
--- on the other hand, when a Max node's value is less than any parent(Min)'s beta value, the pruning can be applied
+-- normally, when a Min node's (beta) value is larger than any parent(Max)'s alpha value, that branch can be pruned
+-- on the other hand, when a Max node's (alpha) value is less than any parent(Min)'s beta value, the pruning can be applied
 -- however, in a multi-player version, the switch of Max and Min nodes are not done layer by layer, 
 -- for instance, a paranoid tree is having one Max layer and many of Min layers which makes it complicated than regular pruning
+-- but overall, the return value is consistent, for instance, the Max node always returns alpha value while Min returns beta
 
---                  root (Max)     Given board state
+--                  root           Given board state
 --                 /    \
---               Min    Min        The resulting board states from the root player
---               /        \
---            Bottom     Bottom    The resulting board state made by the first encountering player (one of the opponents) from the parent board
---                                 at this layer, the evaluation is located
+--                A      B        The new board states made by the root player
+--               / \    / \
+--              C   D  E   F      The new board states made by the first encountering player (one of the opponents)
 
+mEvaluation :: Int -> MGameTreeStatus -> Int
 mEvaluation 0 st = nEvaluation st
-mEvaluation depth st@(ri, pi, board, ps, pn, (alpha, beta)) = let ms = mplayerMovesList (playerColour pi pn) (ps !! pi) board
-                                                              in  if ri /= pi then minEvaluation depth st ms
+mEvaluation depth st@(ri, pi, board, ps, pn, (alpha, beta)) = let ms = mplayerMovesList (playerColour pi pn) (ps !! pi) board -- provide a list of possible movements
+                                                              in  if ri /= pi then minEvaluation depth st ms 
                                                                   else maxEvaluation depth st ms
+
+-- the evaluation here will first sync the game status based on the given movement, and then pass it to the next layer until reaching the bottom (set depth)                                                                 
 maxEvaluation :: Int -> MGameTreeStatus -> [Transform] -> Int
 maxEvaluation _ (_, _, _, _, _, (alpha, _)) [] = alpha
-maxEvaluation depth st@(ri, pi, board, ps, pn, (alpha, beta)) (m:ms) =
-                                                                      let npi = turnBase pn pi
-                                                                          nib = flipBoard (ps !! pi) (projectMove (playerColour pi pn) m)
-                                                                          nps = replace pi nib ps
-                                                                          neb = npi `par` nps `pseq` repaintPath board m
-                                                                          nst = (ri, npi, neb, nps, pn, (alpha, beta))
-                                                                          score = mEvaluation (depth - 1) nst
-                                                                          newAlpha = maximum [alpha, score]
-                                                                      in  if newAlpha > beta then beta
-                                                                          else maxEvaluation depth (ri, pi, board, ps, pn, (newAlpha, beta)) ms
+maxEvaluation depth st@(ri, pi, board, ps, pn, ab@(alpha, beta)) (m:ms) = let nib = flipBoard (ps !! pi) (projectMove (playerColour pi pn) m)
+                                                                              nps = replace pi nib ps
+                                                                              neb = repaintPath board m
+                                                                              newDepth = depth - 1
+                                                                              score = if newDepth == 0 then mEvaluation newDepth (ri, pi, neb, nps, pn, ab)
+                                                                                      else mEvaluation newDepth (ri, turnBase pn pi, neb, nps, pn, ab)
+                                                                              newAlpha = maximum [alpha, score]
+                                                                          in  if newAlpha > beta then beta
+                                                                              else maxEvaluation depth (ri, pi, board, ps, pn, (newAlpha, beta)) ms
 minEvaluation :: Int -> MGameTreeStatus -> [Transform] -> Int
 minEvaluation _ (_, _, _, _, _, (_, beta)) [] = beta
-minEvaluation depth st@(ri, pi, board, ps, pn, (alpha, beta)) (m:ms) =
-                                                                      let npi = turnBase pn pi
-                                                                          nib = flipBoard (ps !! pi) (projectMove (playerColour pi pn) m)
-                                                                          nps = replace pi nib ps
-                                                                          neb = npi `par` nps `pseq` repaintPath board m
-                                                                          nst = (ri, npi, neb, nps, pn, (alpha, beta))
-                                                                          score = mEvaluation (depth - 1) nst
-                                                                          newBeta = minimum [beta, score]
-                                                                      in  if alpha > newBeta then alpha
-                                                                          else minEvaluation depth (ri, pi, board, ps, pn, (alpha, newBeta)) ms
+minEvaluation depth st@(ri, pi, board, ps, pn, ab@(alpha, beta)) (m:ms) = let nib = flipBoard (ps !! pi) (projectMove (playerColour pi pn) m)
+                                                                              nps = replace pi nib ps
+                                                                              neb = repaintPath board m
+                                                                              newDepth = depth - 1
+                                                                              score = if newDepth == 0 then mEvaluation newDepth (ri, pi, neb, nps, pn, ab)
+                                                                                      else mEvaluation newDepth (ri, turnBase pn pi, neb, nps, pn, ab)
+                                                                              newBeta = minimum [beta, score]
+                                                                          in  if alpha > newBeta then alpha
+                                                                              else minEvaluation depth (ri, pi, board, ps, pn, (alpha, newBeta)) ms
 
 -- evaluate the bottom node (where the depth is equal to 0) of the search tree
 nEvaluation :: MGameTreeStatus -> Int
@@ -133,6 +134,7 @@ mplayerMovesList colour ps board = let bs = map (appendColour colour . reversion
                                        ds = evalState (do mapM destinationList bs) board
                                    in  pairArrange bs ds
 
+{-
 -- selecting randomly if there exist multiple maximum elements in a list
 randomMaxIdx :: Ord a => [a] -> Int
 randomMaxIdx []  = error "Selection: no node for selecting"
@@ -148,4 +150,4 @@ randomMinIdx xs  = let is = elemIndices (minimum xs) xs
                    in  if length is == 1 then head is
                        else let ri = randomMove (length is)  -- random index of the minimum values' indices
                             in  is !! ri -- return the minimum value's index for selecting
-
+-}
