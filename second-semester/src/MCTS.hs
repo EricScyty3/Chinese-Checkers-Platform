@@ -13,6 +13,7 @@ import Data.Time
 import BFS
 import System.Environment
 import Configuration
+import Minimax
 
 -- a list of node that is chosen along with the selection, used for updating the tree information as well as the history movements
 
@@ -45,7 +46,7 @@ randomSelection xs  = let is = elemIndices (maximum xs) xs
                       in  if length is == 1 then head is
                           else let ri = randomMove (length is)  -- random index of the maximum values' indices
                                in  is !! ri -- return the maximum value's index for selecting
-                          
+
 -- get a list of non-repeated random values of a range
 randomIndices :: Int -> [Int]
 randomIndices l = unsafePerformIO $ take l . nub . randomRs (0, l-1) <$> newStdGen
@@ -107,7 +108,7 @@ expandPolicy co xs
 -- after the selection and playout, the game status is changed, and to update the search tree
 backpropagation :: PlayerIndex -> [Int] -> GameTree -> GameTree -> State GameTreeStatus GameTree
 backpropagation _ [] node _ = return node
-backpropagation winIdx itrace node newnode = let (idx, rtrace) = pop itrace                                             
+backpropagation winIdx itrace node newnode = let (idx, rtrace) = pop itrace
                                                  tempNode = (if getBoardIndex node == getBoardIndex newnode then newnode else node)
                                                  children = getChildren tempNode
                                              in  case elemIndex idx (map getBoardIndex children) of
@@ -117,18 +118,18 @@ backpropagation winIdx itrace node newnode = let (idx, rtrace) = pop itrace
                                                                       -- and update the wins by incrementing by 1
                                                                       n1 = editNodeValue winIdx sn
                                                                   -- recusivly searching down on the children 
-                                                                  n2 <- backpropagation winIdx rtrace n1 newnode 
+                                                                  n2 <- backpropagation winIdx rtrace n1 newnode
                                                                   -- finally update the children of this node
                                                                   let newChildren = replace si n2 children
                                                                   -- a new list of updated child nodes is retrieved for the entered node
-                                                                  return (editNodeChildren newChildren node)                                          
+                                                                  return (editNodeChildren newChildren node)
 -- since the history trace should be updated as well every time a selection is made
 editHT :: [Int] -> PlayerIndex -> HistoryTrace -> State GameTreeStatus HistoryTrace
 editHT [] _ ht = return ht -- finally return the edited history trace
 editHT (h:hs) winIdx ht = do pn <- getPlayerNum
                              let nht = (case rbSearch h ht of
                                             -- if not then add one
-                                            Nothing -> rbInsert h (initWins pn) ht 
+                                            Nothing -> rbInsert h (initWins pn) ht
                                             -- otherwise, update the wins
                                             Just ws -> rbInsert h (replace winIdx ((ws!!winIdx)+1) ws) ht)
                              -- keep processing on the rest of the history trace
@@ -160,30 +161,51 @@ boardEvaluations ps = if ifExistMidgame ps then map centroid ps
                       else map boardEvaluation ps
 
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
-switchPolicy :: PlayoutPolicy -> Colour -> [Transform] -> State GameTreeStatus Transform
-switchPolicy policyIndex colour tfs = if not (randomPercentage 95) 
-                                      then do let idx = randomMove (length tfs)
-                                              return (tfs !! idx) -- randomly choose a movement and generate the resulting board  
-                                      else case policyIndex of
-                                            -- board evaluator
-                                            BoardEvaluator -> playoutPolicy1 tfs
-                                            -- move evaluator
-                                            MoveEvaluator -> playoutPolicy2 tfs
-                                            ShallowSearch -> error "Not yet prepared"
-    where
-        -- policy 1: board evaluator based 
-        playoutPolicy1 :: [Transform] -> State GameTreeStatus Transform
-        playoutPolicy1 tfs = do psList <- mapM modifyCurrentInternalBoard tfs
-                                let scoreList = boardEvaluations psList
-                                    idx = randomSelection scoreList
-                                return (tfs !! idx)
-        -- policy 2: move evaluator based 
-        playoutPolicy2 :: [Transform] -> State GameTreeStatus Transform
-        playoutPolicy2 tfs = do colour <- getPlayerColour -- project the external board to the internal positions
-                                let ptfs = map (projectMove colour) tfs
-                                    scoreList = map moveEvaluation ptfs
-                                    idx = randomSelection scoreList
-                                return (tfs !! idx)
+switchEvaluator :: PlayoutArgument -> Colour -> [Transform] -> State GameTreeStatus Transform
+switchEvaluator (evaluator, depth) colour tfs = if not (randomPercentage 95)
+                                                then do let idx = randomMove (length tfs)
+                                                        return (tfs !! idx) -- randomly choose a movement and generate the resulting board  
+                                                else case evaluator of
+                                                        RandomEvaluator -> randomEvaluator tfs
+                                                        MoveEvaluator -> moveEvaluator tfs
+                                                        -- board evaluator
+                                                        BoardEvaluator -> boardEvaluator tfs
+                                                        ShallowParanoid -> undefined
+                                                        ShallowBRS -> undefined
+                                                        -- -- move evaluator
+                                                        -- MoveEvaluator -> playoutPolicy2 tfs
+                                                        -- ShallowParanoid -> error "Not yet prepared"
+                                                        -- ShallowBRS -> error "Not yet prepared"
+
+    -- where
+
+randomEvaluator :: [Transform] -> State GameTreeStatus Transform
+randomEvaluator tfs = return (tfs !! randomMove (length tfs))
+
+moveEvaluator :: [Transform] -> State GameTreeStatus Transform
+moveEvaluator tfs = do colour <- getPlayerColour
+                       let ptfs = map (projectMove colour) tfs
+                           scoreList = map moveEvaluation ptfs
+                           idx = randomSelection scoreList
+                       return (tfs !! idx)
+
+boardEvaluator :: [Transform] -> State GameTreeStatus Transform
+boardEvaluator tfs = do psList <- mapM modifyCurrentInternalBoard tfs
+                        let scoreList = boardEvaluations psList
+                            idx = randomSelection scoreList
+                        return (tfs !! idx)
+
+paranoidEvaluator :: Int -> State GameTreeStatus Transform
+paranoidEvaluator depth = do ri <- getPlayerIdx
+                             eboard <- getBoard
+                             iboard <- getInternalBoard
+                             pn <- getPlayerNum
+                             pi <- getPlayerIdx
+                             let score = mEvaluation depth (pi, eboard, iboard, pn, (-999, 999), Paranoid) pi
+                             return undefined
+                             
+                                 
+
 {-
 allProject :: [[Pos]] -> [Colour] -> [[Pos]]
 allProject _ [] = []
@@ -198,15 +220,15 @@ playout moves = do pn <- getPlayerNum
                                                         let scoreList = boardEvaluations psList
                                                         -- treat the one with the best board state (not move state) as winner
                                                         return (randomSelection scoreList, getTurns moves pn)
-                                                        
+
                    else do pi <- getPlayerIdx
                            tfs <- colouredMovesList pi    -- get all of the avaliable moves
                            board <- getBoard
-                           pp <- getPlayoutPolicy
+                           pa <- getPlayoutArgument
                            colour <- getPlayerColour
                            if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)
                             -- if the started board state is already an end state, this means that some players take a suicidal action that cause other player to win
-                           else do tf <- switchPolicy pp colour tfs -- otherwise, choose one of the boards resulted from the current board
+                           else do tf <- switchEvaluator pa colour tfs -- otherwise, choose one of the boards resulted from the current board
                                    -- update internal board state
                                    newps <- modifyCurrentInternalBoard tf
                                    updateCurrentInternalBoard newps
@@ -238,7 +260,7 @@ winStateDetermine c b = let hs = map (reversion c) goalBase -- get the goal posi
 -- the MCTS structure that first selects the node with largest profits, then expands it, 
 -- and play simulations on the expanded node, and finally update the reviewed nodes
 mcts :: GameTree -> State GameTreeStatus (GameTree, BoardIndex, HistoryTrace, Int)
-mcts tree = do (idxList, hashList, lastnode) <- selection tree [] [] 
+mcts tree = do (idxList, hashList, lastnode) <- selection tree [] []
                -- a check is taken to ensure whether the last node is a win state, this allowing the suicidal action that cause other player to win
                -- therefore, the check should consider all players
                pn <- getPlayerNum
@@ -251,7 +273,7 @@ mcts tree = do (idxList, hashList, lastnode) <- selection tree [] []
                                        newHistory <- editHT hashList winIdx ht
                                        bi <- getBoardIdx
                                        return (newTree, bi, newHistory, 0) -- get the new tree and game history with playout turn equals to 0 
-               
+
                else do expandednode <- expansion lastnode -- expand the last leaf in the trace
                        (idxList2, hashList2, _) <- selection expandednode idxList hashList -- additional selection of the expanded node's children
                        board2 <- getBoard
@@ -261,7 +283,7 @@ mcts tree = do (idxList, hashList, lastnode) <- selection tree [] []
                                                ht <- getHistoryTrace
                                                newHistory2 <- editHT hashList2 winIdx ht
                                                return (newTree2, bi, newHistory2, 0) -- get the new tree and game history with playout turn equals to 0 
-                       
+
                        else do (winIdx, turns) <- playout 1 -- the standard order: the playout will be done based on the board of the selected new leaf
                                newTree3 <- backpropagation winIdx idxList2 tree expandednode -- treat the tree as a child by setting it into a list, and update it
                                bi <- getBoardIdx
@@ -288,12 +310,12 @@ iterations tree s@(pi, bi, board, ps, pn, ht, cons, pp) playoutTurns count = let
 -- after the iterations of four stages are finished running, the root shoudl choose the child with the most win rate for the next move 
 -- the tree could be re-used for saving computation, but if looking for different result, the tree should be started from scratch every several iterations
 finalSelection :: GameTree -> GameTreeStatus -> Int -> Int -> (Board, Int, HistoryTrace, [Int])
-finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts = 
+finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts =
                                                               let (ntree, _, nht, playoutTurns) = iterations tree s [] counts
                                                                   scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
                                                               in  if null scores then error (show ntree)
                                                                   else let -- get the maximum win rate move as the next movement
-                                                                           chosenNode = getChildren ntree !! randomSelection scores 
+                                                                           chosenNode = getChildren ntree !! randomSelection scores
                                                                            -- return the resulting decision
                                                                            colour = playerColour pi pn
                                                                            (from, to) = getTransform chosenNode
@@ -301,17 +323,17 @@ finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts =
                                                                            (pfrom, pto) = projectMove colour (from ,to)
                                                                            newBoardHash = changeHash pfrom pto bhash
                                                                        in  newBoard `par` newBoardHash `pseq` (newBoard, newBoardHash, nht, playoutTurns)
-                                                                           
+
                                                                       -- depending on the need, several information could be returned 
                                                                       -- the new board state and the new board hash are generated for Computer decision in Main
                                                                       -- while playouts are treated as one of the measurements in experiments
                                                                       -- the game history is maintained globally for the next call
 
-testRun iterations evaluator = 
+testRun iterations evaluator =
                         do let (nboard, _, _, turns) = finalSelection (GRoot 0 []) (0, 1, eboard, ps, pn, RBLeaf, (3, 0.9), evaluator) 0 iterations
                            printEoard nboard
                            print turns
-    where 
+    where
         pn = 3
         eboard = eraseBoard (playerColourList pn)
         ps = initialInternalBoard eboard pn

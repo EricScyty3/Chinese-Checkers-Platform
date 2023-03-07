@@ -26,7 +26,8 @@ data GameTree = GRoot BoardIndex [GameTree] |
                 GNode BoardIndex Transform [Wins] [GameTree]
                 deriving (Eq, Show)
 -- the options of playout policy
-data PlayoutPolicy = MoveEvaluator | BoardEvaluator | ShallowSearch deriving (Eq, Show, Read)
+data PlayoutEvaluator = RandomEvaluator | MoveEvaluator | BoardEvaluator | ShallowParanoid | ShallowBRS deriving (Eq, Show, Read)
+type PlayoutArgument = (PlayoutEvaluator, Int)
 -- in addition to the game tree itself, a history trace of how a move performs in previous game is also maintained
 -- which could be useful at the early stage of movement selection when no much moves are experienced 
 type HistoryTrace = RBTree [Wins]
@@ -38,7 +39,7 @@ type GameTreeStatus = (PlayerIndex, -- current player of the turn
                        Int, -- the total players
                        HistoryTrace, -- the history performance of each move played in the past
                        (Double, Double), -- the arguments for selection strategy
-                       PlayoutPolicy) -- the arguments for playout strategy
+                       PlayoutArgument) -- the arguments for playout strategy
 
 --Encapsulation----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- since the game state is warpped in the state monad, several toolkits are applied to access and modify and game state 
@@ -73,31 +74,31 @@ getUCTCons :: State GameTreeStatus Double
 getUCTCons = do (_, _, _, _, _, _, (uct, _), _) <- get; return uct
 getPHCons :: State GameTreeStatus Double
 getPHCons = do (_, _, _, _, _, _, (_, ph), _) <- get; return ph
-getPlayoutPolicy :: State GameTreeStatus PlayoutPolicy
-getPlayoutPolicy = do (_, _, _, _, _, _, _, pp) <- get; return pp
+getPlayoutArgument :: State GameTreeStatus PlayoutArgument
+getPlayoutArgument = do (_, _, _, _, _, _, _, pa) <- get; return pa
 
 -- update the player index based on the turn order
 updatePlayerIdx :: State GameTreeStatus ()
-updatePlayerIdx = do (pi, bi, b, ps, pn, ht, cons, pp) <- get; put (turnBase pn pi, bi, b, ps, pn, ht, cons, pp)
+updatePlayerIdx = do (pi, bi, b, ps, pn, ht, cons, pa) <- get; put (turnBase pn pi, bi, b, ps, pn, ht, cons, pa)
 setPlayerIdx :: PlayerIndex -> State GameTreeStatus ()
-setPlayerIdx pi = do (_, bi, b, ps, pn, ht, cons, pp) <- get; put (pi, bi, b, ps, pn, ht, cons, pp)
+setPlayerIdx pi = do (_, bi, b, ps, pn, ht, cons, pa) <- get; put (pi, bi, b, ps, pn, ht, cons, pa)
 -- change the player turns based on index from 0 to the number - 1
 turnBase :: Int -> PlayerIndex -> PlayerIndex
 turnBase players idx = if idx == players - 1 then 0 else idx + 1
--- revert the turn to the last one
+{--- revert the turn to the last one
 turnRevert :: Int -> PlayerIndex -> PlayerIndex
 turnRevert players idx
   | idx == 0 = players - 1
-  | otherwise = idx - 1
+  | otherwise = idx - 1-}
 -- increment the board index by 1
 updateBoardIdx :: State GameTreeStatus ()
-updateBoardIdx = do (pi, bi, b, ps, pn, ht, cons, pp) <- get; put (pi, bi+1, b, ps, pn, ht, cons, pp)
+updateBoardIdx = do (pi, bi, b, ps, pn, ht, cons, pa) <- get; put (pi, bi+1, b, ps, pn, ht, cons, pa)
 -- set the current external board
 setBoard :: Board -> State GameTreeStatus ()
-setBoard b = do (pi, bi, _, ps, pn, ht, cons, pp) <- get; put (pi, bi, b, ps, pn, ht, cons, pp)
+setBoard b = do (pi, bi, _, ps, pn, ht, cons, pa) <- get; put (pi, bi, b, ps, pn, ht, cons, pa)
 -- set the position list of the internal board for each player
 setInternalBoard :: [[Pos]] -> State GameTreeStatus ()
-setInternalBoard ps = do (pi, bi, b, _, pn, ht, cons, pp) <- get; put (pi, bi, b, ps, pn, ht, cons, pp)
+setInternalBoard ps = do (pi, bi, b, _, pn, ht, cons, pa) <- get; put (pi, bi, b, ps, pn, ht, cons, pa)
 -- given a position change, modify the corresponding board hash to generate a new one
 modifyCurrentInternalBoard :: Transform -> State GameTreeStatus [Pos]
 modifyCurrentInternalBoard tf = do ps <- getCurrentInternalBoard
@@ -113,7 +114,7 @@ updateCurrentInternalBoard ps = do psL <- getInternalBoard
                                    setInternalBoard npsL
 -- set the current history trace used for progressive history
 setHistoryTrace :: HistoryTrace -> State GameTreeStatus ()
-setHistoryTrace ht = do (pi, bi, b, ps, pn, _, cons, pp) <- get; put (pi, bi, b, ps, pn, ht, cons, pp)
+setHistoryTrace ht = do (pi, bi, b, ps, pn, _, cons, pa) <- get; put (pi, bi, b, ps, pn, ht, cons, pa)
 
 {-
 -- determine the game tree node type: root, node, and leaf
