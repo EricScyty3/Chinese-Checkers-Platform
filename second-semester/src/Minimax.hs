@@ -34,14 +34,14 @@ main = do arg <- getArgs
           end <- getCurrentTime
           print $ diffUTCTime end start
 -}
-{-
-iStatus :: TreeType -> MGameTreeStatus
-iStatus tt = (0, eboard, internalBoards, pn, (-999, 999), tt)
-    where
-        pn = 3
-        eboard = eraseBoard (playerColourList pn)
-        internalBoards = initialInternalBoard eboard pn
--}
+
+-- iStatus :: TreeType -> MGameTreeStatus
+-- iStatus tt = (0, eboard, internalBoards, pn, (-999, 999), tt)
+--     where
+--         pn = 3
+--         eboard = eraseBoard (playerColourList pn)
+--         internalBoards = initialInternalBoard eboard pn
+
 
 -- the pruning is available based on evaluating the nodes below
 -- normally, when a Min node's (beta) value is larger than any parent (Max)'s alpha value, that branch can be pruned
@@ -60,49 +60,46 @@ iStatus tt = (0, eboard, internalBoards, pn, (-999, 999), tt)
 
 -- given a depth and tree status, and the current player to start with, first generats its movements based on current board
 -- and send it to evaluate the resulting boards from the movements
-mEvaluation :: Int -> MGameTreeStatus -> PlayerIndex -> Int
-mEvaluation 0 st pi = nEvaluation st pi
+mEvaluation :: Int -> MGameTreeStatus -> PlayerIndex -> (Transform, Int)
+mEvaluation 0 st pi = ((U(-1,-1), U(-1,-1)), nEvaluation st pi)
 mEvaluation depth st@(ri, board, pl, pn, (alpha, beta), _) pi = let ms = mplayerMovesList st pi -- provide a list of possible movements
                                                                 in  -- evaluate a list of movements, just like a list of nodes
-                                                                    if ri /= pi then minEvaluation depth st pi ms 
-                                                                    else maxEvaluation depth st pi ms
+                                                                    if ri /= pi then minEvaluation depth st pi ms (U(-1,-1), U(-1,-1))
+                                                                    else maxEvaluation depth st pi ms (U(-1,-1), U(-1,-1))
 
 -- the evaluation here will first sync the game status based on the given movements, and then passes it to the next layer until reaching the bottom (set depth)                                                                 
-maxEvaluation :: Int -> MGameTreeStatus -> PlayerIndex -> [Transform] -> Int
-maxEvaluation _ (_, _, _, _, (alpha, _), _) _ [] = alpha -- Max layer returns alpha value
-maxEvaluation depth st@(ri, board, pl, pn, ab@(alpha, beta), tt) pi (m:ms) = let nib = flipBoard (pl !! pi) (projectMove (playerColour pi pn) m) -- edit the internal positions
-                                                                                 npl = replace pi nib pl
-                                                                                 neb = repaintPath board m -- edit the new board state
-                                                                                 newDepth = depth - 1
-                                                                                 nst = (ri, neb, npl, pn, ab, tt) -- retrieve new tree status
-                                                                                 {-score = if newDepth == 0 then mEvaluation newDepth (ri, neb, npl, pn, ab) pi
-                                                                                           else mEvaluation newDepth (ri, neb, npl, pn, ab) (turnBase pn pi)
-                                                                                 -}
-                                                                                 scores = treeSearch newDepth nst pi -- decide in which way keep digging down
-                                                                                 newAlpha = maximum (alpha:scores) -- update the alpha value
-                                                                             in  if newAlpha >= beta then beta -- prune the branch if found a proof that the paranet won't choose this branch
-                                                                                 else maxEvaluation depth (ri, board, pl, pn, (newAlpha, beta), tt) pi ms -- get to the next movements provided in a list
+maxEvaluation :: Int -> MGameTreeStatus -> PlayerIndex -> [Transform] -> Transform -> (Transform, Int)
+maxEvaluation _ (_, _, _, _, (alpha, _), _) _ [] tf = (tf, alpha) -- Max layer returns alpha value
+maxEvaluation depth st@(ri, board, pl, pn, ab@(alpha, beta), tt) pi (m:ms) tf = let nib = flipBoard (pl !! pi) (projectMove (playerColour pi pn) m) -- edit the internal positions
+                                                                                    npl = replace pi nib pl
+                                                                                    neb = repaintPath board m -- edit the new board state
+                                                                                    newDepth = depth - 1
+                                                                                    nst = (ri, neb, npl, pn, ab, tt) -- retrieve new tree status
+                                                                                    score = maximum $ treeSearch newDepth nst pi -- decide in which way keep digging down
+                                                                                    (newtf, newAlpha) = if score >= alpha then (m, score) else (tf, alpha) -- update the alpha value
+                                                                                    -- (newtf, newAlpha) = updateAlpha scores (tf, alpha)
+                                                                                in  if newAlpha >= beta then (tf, beta) -- prune the branch if found a proof that the paranet won't choose this branch
+                                                                                    else maxEvaluation depth (ri, board, pl, pn, (newAlpha, beta), tt) pi ms newtf -- get to the next movements provided in a list
 -- similar to above but different in the return value
-minEvaluation :: Int -> MGameTreeStatus -> PlayerIndex -> [Transform] -> Int
-minEvaluation _ (_, _, _, _, (_, beta), _) _ [] = beta -- Min layer returns beta value
-minEvaluation depth st@(ri, board, pl, pn, ab@(alpha, beta), tt) pi (m:ms) = let nib = flipBoard (pl !! pi) (projectMove (playerColour pi pn) m) 
-                                                                                 npl = replace pi nib pl
-                                                                                 neb = repaintPath board m 
-                                                                                 newDepth = depth - 1
-                                                                                 nst = (ri, neb, npl, pn, ab, tt) 
-                                                                                 {-score = if newDepth == 0 then mEvaluation newDepth (ri, neb, npl, pn, ab) pi
-                                                                                           else mEvaluation newDepth (ri, neb, npl, pn, ab) (turnBase pn pi)-}
-                                                                                 scores = treeSearch newDepth nst pi 
-                                                                                 newBeta = minimum (beta:scores) -- update the beta value
-                                                                             in  if alpha >= newBeta then alpha
-                                                                                 else minEvaluation depth (ri, board, pl, pn, (alpha, newBeta), tt) pi ms
+minEvaluation :: Int -> MGameTreeStatus -> PlayerIndex -> [Transform] -> Transform -> (Transform, Int)
+minEvaluation _ (_, _, _, _, (_, beta), _) _ [] tf = (tf, beta) -- Min layer returns beta value
+minEvaluation depth st@(ri, board, pl, pn, ab@(alpha, beta), tt) pi (m:ms) tf = let nib = flipBoard (pl !! pi) (projectMove (playerColour pi pn) m) 
+                                                                                    npl = replace pi nib pl
+                                                                                    neb = repaintPath board m 
+                                                                                    newDepth = depth - 1
+                                                                                    nst = (ri, neb, npl, pn, ab, tt) 
+                                                                                    score = minimum $ treeSearch newDepth nst pi 
+                                                                                    (newtf, newBeta) = if score <= beta then (m, score) else (tf, beta) -- update the beta value
+                                                                                    -- (newtf, newBeta) = updateBeta scores (tf, beta)
+                                                                                in  if alpha >= newBeta then (tf, alpha)
+                                                                                    else minEvaluation depth (ri, board, pl, pn, (alpha, newBeta), tt) pi ms newtf
 
 -- the difference between two shallow minimax search: the Paranoid search follows the regular order base, while the BRS considers all players other than
 -- the root as a layer, so it actually evaluates a list of boards from different players 
 treeSearch :: Int -> MGameTreeStatus -> PlayerIndex -> [Int]
-treeSearch 0 st pi = [mEvaluation 0 st pi]
-treeSearch depth st@(ri, _, _, pn, _, Paranoid) pi = [mEvaluation depth st (turnBase pn pi)]
-treeSearch depth st@(ri, _, _, pn, _, BRS) pi = map (mEvaluation depth st) (turnBaseBRS pn ri pi)
+treeSearch 0 st pi = map snd [mEvaluation 0 st pi]
+treeSearch depth st@(ri, _, _, pn, _, Paranoid) pi = map snd [mEvaluation depth st (turnBase pn pi)]
+treeSearch depth st@(ri, _, _, pn, _, BRS) pi = map (snd . mEvaluation depth st) (turnBaseBRS pn ri pi) -- remove the movement
                                                      
 -- when it comes to BRS, the search tree becomes different where the second layer's node is no longer one opponent, but all opponents
 otherPlayers :: Int -> PlayerIndex -> [PlayerIndex]

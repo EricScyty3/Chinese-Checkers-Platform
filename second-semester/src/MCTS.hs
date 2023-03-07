@@ -15,6 +15,7 @@ import System.Environment
 import Configuration
 import Minimax
 
+
 -- a list of node that is chosen along with the selection, used for updating the tree information as well as the history movements
 
 -- the operator of selected node record, first-in-first-out
@@ -170,41 +171,43 @@ switchEvaluator (evaluator, depth) colour tfs = if not (randomPercentage 95)
                                                         MoveEvaluator -> moveEvaluator tfs
                                                         -- board evaluator
                                                         BoardEvaluator -> boardEvaluator tfs
-                                                        ShallowParanoid -> undefined
-                                                        ShallowBRS -> undefined
-                                                        -- -- move evaluator
-                                                        -- MoveEvaluator -> playoutPolicy2 tfs
-                                                        -- ShallowParanoid -> error "Not yet prepared"
-                                                        -- ShallowBRS -> error "Not yet prepared"
+                                                        ShallowParanoid -> paranoidEvaluator depth
+                                                        ShallowBRS -> brsEvaluator depth
 
-    -- where
+    where
+        randomEvaluator :: [Transform] -> State GameTreeStatus Transform
+        randomEvaluator tfs = return (tfs !! randomMove (length tfs))
 
-randomEvaluator :: [Transform] -> State GameTreeStatus Transform
-randomEvaluator tfs = return (tfs !! randomMove (length tfs))
+        moveEvaluator :: [Transform] -> State GameTreeStatus Transform
+        moveEvaluator tfs = do colour <- getPlayerColour
+                               let ptfs = map (projectMove colour) tfs
+                                   scoreList = map moveEvaluation ptfs
+                                   idx = randomSelection scoreList
+                               return (tfs !! idx)
 
-moveEvaluator :: [Transform] -> State GameTreeStatus Transform
-moveEvaluator tfs = do colour <- getPlayerColour
-                       let ptfs = map (projectMove colour) tfs
-                           scoreList = map moveEvaluation ptfs
-                           idx = randomSelection scoreList
-                       return (tfs !! idx)
+        boardEvaluator :: [Transform] -> State GameTreeStatus Transform
+        boardEvaluator tfs = do psList <- mapM modifyCurrentInternalBoard tfs
+                                let scoreList = boardEvaluations psList
+                                    idx = randomSelection scoreList
+                                return (tfs !! idx)
 
-boardEvaluator :: [Transform] -> State GameTreeStatus Transform
-boardEvaluator tfs = do psList <- mapM modifyCurrentInternalBoard tfs
-                        let scoreList = boardEvaluations psList
-                            idx = randomSelection scoreList
-                        return (tfs !! idx)
-
-paranoidEvaluator :: Int -> State GameTreeStatus Transform
-paranoidEvaluator depth = do ri <- getPlayerIdx
-                             eboard <- getBoard
-                             iboard <- getInternalBoard
-                             pn <- getPlayerNum
-                             pi <- getPlayerIdx
-                             let score = mEvaluation depth (pi, eboard, iboard, pn, (-999, 999), Paranoid) pi
-                             return undefined
-                             
-                                 
+        paranoidEvaluator :: Int -> State GameTreeStatus Transform
+        paranoidEvaluator depth = do ri <- getPlayerIdx
+                                     eboard <- getBoard
+                                     iboard <- getInternalBoard
+                                     pn <- getPlayerNum
+                                     pi <- getPlayerIdx
+                                     let (move, _) = mEvaluation depth (pi, eboard, iboard, pn, (-999, 999), Paranoid) pi
+                                     return move
+                                    
+        brsEvaluator :: Int -> State GameTreeStatus Transform
+        brsEvaluator depth = do ri <- getPlayerIdx
+                                eboard <- getBoard
+                                iboard <- getInternalBoard
+                                pn <- getPlayerNum
+                                pi <- getPlayerIdx
+                                let (move, _) = mEvaluation depth (pi, eboard, iboard, pn, (-999, 999), BRS) pi
+                                return move            
 
 {-
 allProject :: [[Pos]] -> [Colour] -> [[Pos]]
