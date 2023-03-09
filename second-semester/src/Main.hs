@@ -260,7 +260,7 @@ handleEvent wenv node model evt = case evt of
     where
       pf = model ^. previousFromPiece
       pt = model ^. previousToPiece
-      newBoard = repaintPath (model ^. displayBoard) pt pf -- revert the board state
+      newBoard = repaintPath (model ^. displayBoard) (pt, pf) -- revert the board state
 
       -- get the last turn value and retrieve the information for reverting the hash state
       lastTurn = revertTurnChange model
@@ -289,7 +289,7 @@ handleEvent wenv node model evt = case evt of
       where
         f = model ^. fromPiece
         t = model ^. toPiece
-        newBoard = repaintPath (model ^. displayBoard) f t -- generate the new board state by re-colouring the two board positions
+        newBoard = repaintPath (model ^. displayBoard) (f, t) -- generate the new board state by re-colouring the two board positions
         currentColour = playerColour (model ^. turnS) (model ^. playersAmount)
         currentState = (model ^. internalStates) !! (model ^. turnS)
         fromProjectPos = projection currentColour (getPos f)
@@ -384,7 +384,7 @@ computerTurn sendMsg = do sendMsg ComputerAction
 -- pass the model information to the MCTS interface and accept the returned board state
 aiDecision :: AppModel -> (Board, Int, HistoryTrace)
 aiDecision model = let root = GRoot 0 []  -- makeRoot (model ^. playersAmount) (model ^. displayBoard)
-                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, 1, eboard, ps, pn, ht, (3, 0.9), BoardEvaluator) currentState 10
+                       (newBoard, newState, nht, _) = finalSelection root (model ^. turnS, 1, eboard, ps, pn, ht, (3, 0.9), (BoardEvaluator, 2)) currentState 10
                    in  (newBoard, newState, nht)
   where
     currentState = (model ^. internalStates) !! (model ^. turnS)

@@ -44,9 +44,8 @@ randomMove l  = unsafePerformIO (randomRIO (0, l-1))
 randomSelection :: Ord a => [a] -> Int
 randomSelection []  = error "Selection: no node for selecting"
 randomSelection xs  = let is = elemIndices (maximum xs) xs
-                      in  if length is == 1 then head is
-                          else let ri = randomMove (length is)  -- random index of the maximum values' indices
-                               in  is !! ri -- return the maximum value's index for selecting
+                          ri = is `seq` randomMove (length is)  -- random index of the maximum values' indices
+                      in  is !! ri -- return the maximum value's index for selecting
 
 -- get a list of non-repeated random values of a range
 randomIndices :: Int -> [Int]
@@ -92,7 +91,7 @@ expansion n = let cs = getChildren n
 
 -- the strategy of how a board could lead to different resulting boards
 expandPolicy :: Colour -> [Transform] -> [Transform]
-expandPolicy co xs
+expandPolicy co xs 
     | not $ null front = front  -- if front moves are avaliable then just expand them   
     | otherwise = xs            -- else, all moves are accepted
     where
@@ -190,25 +189,17 @@ switchEvaluator (evaluator, depth) colour tfs = if not (randomPercentage 95)
                                 let scoreList = boardEvaluations psList
                                     idx = randomSelection scoreList
                                 return (tfs !! idx)
-
+        
         paranoidEvaluator :: Int -> State GameTreeStatus Transform
-        paranoidEvaluator depth = do ri <- getPlayerIdx
-                                     eboard <- getBoard
-                                     iboard <- getInternalBoard
-                                     pn <- getPlayerNum
-                                     pi <- getPlayerIdx
-                                     let (move, _) = mEvaluation depth (pi, eboard, iboard, pn, (-999, 999), Paranoid) pi
+        paranoidEvaluator depth = do (ri, _, eboard, iboard, pn, _, _, _) <- get
+                                     let (move, _) = mEvaluation depth (ri, eboard, iboard, pn, (-999, 999), Paranoid) ri
                                      return move
                                     
         brsEvaluator :: Int -> State GameTreeStatus Transform
-        brsEvaluator depth = do ri <- getPlayerIdx
-                                eboard <- getBoard
-                                iboard <- getInternalBoard
-                                pn <- getPlayerNum
-                                pi <- getPlayerIdx
-                                let (move, _) = mEvaluation depth (pi, eboard, iboard, pn, (-999, 999), BRS) pi
+        brsEvaluator depth = do (ri, _, eboard, iboard, pn, _, _, _) <- get
+                                let (move, _) = mEvaluation depth (ri, eboard, iboard, pn, (-999, 999), BRS) ri
                                 return move            
-
+        
 {-
 allProject :: [[Pos]] -> [Colour] -> [[Pos]]
 allProject _ [] = []
@@ -237,7 +228,7 @@ playout moves = do pn <- getPlayerNum
                                    updateCurrentInternalBoard newps
                                    -- reflect the change onto external board
                                    nboard <- repaintBoard tf
-                                   pi <- getPlayerIdx
+                                   -- pi <- getPlayerIdx
                                    if winStateDetermine colour nboard then return (pi, getTurns moves pn) -- if a player wins, then return the player's index
                                    else do updatePlayerIdx -- otherwise, keep simulating on the next turn
                                            setBoard nboard
@@ -303,7 +294,6 @@ checkPlayersWinState pn board = let ws = map (`winStateDetermine` board) (player
                                         [x] -> x
                                         _ -> error "Multiple players win at the same time"
 
-
 -- repeating the MCTS until certain iterations are reached
 iterations :: GameTree -> GameTreeStatus -> [Int] -> Int -> (GameTree, BoardIndex, HistoryTrace, [Int])
 iterations tree s@(_, bi, _, _, _, ht, _, _) playoutTurns 0 = (tree, bi, ht, reverse playoutTurns)
@@ -332,19 +322,7 @@ finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts =
                                                                       -- while playouts are treated as one of the measurements in experiments
                                                                       -- the game history is maintained globally for the next call
 
-testRun iterations evaluator =
-                        do let (nboard, _, _, turns) = finalSelection (GRoot 0 []) (0, 1, eboard, ps, pn, RBLeaf, (3, 0.9), evaluator) 0 iterations
-                           printEoard nboard
-                           print turns
-    where
-        pn = 3
-        eboard = eraseBoard (playerColourList pn)
-        ps = initialInternalBoard eboard pn
-{-
-main = do arg <- getArgs
-          start <- lookupTable `pseq` getCurrentTime
-          let iter = read (head arg) 
-              eval = read (arg !! 1)
-          testRun iter eval
-          end <- getCurrentTime
-          print $ "Time cost: " ++ show (diffUTCTime end start) -}
+
+
+
+

@@ -10,6 +10,7 @@ import Data.Time
 import Data.List
 import System.Environment
 
+
 -- the node is divided into two groups, Max for root layer and the rest is Min 
 -- the search tree is also divided into two groups, the paranoid and BRS forms
 data TreeType = Paranoid | BRS deriving (Eq, Show, Read)
@@ -34,14 +35,14 @@ main = do arg <- getArgs
           end <- getCurrentTime
           print $ diffUTCTime end start
 -}
-
--- iStatus :: TreeType -> MGameTreeStatus
--- iStatus tt = (0, eboard, internalBoards, pn, (-999, 999), tt)
---     where
---         pn = 3
---         eboard = eraseBoard (playerColourList pn)
---         internalBoards = initialInternalBoard eboard pn
-
+{-
+iStatus :: TreeType -> MGameTreeStatus
+iStatus tt = (0, eboard, internalBoards, pn, (-999, 999), tt)
+    where
+        pn = 3
+        eboard = eraseBoard (playerColourList pn)
+        internalBoards = initialInternalBoard eboard pn
+-}
 
 -- the pruning is available based on evaluating the nodes below
 -- normally, when a Min node's (beta) value is larger than any parent (Max)'s alpha value, that branch can be pruned
@@ -60,6 +61,7 @@ main = do arg <- getArgs
 
 -- given a depth and tree status, and the current player to start with, first generats its movements based on current board
 -- and send it to evaluate the resulting boards from the movements
+-- besides of returning the optimal score it could retrieve, it will also return the corresponding movement that generates that score
 mEvaluation :: Int -> MGameTreeStatus -> PlayerIndex -> (Transform, Int)
 mEvaluation 0 st pi = ((U(-1,-1), U(-1,-1)), nEvaluation st pi)
 mEvaluation depth st@(ri, board, pl, pn, (alpha, beta), _) pi = let ms = mplayerMovesList st pi -- provide a list of possible movements
@@ -67,7 +69,8 @@ mEvaluation depth st@(ri, board, pl, pn, (alpha, beta), _) pi = let ms = mplayer
                                                                     if ri /= pi then minEvaluation depth st pi ms (U(-1,-1), U(-1,-1))
                                                                     else maxEvaluation depth st pi ms (U(-1,-1), U(-1,-1))
 
--- the evaluation here will first sync the game status based on the given movements, and then passes it to the next layer until reaching the bottom (set depth)                                                                 
+-- the evaluation here will first sync the game status based on the given movements, and then passes it to the next layer until reaching the bottom (set depth)  
+-- while maintaining the best score and the corresponding movement                                                               
 maxEvaluation :: Int -> MGameTreeStatus -> PlayerIndex -> [Transform] -> Transform -> (Transform, Int)
 maxEvaluation _ (_, _, _, _, (alpha, _), _) _ [] tf = (tf, alpha) -- Max layer returns alpha value
 maxEvaluation depth st@(ri, board, pl, pn, ab@(alpha, beta), tt) pi (m:ms) tf = let nib = flipBoard (pl !! pi) (projectMove (playerColour pi pn) m) -- edit the internal positions
@@ -75,9 +78,9 @@ maxEvaluation depth st@(ri, board, pl, pn, ab@(alpha, beta), tt) pi (m:ms) tf = 
                                                                                     neb = repaintPath board m -- edit the new board state
                                                                                     newDepth = depth - 1
                                                                                     nst = (ri, neb, npl, pn, ab, tt) -- retrieve new tree status
-                                                                                    score = maximum $ treeSearch newDepth nst pi -- decide in which way keep digging down
-                                                                                    (newtf, newAlpha) = if score >= alpha then (m, score) else (tf, alpha) -- update the alpha value
-                                                                                    -- (newtf, newAlpha) = updateAlpha scores (tf, alpha)
+                                                                                    score = maximum $ treeSearch newDepth nst pi -- decide in which way keep (Paranoid or BRS style) digging down
+                                                                                    -- and calculate the maximum score
+                                                                                    (newtf, newAlpha) = if score >= alpha then (m, score) else (tf, alpha) -- update the alpha value and the best move so far
                                                                                 in  if newAlpha >= beta then (tf, beta) -- prune the branch if found a proof that the paranet won't choose this branch
                                                                                     else maxEvaluation depth (ri, board, pl, pn, (newAlpha, beta), tt) pi ms newtf -- get to the next movements provided in a list
 -- similar to above but different in the return value
@@ -90,16 +93,16 @@ minEvaluation depth st@(ri, board, pl, pn, ab@(alpha, beta), tt) pi (m:ms) tf = 
                                                                                     nst = (ri, neb, npl, pn, ab, tt) 
                                                                                     score = minimum $ treeSearch newDepth nst pi 
                                                                                     (newtf, newBeta) = if score <= beta then (m, score) else (tf, beta) -- update the beta value
-                                                                                    -- (newtf, newBeta) = updateBeta scores (tf, beta)
                                                                                 in  if alpha >= newBeta then (tf, alpha)
                                                                                     else minEvaluation depth (ri, board, pl, pn, (alpha, newBeta), tt) pi ms newtf
 
 -- the difference between two shallow minimax search: the Paranoid search follows the regular order base, while the BRS considers all players other than
 -- the root as a layer, so it actually evaluates a list of boards from different players 
+-- since it is not necessary to know about the best movement of the next layer, here it is ignored
 treeSearch :: Int -> MGameTreeStatus -> PlayerIndex -> [Int]
 treeSearch 0 st pi = map snd [mEvaluation 0 st pi]
 treeSearch depth st@(ri, _, _, pn, _, Paranoid) pi = map snd [mEvaluation depth st (turnBase pn pi)]
-treeSearch depth st@(ri, _, _, pn, _, BRS) pi = map (snd . mEvaluation depth st) (turnBaseBRS pn ri pi) -- remove the movement
+treeSearch depth st@(ri, _, _, pn, _, BRS) pi = map (snd . mEvaluation depth st) (turnBaseBRS pn ri pi)
                                                      
 -- when it comes to BRS, the search tree becomes different where the second layer's node is no longer one opponent, but all opponents
 otherPlayers :: Int -> PlayerIndex -> [PlayerIndex]
