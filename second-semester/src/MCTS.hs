@@ -91,7 +91,7 @@ expansion n = let cs = getChildren n
 
 -- the strategy of how a board could lead to different resulting boards
 expandPolicy :: Colour -> [Transform] -> [Transform]
-expandPolicy co xs 
+expandPolicy co xs
     | not $ null front = front  -- if front moves are avaliable then just expand them   
     | otherwise = xs            -- else, all moves are accepted
     where
@@ -145,21 +145,6 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 -- 2. lookup table search: board evaluation
 -- 3. shallow search equipped with board evaluation
 
--- simple move evalutor of how close the changed piece is to the goal state, 
--- an addition move evaluator is to measure the forward distance to the goal base
-dist :: Pos -> Pos -> Double
-dist (x1, y1) (x2, y2) = sqrt (fromIntegral (x1 - x2)^2 + fromIntegral (y1 - y2)^2)
--- return the distance of a piece to the goal state, the evaluation is more straightforward as only considering the distance
-moveEvaluation :: (Pos, Pos) -> Double
-moveEvaluation (p1, p2) = let dist1 = dist p1 (0, 6)
-                              dist2 = dist p2 (0, 6)
-                           in dist1 `par` dist2 `pseq` (dist1 - dist2) -- still the larger the better
-
--- compute a list of board configurations, with a mixed-strategy evalutor that combines both shortest path and centroid heurisitics
-boardEvaluations :: [[Pos]] -> [Int]
-boardEvaluations ps = if ifExistMidgame ps then map centroid ps
-                      else map boardEvaluation ps
-
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
 switchEvaluator :: PlayoutArgument -> Colour -> [Transform] -> State GameTreeStatus Transform
 switchEvaluator (evaluator, depth) colour tfs = if not (randomPercentage 95)
@@ -172,7 +157,6 @@ switchEvaluator (evaluator, depth) colour tfs = if not (randomPercentage 95)
                                                         BoardEvaluator -> boardEvaluator tfs
                                                         ShallowParanoid -> paranoidEvaluator depth
                                                         ShallowBRS -> brsEvaluator depth
-
     where
         randomEvaluator :: [Transform] -> State GameTreeStatus Transform
         randomEvaluator tfs = return (tfs !! randomMove (length tfs))
@@ -189,17 +173,17 @@ switchEvaluator (evaluator, depth) colour tfs = if not (randomPercentage 95)
                                 let scoreList = boardEvaluations psList
                                     idx = randomSelection scoreList
                                 return (tfs !! idx)
-        
+
         paranoidEvaluator :: Int -> State GameTreeStatus Transform
         paranoidEvaluator depth = do (ri, _, eboard, iboard, pn, _, _, _) <- get
                                      let (move, _) = mEvaluation depth (ri, eboard, iboard, pn, (-999, 999), Paranoid) ri
                                      return move
-                                    
+
         brsEvaluator :: Int -> State GameTreeStatus Transform
         brsEvaluator depth = do (ri, _, eboard, iboard, pn, _, _, _) <- get
                                 let (move, _) = mEvaluation depth (ri, eboard, iboard, pn, (-999, 999), BRS) ri
-                                return move            
-        
+                                return move
+
 {-
 allProject :: [[Pos]] -> [Colour] -> [[Pos]]
 allProject _ [] = []

@@ -145,6 +145,11 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
         flipBoardState :: [Pos] -> Pos -> [Pos]
         flipBoardState ls p = p:ls
 
+-- compute a list of board configurations, with a mixed-strategy evalutor that combines both shortest path and centroid heurisitics
+boardEvaluations :: [[Pos]] -> [Int]
+boardEvaluations ps = if ifExistMidgame ps then map centroid ps
+                      else map boardEvaluation ps
+                      
 -- search for a shortest path for a certain board configuration based on the lookup table
 boardEvaluation :: [Pos] -> Int
 boardEvaluation ps = if isMidgame ps then centroid ps else (case evaluateBoard ps (isOpening ps) of
