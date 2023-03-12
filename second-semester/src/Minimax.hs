@@ -16,19 +16,18 @@ import System.Environment
 -- the search tree is also divided into two groups, the paranoid and BRS forms
 data TreeType = Paranoid | BRS deriving (Eq, Show, Read)
 -- the new tree status with less information to consider
-type MGameTreeStatus = (Int, -- current depth of the search tree
+type MGameTreeStatus = (Int, -- the current height of the layer
                         PlayerIndex, -- the root layer player's index, should be static
                         Board, -- the board state delivered from the parent
                         [[Pos]], -- the list of positions of the internal board for each player
                         Int, -- the total players, should be static
                         AlphaBeta,
                         TreeType, -- the choice of shallow minimax search, should be static
-                        Int, -- the parameter of k-best pruning
-                        KillerMoves -- a list of killer moves, in hashed form
+                        Int -- the parameter of k-best pruning
                         )
 type AlphaBeta = (Int, Int) -- the alpha and beta value, alhpa value represents the solution of Max node, and beta for Min node
 type KillerMove = Maybe Transform
-type KillerMoves = [(KillerMove, KillerMove)] -- the two last moves that were best or caused a cutoff at the current layer
+type KillerPair = (KillerMove, KillerMove) -- the two last moves that were best or caused a cutoff at the current layer
 
 -- the alpha and beta pair is not consistent throughout the search tree, it might be switched, for instance, 
 -- the maximum value of the subtree could be the minimum value of its parent, when the layers of Max and Min are switched
@@ -43,18 +42,21 @@ main = do arg <- getArgs
           print $ diffUTCTime end start
 -}
 
-testRun :: Int -> TreeType -> Transform
-testRun depth treetype = let (tf, _) = mEvaluation (iStatus depth treetype) 0
-                         in  tf
 
-iStatus :: Int -> TreeType -> MGameTreeStatus
-iStatus depth tt = (depth, 0, eboard, internalBoards, pn, (-999, 999), tt, 10, initialKillerMoves)
+-- testRun :: Int -> TreeType -> Transform
+testRun depth treetype = let (status, ks) = runState (iStatus depth treetype) []
+                         in  runState (mEvaluation status 0) ks
+                         -- in  move   
+                            
+
+iStatus :: Int -> TreeType -> State [KillerPair] MGameTreeStatus
+iStatus depth tt = do put initialKillerMoves
+                      return (depth, 0, eboard, internalBoards, pn, (-999, 999), tt, 10)
     where
         pn = 3
         eboard = eraseBoard (playerColourList pn)
         internalBoards = map (convertToInternalBoard eboard) (playerColourList pn)
         initialKillerMoves = replicate depth (Nothing, Nothing)
-
 
 -- the pruning is available based on evaluating the nodes below
 -- normally, when a Min node's (beta) value is larger than any parent (Max)'s alpha value, that branch can be pruned
@@ -75,52 +77,68 @@ iStatus depth tt = (depth, 0, eboard, internalBoards, pn, (-999, 999), tt, 10, i
 -- and send it to evaluate the resulting boards from the movements
 -- besides of returning the optimal score it could retrieve, it will also return the corresponding movement that generates that score
 
-mEvaluation :: MGameTreeStatus -> PlayerIndex -> (Transform, Int)
-mEvaluation st@(0, _, _, _, _, _, _, _, _)  pi = (defaultMove, nEvaluation st pi)
-mEvaluation st@(depth, ri, eboard, iboard, pn, (alpha, beta), tt, k, kms) pi = 
-                                                                      let ms = mplayerMovesList st pi -- provide a list of possible movements (pruned)
-                                                                          nst = (depth, ri, eboard, iboard, pn, (alpha, beta), tt, k, kms) -- update the killer moves
-                                                                      in  -- evaluate a list of movements, just like a list of nodes
-                                                                          if ri /= pi then minEvaluation nst pi ms defaultMove
-                                                                          else maxEvaluation nst pi ms defaultMove
+
+mEvaluation :: MGameTreeStatus -> PlayerIndex -> State [KillerPair] (Transform, Int)
+mEvaluation st@(0, _, _, _, _, _, _, _)  pi = return (defaultMove, nEvaluation st pi)
+mEvaluation st@(height, ri, _, _, pn, _, _, k) pi = 
+                                                 do kp <- getCurrentKillerPair height
+                                                    let ms = mplayerMovesList st pi -- provide a list of possible movements (pruned)
+                                                        colour = playerColour pi pn
+                                                        orderedList = moveOrder colour ms
+                                                        (nkp, reorederedList) = killerMoveTest kp orderedList
+                                                    replaceCurrentKillerPair height nkp
+                                                    let prunedList = take k orderedList
+                                                    if ri /= pi then minEvaluation st pi ms defaultMove
+                                                    else maxEvaluation st pi ms defaultMove                                                      
 defaultMove :: Transform
 defaultMove = (U(-1,-1), U(-1,-1))
 
 -- the evaluation here will first sync the game status based on the given movements, and then passes it to the next layer until reaching the bottom (set depth)  
 -- while maintaining the best score and the corresponding movement                                                               
-maxEvaluation :: MGameTreeStatus -> PlayerIndex -> [Transform] -> Transform -> (Transform, Int)
-maxEvaluation (_, _, _, _, _, (alpha, _), _, _, _) _ [] bestMove = (bestMove, alpha) -- Max layer returns alpha value
-maxEvaluation st@(depth, ri, board, pl, pn, ab@(alpha, beta), tt, k, ks) pi (m:ms) bestMove = 
+maxEvaluation :: MGameTreeStatus -> PlayerIndex -> [Transform] -> Transform -> State [KillerPair] (Transform, Int)
+maxEvaluation (_, _, _, _, _, (alpha, _), _, _) _ [] bestMove = return (bestMove, alpha) -- Max layer returns alpha value
+maxEvaluation st@(height, ri, board, pl, pn, ab@(alpha, beta), tt, k) pi (m:ms) bestMove = 
+                                                                                do kp <- getCurrentKillerPair height
                                                                                    let nib = flipBoard (pl !! pi) (projectMove (playerColour pi pn) m) -- edit the internal positions
                                                                                        npl = replace pi nib pl
                                                                                        neb = repaintPath board m -- edit the new board state
-                                                                                       nst = (depth - 1, ri, neb, npl, pn, ab, tt, k, ks) -- retrieve new tree status
-                                                                                       score = maximum $ treeSearch nst pi -- decide in which way keep (Paranoid or BRS style) digging down
+                                                                                       nst = (height - 1, ri, neb, npl, pn, ab, tt, k) -- retrieve new tree status
+                                                                                   score <- treeSearch nst pi -- decide in which way keep (Paranoid or BRS style) digging down
+                                                                                   let maxScore = maximum score
                                                                                        -- and calculate the maximum score
-                                                                                       (newtf, newAlpha) = if score >= alpha then (m, score) else (bestMove, alpha) -- update the alpha value and the best move so far
-                                                                                   in  if newAlpha >= beta then (bestMove, beta) -- prune the branch if found a proof that the paranet won't choose this branch
-                                                                                       else maxEvaluation (depth, ri, board, pl, pn, (newAlpha, beta), tt, k, ks) pi ms newtf -- get to the next movements provided in a list
+                                                                                       (newBestMove, newAlpha) = if maxScore >= alpha then (m, maxScore) else (bestMove, alpha) -- update the alpha value and the best move so far
+                                                                                   if newAlpha >= beta then -- prune the branch if found a proof that the paranet won't choose this branch
+                                                                                                            let newkp = updateKillerMoves m kp
+                                                                                                            in  do replaceCurrentKillerPair height newkp
+                                                                                                                   return (bestMove, beta) 
+                                                                                   else maxEvaluation (height, ri, board, pl, pn, (newAlpha, beta), tt, k) pi ms newBestMove -- get to the next movements provided in a list
 -- similar to above but different in the return value
-minEvaluation :: MGameTreeStatus -> PlayerIndex -> [Transform] -> Transform -> (Transform, Int)
-minEvaluation (_, _, _, _, _, (_, beta), _, _, _) _ [] bestMove = (bestMove, beta) -- Min layer returns beta value
-minEvaluation st@(depth, ri, board, pl, pn, ab@(alpha, beta), tt, k, ks) pi (m:ms) bestMove = 
-                                                                                   let nib = flipBoard (pl !! pi) (projectMove (playerColour pi pn) m) 
-                                                                                       npl = replace pi nib pl
-                                                                                       neb = repaintPath board m 
-                                                                                       nst = (depth - 1, ri, neb, npl, pn, ab, tt, k, ks) 
-                                                                                       score = minimum $ treeSearch nst pi 
-                                                                                       (newtf, newBeta) = if score <= beta then (m, score) else (bestMove, beta) -- update the beta value
-                                                                                   in  if alpha >= newBeta then (bestMove, alpha)
-                                                                                       else minEvaluation (depth, ri, board, pl, pn, (alpha, newBeta), tt, k, ks) pi ms newtf
+minEvaluation :: MGameTreeStatus -> PlayerIndex -> [Transform] -> Transform -> State [KillerPair] (Transform, Int)
+minEvaluation (_, _, _, _, _, (_, beta), _, _) _ [] bestMove = return (bestMove, beta) -- Min layer returns beta value
+minEvaluation st@(height, ri, board, pl, pn, ab@(alpha, beta), tt, k) pi (m:ms) bestMove = 
+                                                                                 do kp <- getCurrentKillerPair height
+                                                                                    let nib = flipBoard (pl !! pi) (projectMove (playerColour pi pn) m) 
+                                                                                        npl = replace pi nib pl
+                                                                                        neb = repaintPath board m 
+                                                                                        nst = (height - 1, ri, neb, npl, pn, ab, tt, k) 
+                                                                                    score <- treeSearch nst pi
+                                                                                    let minScore = minimum score
+                                                                                        (newBestMove, newBeta) = if minScore <= beta then (m, minScore) else (bestMove, beta) -- update the beta value
+                                                                                    if alpha >= newBeta then -- since the pruning is occured here, the killer moves need to be updated
+                                                                                                             let newkp = updateKillerMoves m kp
+                                                                                                             in  do replaceCurrentKillerPair height newkp
+                                                                                                                    return (bestMove, alpha)
+                                                                                    else minEvaluation (height, ri, board, pl, pn, (alpha, newBeta), tt, k) pi ms newBestMove
 
 -- the difference between two shallow minimax search: the Paranoid search follows the regular order base, while the BRS considers all players other than
 -- the root as a layer, so it actually evaluates a list of boards from different players 
 -- since it is not necessary to know about the best movement of the next layer, here it is ignored
-treeSearch :: MGameTreeStatus -> PlayerIndex -> [Int]
-treeSearch st@(0, _, _, _, _, _, _, _, _) pi = map snd [mEvaluation st pi]
-treeSearch st@(_, ri, _, _, pn, _, Paranoid, _, _) pi = map snd [mEvaluation st (turnBase pn pi)]
-treeSearch st@(_, ri, _, _, pn, _, BRS, _, _) pi = map (snd . mEvaluation st) (turnBaseBRS pn ri pi)
-                                                     
+treeSearch :: MGameTreeStatus -> PlayerIndex -> State [KillerPair] [Int]
+treeSearch st@(0, _, _, _, _, _, _, _) pi = do (_, score) <- mEvaluation st pi; return [score]
+treeSearch st@(_, ri, _, _, pn, _, Paranoid, _) pi = do (_, score) <- mEvaluation st (turnBase pn pi); return [score]
+treeSearch st@(_, ri, _, _, pn, _, BRS, _) pi = do ls <- mapM (mEvaluation st) (turnBaseBRS pn ri pi)
+                                                   return $ map snd ls
+                                                    
 -- when it comes to BRS, the search tree becomes different where the second layer's node is no longer one opponent, but all opponents
 otherPlayers :: Int -> PlayerIndex -> [PlayerIndex]
 otherPlayers pn ri = filter (/=ri) [0 .. pn - 1]
@@ -131,7 +149,7 @@ turnBaseBRS pn ri pi = if ri /= pi then [ri] else otherPlayers pn ri
 -- evaluate the bottom node (where the depth is equal to 0) of the search tree
 -- since the evaluation should be made based on the root's perspective, the evaluation of the other layer player is done by evaluating how the root player could benefit
 nEvaluation :: MGameTreeStatus -> PlayerIndex -> Int
-nEvaluation st@(_, ri, eboard, iboard, pn, _, _, _, _) pi = 
+nEvaluation st@(_, ri, _, iboard, pn, _, _, _) pi = 
                                                  if ri == pi then boardEvaluation (iboard !! ri) -- for root, just simply measure its score
                                                  else let rolour = playerColour ri pn -- for other players, measure the possible root player's move could perform based on the changed board
                                                           rs = iboard !! ri
@@ -143,21 +161,13 @@ nEvaluation st@(_, ri, eboard, iboard, pn, _, _, _, _) pi =
 -- the enhancements applied here should include the: move ordering + k best pruning + killer moves for each layer
 -- given a certain piece's colour, return a list of avaliable movements (transforms) on the external board
 mplayerMovesList :: MGameTreeStatus -> PlayerIndex -> [Transform]
-mplayerMovesList (dp, _, eboard, iboard, pn, _, _, k, _) pi =
+mplayerMovesList (height, _, eboard, iboard, pn, _, _, k) pi =
                                                     let colour = playerColour pi pn -- the colour of the player's piece
                                                         ps = (iboard !! pi) -- the internal positions of a player
                                                         bs = map (appendColour colour . reversion colour) ps -- project those position onto the external board
                                                         ds = evalState (do mapM destinationList bs) eboard -- and generate movements based on the external board state
-                                                        ms = pairArrange bs ds -- zip the start and the end, ensuring that those are listed in pairs
-                                                        -- before sending to the layer, k-best pruning is implemented here
-                                                        orderedList = moveOrder colour ms
-                                                        -- (nkp, reorederedList) = killerMoveTest (ks !! currentIdx) orderedList -- since the depth is decrementing, from 2 to 0
-                                                    in  -- (replace currentIdx nkp ks, take k reorederedList)
-                                                        take k orderedList
-                                                        
-    -- where
-    --     currentIdx = length ks - dp
-
+                                                    in  pairArrange bs ds -- zip the start and the end, ensuring that those are listed in pairs
+                                                    
 -- simple move evalutor of how close the changed piece is to the goal state, 
 -- an addition move evaluator is to measure the forward distance to the goal base
 dist :: Pos -> Pos -> Double
@@ -177,17 +187,19 @@ moveOrder co ms =
                     sortedList = sortBy (\(a, _) (b, _) -> compare b a) pairs
                 in  map snd sortedList
 
-inc :: Int -> State Int ()
-inc x = do gg <- get
-           put (gg + x)
-
-{-
 -- search if there exist any killer moves at the current layer of minimax search
 -- if it does, then we have to put it to the front of the sorted list such that them will be tried first
 -- normally, the killer moves are specifically existing on certain ply, therefore, each ply should store its own killer moves
 -- besides, since the killer moves are specific for certain layer, if wanting to reuse those moves, it will be better to modify it for the next iteration, as the game progresses also push the layer of the search
 -- since the target of killer moves is to save time, it should be tried first without considering any later computation
-killerMoveTest :: (KillerMove, KillerMove) -> [Transform] -> ((KillerMove, KillerMove), [Transform]) 
+
+getCurrentKillerPair :: Int -> State [KillerPair] KillerPair
+getCurrentKillerPair height = do ks <- get; return $ ks !! (length ks - height)
+
+replaceCurrentKillerPair :: Int -> KillerPair -> State [KillerPair] ()
+replaceCurrentKillerPair height new = do ks <- get; put $ replace (length ks - height) new ks
+
+killerMoveTest :: KillerPair -> [Transform] -> (KillerPair, [Transform])
 -- besides of searching for the existing killer moves, it also reorder the killer moves such that the one less recent being applied will be placed first
 killerMoveTest pair@(Nothing, Nothing) ms = (pair, ms)
 killerMoveTest pair@(Just km, Nothing) ms = case elemIndex km ms of
@@ -209,12 +221,13 @@ switchItem2Front xs idx = item:front ++ end
     where
         (front, item:end) = splitAt idx xs
 
-updateKillerMoves :: Transform -> (KillerMove, KillerMove) -> (KillerMove, KillerMove)
-updateKillerMoves move kms = case kms of
-                                (Nothing, Nothing) -> (Just move, Nothing)
-                                (Just a, Nothing) ->  (Just a, Just move)
-                                (Nothing, Just a) -> (Just move, Just a)
-                                (Just a, Just b) -> (Just move, Just b) 
+updateKillerMoves :: Transform -> KillerPair -> KillerPair
+updateKillerMoves move kp = case kp of
+                                (Nothing, Nothing) ->  (Just move, Nothing)
+                                (Just a, Nothing)  ->  if move == a then (Just a, Nothing) else (Just a, Just move)
+                                (Nothing, Just a)  ->  if move == a then (Just a, Nothing) else (Just move, Just a)
+                                (Just a, Just b)   ->  if move /= a && move /= b then (Just move, Just b)
+                                                       else (Just a, Just b)
                                 -- since the update will always replace the first one, it's necessary to switch the order if one did not cause a recent cutoff 
--}
+
 
