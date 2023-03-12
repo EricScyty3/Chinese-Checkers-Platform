@@ -141,10 +141,10 @@ changeBoardElement f bPos board = let new = f bPos
                                   in  new `par` pos `pseq` replace2 pos new board
 -- erase the pieces on the board and keep only certain coloured pieces, 
 -- this is to generate different board according to the input players amount
-eraseBoard :: [Colour] -> Board
-eraseBoard colourList = runST $ do n <- newSTRef externalBoard
-                                   modifySTRef n (map (eraseRow colourList))
-                                   readSTRef n
+eraseBoard :: [Colour] -> Board -> Board
+eraseBoard colourList eboard = runST $ do n <- newSTRef eboard
+                                          modifySTRef n (map (eraseRow colourList))
+                                          readSTRef n
     where
         eraseRow :: [Colour] -> [BoardPos] -> [BoardPos]
         eraseRow _ [] = []

@@ -14,22 +14,22 @@ import Configuration
 import Data.Fixed
 
 -- ghc -main-is Extension Extension.hs -O2 -fllvm -outputdir dist
-main = do arg <- getArgs
-          start <- lookupTable `seq` getCurrentTime
-          -- let iter = read (head arg) 
-              -- eval = read (arg !! 1)
-          testRun (Nothing, Just 100, Nothing)
-          end <- getCurrentTime
-          print $ "Time cost: " ++ show (diffUTCTime end start)
+-- main = do arg <- getArgs
+--           start <- lookupTable `seq` getCurrentTime
+--           -- let iter = read (head arg) 
+--               -- eval = read (arg !! 1)
+--           testRun (Nothing, Just 100, Nothing)
+--           end <- getCurrentTime
+--           print $ "Time cost: " ++ show (diffUTCTime end start)
 
-testRun control = do let (nboard, _, _, turns) = finalSelectionE (GRoot 0 []) (0, 1, eboard, iboard, pn, RBLeaf, (3, 0.9), (MoveEvaluator, 2)) 0 control
-                     printEoard nboard
-                     print (show (length turns) ++ ": " ++ show turns)
+-- testRun control = do let (nboard, _, _, turns) = finalSelectionE (GRoot 0 []) (0, 1, eboard, iboard, pn, RBLeaf, (3, 0.9), (MoveEvaluator, 2)) 0 control
+--                      printEoard nboard
+--                      print (show (length turns) ++ ": " ++ show turns)
                      
-    where
-        pn = 3
-        eboard = eraseBoard (playerColourList pn)
-        iboard = initialInternalBoard eboard pn
+--     where
+--         pn = 3
+--         eboard = eraseBoard (playerColourList pn) externalBoard
+--         iboard = initialInternalBoard eboard pn
 
 finalSelectionE :: GameTree -> GameTreeStatus -> Int -> (Maybe Int, Maybe Int, Maybe Pico) -> (Board, Int, HistoryTrace, [Int])
 finalSelectionE tree s@(pi, _, board, _, pn, _, _, _) bhash control = let (ntree, scores, nht, playoutTurns) = getResultsUnderControl tree s control

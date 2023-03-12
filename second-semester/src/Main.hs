@@ -239,7 +239,7 @@ handleEvent wenv node model evt = case evt of
   -- declare that the game is started letting certain subjects to be visiable or invisiable
   -- generate the game board based on the chosen players number, and the corresponding length of hash state
   StartGameButtonClick -> [Model $ model & startGame .~ True
-                                         & displayBoard .~ eraseBoard (playerColourList pn)
+                                         & displayBoard .~ eraseBoard (playerColourList pn) externalBoard
                                          & internalStates .~ replicate pn hashInitial
                                          & computerIdxList .~ idxList]
     where

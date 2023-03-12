@@ -175,14 +175,16 @@ switchEvaluator (evaluator, depth) colour tfs = if not (randomPercentage 95)
                                 return (tfs !! idx)
 
         paranoidEvaluator :: Int -> State GameTreeStatus Transform
-        paranoidEvaluator depth = do (ri, _, eboard, iboard, pn, _, _, _) <- get
+        paranoidEvaluator depth = {-do (ri, _, eboard, iboard, pn, _, _, _) <- get
                                      let (move, _) = mEvaluation depth (ri, eboard, iboard, pn, (-999, 999), Paranoid) ri
-                                     return move
+                                     return move-}
+                                     undefined
 
         brsEvaluator :: Int -> State GameTreeStatus Transform
-        brsEvaluator depth = do (ri, _, eboard, iboard, pn, _, _, _) <- get
+        brsEvaluator depth = {-do (ri, _, eboard, iboard, pn, _, _, _) <- get
                                 let (move, _) = mEvaluation depth (ri, eboard, iboard, pn, (-999, 999), BRS) ri
-                                return move
+                                return move-}
+                                undefined
 
 {-
 allProject :: [[Pos]] -> [Colour] -> [[Pos]]
