@@ -41,11 +41,11 @@ randomPercentage n  = unsafePerformIO (randomRIO (0, 100)) <= n
 randomMove :: Int -> Int
 randomMove l  = unsafePerformIO (randomRIO (0, l-1))
 -- selecting randomly if there exist multiple maximum elements in a list
-randomSelection :: Ord a => [a] -> Int
-randomSelection []  = error "Selection: no node for selecting"
-randomSelection xs  = let is = elemIndices (maximum xs) xs
-                          ri = is `seq` randomMove (length is)  -- random index of the maximum values' indices
-                      in  is !! ri -- return the maximum value's index for selecting
+randomMaxSelection :: Ord a => [a] -> Int
+randomMaxSelection []  = error "Selection: no node for selecting"
+randomMaxSelection xs  = let is = elemIndices (maximum xs) xs
+                             ri = is `seq` randomMove (length is)  -- random index of the maximum values' indices
+                         in  is !! ri -- return the maximum value's index for selecting
 
 -- get a list of non-repeated random values of a range
 randomIndices :: Int -> [Int]
@@ -61,7 +61,7 @@ selection :: GameTree -> [Int] -> [Int] -> State GameTreeStatus ([Int], [Int], G
 selection gametree indexList hashList = let childrenList = getChildren gametree
                                         in  if null childrenList then return (indexList, hashList, gametree)   -- return the node and trace for the next stage when meeting a leaf (the leaf might be a terminal point)
                                             else do scoreList <- mapM (estimateNode (getVisits gametree)) childrenList -- produce a list of "scores" for all child nodes
-                                                    let selectedNode = childrenList !! randomSelection scoreList  -- select the child with the maximum score 
+                                                    let selectedNode = childrenList !! randomMaxSelection scoreList  -- select the child with the maximum score 
                                                         movement = getTransform selectedNode
                                                     -- update the internal board for the current player
                                                     nodeInternalState <- modifyCurrentInternalBoard movement
@@ -146,18 +146,28 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 -- 3. shallow search equipped with board evaluation
 
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
-switchEvaluator :: PlayoutArgument -> Colour -> [Transform] -> State GameTreeStatus Transform
-switchEvaluator (evaluator, depth) colour tfs = if not (randomPercentage 95)
+switchEvaluator :: PlayoutArgument -> Colour -> [Transform] -> [KillerMoves] -> State GameTreeStatus ([KillerMoves], Transform)
+switchEvaluator (evaluator, depth) colour tfs kms =
+                                                if not (randomPercentage 95)
                                                 then do let idx = randomMove (length tfs)
-                                                        return (tfs !! idx) -- randomly choose a movement and generate the resulting board  
+                                                        return (popedList, tfs !! idx) -- randomly choose a movement and generate the resulting board  
                                                 else case evaluator of
-                                                        RandomEvaluator -> randomEvaluator tfs
-                                                        MoveEvaluator -> moveEvaluator tfs
+                                                        -- move evaluator
+                                                        RandomEvaluator -> do move <- randomEvaluator tfs
+                                                                              return (popedList, move)
+                                                        MoveEvaluator -> do move <- moveEvaluator tfs
+                                                                            return (popedList, move)
                                                         -- board evaluator
-                                                        BoardEvaluator -> boardEvaluator tfs
-                                                        ShallowParanoid -> paranoidEvaluator depth
-                                                        ShallowBRS -> brsEvaluator depth
+                                                        BoardEvaluator -> do move <- boardEvaluator tfs
+                                                                             return (popedList, move)
+                                                        ShallowParanoid -> do (move, nkms) <- paranoidEvaluator depth kms
+                                                                              return (nkms, move)
+                                                        ShallowBRS -> do (move, nkms) <- brsEvaluator depth kms
+                                                                         return (nkms, move)
     where
+        popedList :: [KillerMoves]
+        popedList = tail kms ++ [[]]
+
         randomEvaluator :: [Transform] -> State GameTreeStatus Transform
         randomEvaluator tfs = return (tfs !! randomMove (length tfs))
 
@@ -165,42 +175,35 @@ switchEvaluator (evaluator, depth) colour tfs = if not (randomPercentage 95)
         moveEvaluator tfs = do colour <- getPlayerColour
                                let ptfs = map (projectMove colour) tfs
                                    scoreList = map moveEvaluation ptfs
-                                   idx = randomSelection scoreList
+                                   idx = randomMaxSelection scoreList
                                return (tfs !! idx)
 
         boardEvaluator :: [Transform] -> State GameTreeStatus Transform
         boardEvaluator tfs = do psList <- mapM modifyCurrentInternalBoard tfs
                                 let scoreList = boardEvaluations psList
-                                    idx = randomSelection scoreList
+                                    idx = randomMaxSelection scoreList
                                 return (tfs !! idx)
 
-        paranoidEvaluator :: Int -> State GameTreeStatus Transform
-        paranoidEvaluator depth = {-do (ri, _, eboard, iboard, pn, _, _, _) <- get
-                                     let (move, _) = mEvaluation depth (ri, eboard, iboard, pn, (-999, 999), Paranoid) ri
-                                     return move-}
-                                     undefined
+        paranoidEvaluator :: Int -> [KillerMoves] -> State GameTreeStatus (Transform, [KillerMoves])
+        paranoidEvaluator depth kms = do (ri, _, eboard, iboard, pn, _, _, _) <- get
+                                         let ((move, _), nkms) = runState (mEvaluation (depth, ri, eboard, iboard, pn, (-999, 999), Paranoid) ri) kms
+                                         return (move, nkms)
 
-        brsEvaluator :: Int -> State GameTreeStatus Transform
-        brsEvaluator depth = {-do (ri, _, eboard, iboard, pn, _, _, _) <- get
-                                let (move, _) = mEvaluation depth (ri, eboard, iboard, pn, (-999, 999), BRS) ri
-                                return move-}
-                                undefined
 
-{-
-allProject :: [[Pos]] -> [Colour] -> [[Pos]]
-allProject _ [] = []
-allProject [] _ = []
-allProject (x:xs) (c:cs) = map (projection c) x:allProject xs cs
--}
+        brsEvaluator :: Int -> [KillerMoves] -> State GameTreeStatus (Transform, [KillerMoves])
+        brsEvaluator depth kms = do (ri, _, eboard, iboard, pn, _, _, _) <- get
+                                    let ((move, _), nkms) = runState (mEvaluation (depth, ri, eboard, iboard, pn, (-999, 999), BRS) ri) kms
+                                    return (move, nkms)
+
 -- game simulation from a certain board state 
-playout :: Int ->State GameTreeStatus (PlayerIndex, Int)
-playout moves = do pn <- getPlayerNum
+playout :: Int -> [KillerMoves] -> State GameTreeStatus (PlayerIndex, Int)
+playout moves killerMoves =
+                do pn <- getPlayerNum
                    if getTurns moves pn >= 1000 then do -- avoid the potential cycling, or stop the playouts if costing too much time
                                                         psList <- getInternalBoard
                                                         let scoreList = boardEvaluations psList
                                                         -- treat the one with the best board state (not move state) as winner
-                                                        return (randomSelection scoreList, getTurns moves pn)
-
+                                                        return (randomMaxSelection scoreList, getTurns moves pn)
                    else do pi <- getPlayerIdx
                            tfs <- colouredMovesList pi    -- get all of the avaliable moves
                            board <- getBoard
@@ -208,7 +211,7 @@ playout moves = do pn <- getPlayerNum
                            colour <- getPlayerColour
                            if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)
                             -- if the started board state is already an end state, this means that some players take a suicidal action that cause other player to win
-                           else do tf <- switchEvaluator pa colour tfs -- otherwise, choose one of the boards resulted from the current board
+                           else do (newKs, tf) <- switchEvaluator pa colour tfs killerMoves -- otherwise, choose one of the boards resulted from the current board
                                    -- update internal board state
                                    newps <- modifyCurrentInternalBoard tf
                                    updateCurrentInternalBoard newps
@@ -218,7 +221,7 @@ playout moves = do pn <- getPlayerNum
                                    if winStateDetermine colour nboard then return (pi, getTurns moves pn) -- if a player wins, then return the player's index
                                    else do updatePlayerIdx -- otherwise, keep simulating on the next turn
                                            setBoard nboard
-                                           playout (moves + 1)
+                                           playout (moves + 1) newKs -- inherit the killer moves for the next interation
 
 getTurns :: Int -> Int -> Int
 getTurns moves pn = ceiling (fromIntegral moves / fromIntegral pn)
@@ -264,7 +267,7 @@ mcts tree = do (idxList, hashList, lastnode) <- selection tree [] []
                                                newHistory2 <- editHT hashList2 winIdx ht
                                                return (newTree2, bi, newHistory2, 0) -- get the new tree and game history with playout turn equals to 0 
 
-                       else do (winIdx, turns) <- playout 1 -- the standard order: the playout will be done based on the board of the selected new leaf
+                       else do (winIdx, turns) <- playout 1 [] -- start the playout phase with certain policy and heuristic
                                newTree3 <- backpropagation winIdx idxList2 tree expandednode -- treat the tree as a child by setting it into a list, and update it
                                bi <- getBoardIdx
                                ht <- getHistoryTrace
@@ -294,7 +297,7 @@ finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts =
                                                                   scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
                                                               in  if null scores then error (show ntree)
                                                                   else let -- get the maximum win rate move as the next movement
-                                                                           chosenNode = getChildren ntree !! randomSelection scores
+                                                                           chosenNode = getChildren ntree !! randomMaxSelection scores
                                                                            -- return the resulting decision
                                                                            colour = playerColour pi pn
                                                                            (from, to) = getTransform chosenNode
