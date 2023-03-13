@@ -31,11 +31,11 @@ import Data.Fixed
 --         eboard = eraseBoard (playerColourList pn) externalBoard
 --         iboard = initialInternalBoard eboard pn
 
-finalSelectionE :: GameTree -> GameTreeStatus -> Int -> (Maybe Int, Maybe Int, Maybe Pico) -> (Board, Int, HistoryTrace, [Int])
-finalSelectionE tree s@(pi, _, board, _, pn, _, _, _) bhash control = let (ntree, scores, nht, playoutTurns) = getResultsUnderControl tree s control
+finalSelection :: GameTree -> GameTreeStatus -> Int -> (Maybe Int, Maybe Int, Maybe Pico) -> (Board, Int, HistoryTrace, [Int])
+finalSelection  tree s@(pi, _, board, _, pn, _, _, _) bhash control = let (ntree, scores, nht, playoutTurns) = getResultsUnderControl tree s control
                                                                       in  if null scores then error (show ntree)
                                                                           else let -- get the maximum win rate move as the next movement
-                                                                                  chosenNode = getChildren ntree !! randomSelection scores
+                                                                                  chosenNode = getChildren ntree !! randomMaxSelection scores
                                                                                   -- return the resulting decision
                                                                                   colour = playerColour pi pn
                                                                                   (from, to) = getTransform chosenNode

@@ -288,7 +288,7 @@ iterations :: GameTree -> GameTreeStatus -> [Int] -> Int -> (GameTree, BoardInde
 iterations tree s@(_, bi, _, _, _, ht, _, _) playoutTurns 0 = (tree, bi, ht, reverse playoutTurns)
 iterations tree s@(pi, bi, board, ps, pn, ht, cons, pp) playoutTurns count = let (newTree, newIdx, newHistory, turns) = evalState (mcts tree) s -- reset every status while maintaining the board index and move history
                                                                              in  iterations newTree (pi, newIdx, board, ps, pn, newHistory, cons, pp) (turns:playoutTurns) (count-1) -- inherit the movement history, and record the playout turns
-
+{-
 -- after the iterations of four stages are finished running, the root shoudl choose the child with the most win rate for the next move 
 -- the tree could be re-used for saving computation, but if looking for different result, the tree should be started from scratch every several iterations
 finalSelection :: GameTree -> GameTreeStatus -> Int -> Int -> (Board, Int, HistoryTrace, [Int])
@@ -310,7 +310,7 @@ finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts =
                                                                       -- the new board state and the new board hash are generated for Computer decision in Main
                                                                       -- while playouts are treated as one of the measurements in experiments
                                                                       -- the game history is maintained globally for the next call
-
+-}
 
 
 
