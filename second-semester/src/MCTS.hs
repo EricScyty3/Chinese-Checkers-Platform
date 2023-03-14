@@ -148,28 +148,20 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
 switchEvaluator :: PlayoutArgument -> Colour -> [Transform] -> [KillerMoves] -> State GameTreeStatus ([KillerMoves], Transform)
 switchEvaluator (evaluator, depth) colour tfs kms =
-                                                if not (randomPercentage 95)
+                                                if not (randomPercentage 95) || evaluator == RandomEvaluator
                                                 then do let idx = randomMove (length tfs)
                                                         return (popedList, tfs !! idx) -- randomly choose a movement and generate the resulting board  
                                                 else case evaluator of
                                                         -- move evaluator
-                                                        RandomEvaluator -> do move <- randomEvaluator tfs
-                                                                              return (popedList, move)
-                                                        MoveEvaluator -> do move <- moveEvaluator tfs
-                                                                            return (popedList, move)
+                                                        MoveEvaluator -> do move <- moveEvaluator tfs; return (popedList, move)
                                                         -- board evaluator
-                                                        BoardEvaluator -> do move <- boardEvaluator tfs
-                                                                             return (popedList, move)
-                                                        ShallowParanoid -> do (move, nkms) <- paranoidEvaluator depth kms
-                                                                              return (nkms, move)
-                                                        ShallowBRS -> do (move, nkms) <- brsEvaluator depth kms
-                                                                         return (nkms, move)
+                                                        BoardEvaluator -> do move <- boardEvaluator tfs; return (popedList, move)
+                                                        ShallowParanoid -> do (move, nkms) <- paranoidEvaluator depth kms; return (nkms, move)
+                                                        ShallowBRS -> do (move, nkms) <- brsEvaluator depth kms; return (nkms, move)
+                                                        _ -> error "Undefined Evaluator"
     where
         popedList :: [KillerMoves]
         popedList = tail kms ++ [[]]
-
-        randomEvaluator :: [Transform] -> State GameTreeStatus Transform
-        randomEvaluator tfs = return (tfs !! randomMove (length tfs))
 
         moveEvaluator :: [Transform] -> State GameTreeStatus Transform
         moveEvaluator tfs = do colour <- getPlayerColour
@@ -188,7 +180,6 @@ switchEvaluator (evaluator, depth) colour tfs kms =
         paranoidEvaluator depth kms = do (ri, _, eboard, iboard, pn, _, _, _) <- get
                                          let ((move, _), nkms) = runState (mEvaluation (depth, ri, eboard, iboard, pn, (-999, 999), Paranoid) ri) kms
                                          return (move, nkms)
-
 
         brsEvaluator :: Int -> [KillerMoves] -> State GameTreeStatus (Transform, [KillerMoves])
         brsEvaluator depth kms = do (ri, _, eboard, iboard, pn, _, _, _) <- get

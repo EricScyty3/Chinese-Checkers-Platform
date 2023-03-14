@@ -32,14 +32,13 @@ type KillerMoves = [Transform] -- the two last moves that were best or caused a 
 -- the maximum value of the subtree could be the minimum value of its parent, when the layers of Max and Min are switched
 
 -- ghc -main-is Minimax Minimax.hs -O2 -fllvm -outputdir dist
-
-main = do arg <- getArgs
-          let depth = read $ head arg
-              tree = read $ arg !! 1
-          start <- getCurrentTime
-          print (testRun depth tree)
-          end <- getCurrentTime
-          print $ diffUTCTime end start
+-- main = do arg <- getArgs
+--           let depth = read $ head arg
+--               tree = read $ arg !! 1
+--           start <- getCurrentTime
+--           print (testRun depth tree)
+--           end <- getCurrentTime
+--           print $ diffUTCTime end start
 
 -- added enhancements (k-best pruning (10) and killer moves (2))
 --      2       3        4

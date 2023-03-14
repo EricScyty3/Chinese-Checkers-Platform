@@ -25,7 +25,6 @@ import Data.Fixed
 -- testRun control = do let (nboard, _, _, turns) = finalSelectionE (GRoot 0 []) (0, 1, eboard, iboard, pn, RBLeaf, (3, 0.9), (MoveEvaluator, 2)) 0 control
 --                      printEoard nboard
 --                      print (show (length turns) ++ ": " ++ show turns)
-                     
 --     where
 --         pn = 3
 --         eboard = eraseBoard (playerColourList pn) externalBoard

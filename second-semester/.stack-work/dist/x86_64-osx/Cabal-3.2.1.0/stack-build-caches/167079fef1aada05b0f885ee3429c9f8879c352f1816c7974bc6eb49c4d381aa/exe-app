@@ -19,15 +19,15 @@
 /Users/eric/msc-project/second-semester/src/Experiment.hs:
   hash: 36063c7903644c78ab345255e1463d897693b0c4d386b2b6d9b10f15eaff5a05
 /Users/eric/msc-project/second-semester/src/Extension.hs:
-  hash: 907687fbf903d374bd748612e318857ce28430f53ff2753ac26ed6879e84c408
+  hash: 98555990732fb88ae105d17151f03cbf00d35b65b134a838a1288e7802ecdf66
 /Users/eric/msc-project/second-semester/src/GameTree.hs:
   hash: 274ac3d7745e81488a6b82490d28090997b883b8cb42c68d220309fa52a0be40
 /Users/eric/msc-project/second-semester/src/MCTS.hs:
-  hash: 8e57f634cc4dd24ecaaa3d1ee780d79ccc9629081afe0017d8e16b34ec2409c6
+  hash: fb1c05269038d049e5fcb752b4088f6351f4d0045baa1b674084701e96d83bd3
 /Users/eric/msc-project/second-semester/src/Main.hs:
-  hash: ba15385ba8919f8e1b655edcbbacd856a822b79503db71c36f9f9affa3023c00
+  hash: 833ed46244a4afb3be3aba3669a2670264223a2d796536c438c5987fdfb90d1d
 /Users/eric/msc-project/second-semester/src/Minimax.hs:
-  hash: fe80536a272f470410046fe35228b587128d48a6d9db7ac0101b8e73bc09cd40
+  hash: 376754ff9b83e4e74bbb60fc8506c7646835859ea0ab22dda0eecb6aac190c19
 /Users/eric/msc-project/second-semester/src/RBTree.hs:
   hash: 3b09836d24ea6e19165bd31feb33a8f9aafcbf494015400200a503c3ffe65f4a
 /Users/eric/msc-project/second-semester/src/TestBoard.hs:

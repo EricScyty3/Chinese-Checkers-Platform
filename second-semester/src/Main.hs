@@ -67,9 +67,21 @@ import MCTS
 import Control.Concurrent
 import Configuration (LookupTable, lookupTable)
 import Data.List (elemIndex)
+import Minimax
+import Data.Fixed
+
+-- the container for storing the parameters for MCTS frameworks
+-- the configuration of a single computer player
+data ComputerPlayerConfig = ComputerPlayerConfig {
+  _uct :: Double,
+  _ph :: Double,
+  _evaluator :: PlayoutEvaluator,
+  _depth :: Int,     -- same as above
+  _control :: Int, -- the choice of how the mcts computes, either based on total iterations, expansions count or the time
+  _cvalue :: Int
+} deriving (Eq, Show)
 
 -- the GUI for the game platform allowing user to set player and board configuration
-
 -- the model representation indicates the state of the application: the information stored that models the subjects
 data AppModel = AppModel {
   -- the integer that identifies which player is currently playing, 0 means the first player in the list
@@ -97,7 +109,11 @@ data AppModel = AppModel {
   _errorMessage :: String,
   -- a list of posistions that a player can move from an entered position
   _movesList :: [BoardPos],
-  _gameHistory :: HistoryTrace -- the history trace applied by MCTS that stores movements states
+  _gameHistory :: HistoryTrace, -- the history trace applied by MCTS that stores movements states
+
+  _showDialog :: Bool, -- whether to display the mini control panel
+  _defaultConfig :: ComputerPlayerConfig -- the container that holds the configuration of a list of computer players
+
 } deriving (Eq, Show)
 
 -- the event that the model triggers and handles, the different actions that the handler could react to
@@ -109,9 +125,9 @@ data AppEvent
   | CancelMove  -- cancel the last played movement
   | EndGameButtonClick -- quit the current game and go back to the menu page
   | ResetChoice Int -- reset the game configuration
-  | ComputerAction
   deriving (Eq, Show)
 
+makeLenses 'ComputerPlayerConfig
 makeLenses 'AppModel
 
 -- produce the title text 
@@ -130,9 +146,12 @@ ifInitialPiece :: BoardPos -> Bool
 ifInitialPiece (U (-1, -1)) = True
 ifInitialPiece _ = False
 
+initialPos :: BoardPos
+initialPos = U (-1, -1)
+
 -- check the player index of the a certain piece
 getPlayerIndex :: Int -> BoardPos -> Int
-getPlayerIndex pn ch = case getColour ch of 
+getPlayerIndex pn ch = case getColour ch of
                             Nothing -> (-1)
                             Just c  -> fromMaybe (-1) (elemIndex c (playerColourList pn))
 
@@ -149,9 +168,9 @@ buildUI wenv model = widgetTree where
     -- place a spacer if the position type is "U"
     | isSpacer ch = spacer
     -- otherwise, place a buttom with colour representing the a board position
-    | otherwise = button_ (T.pack tpi) (MoveCheck ch pi) [onClick RenderMove] `styleBasic` 
+    | otherwise = button_ (T.pack tpi) (MoveCheck ch pi) [onClick RenderMove] `styleBasic`
                                                                          [radius 45, bgColor white, border 2 white, textSize 20, textColor white, -- empty positions will be coloured in white
-                                                                          styleIf (compareColour ch Red)    (bgColor red),                                                                 
+                                                                          styleIf (compareColour ch Red)    (bgColor red),
                                                                           styleIf (compareColour ch Blue)   (bgColor blue),
                                                                           styleIf (compareColour ch Green)  (bgColor green),
                                                                           styleIf (compareColour ch Purple) (bgColor purple),
@@ -183,47 +202,79 @@ buildUI wenv model = widgetTree where
   -- display the player settings, the amount of AI plauers
   computerPlayersChoices :: Int -> WidgetNode AppModel AppEvent
   computerPlayersChoices amount = labeledRadio (showt amount) amount computerPlayersAmount `styleBasic`[textSize 30]
-
   -- build strcutute/layout of the application
-  widgetTree = vstack [
-      -- the toppest one is the title
-      box $ label_ (T.pack $ titleText model) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
-      spacer,
-      -- then the message area, where the error message will be shown if needed, not visiable until the game is started
-      box $ label_ (T.pack $ model ^. errorMessage) [ellipsis] `styleBasic` [textFont "Italic", textSize 20] `nodeVisible` model ^. startGame,
-      spacer,
-      -- the two buttons that allow user to quit the game or cancel the last move made, not visiable until the game is started
-      box $ hgrid[
-          filler,
-          button "Quit" EndGameButtonClick `styleBasic`[textSize 20],
-          filler,
-          button "Cancel" CancelMove `styleBasic`[textSize 20],
-          filler
-      ]`nodeVisible` (model ^. startGame),
-      filler,
-      -- provide the options the user could choose for game and player configurations
-      box $ vstack[
-        label "Number of Players" `styleBasic`[textSize 30],
-        hgrid_ [childSpacing_ 10][
-          labeledRadio_ "2" 2 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30], -- the change of total players amount will also change the allowed AI players
-          labeledRadio_ "3" 3 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
-          labeledRadio_ "4" 4 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
-          labeledRadio_ "6" 6 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30]
+  widgetTree =
+      vstack [
+        -- the toppest one is the title
+        box $ label_ (T.pack $ titleText model) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
+        spacer,
+
+        box $ vstack[
+          label $ T.pack ("Exploration Factor: " ++ show (model ^. (defaultConfig.uct))),
+          hslider_ (defaultConfig.uct) 0 5 [dragRate 0.1, thumbVisible_ True],
+          label $ T.pack ("History Factor: " ++ show (model ^. (defaultConfig.ph))),
+          hslider_ (defaultConfig.ph) 0 5 [dragRate 0.1],
+          label "Playout evaluator",
+          hgrid[ --_ [childSpacing_ 10][
+            labeledRadio "Random" RandomEvaluator (defaultConfig.evaluator),
+            labeledRadio "Move" MoveEvaluator (defaultConfig.evaluator),
+            labeledRadio "Board" BoardEvaluator (defaultConfig.evaluator),
+            labeledRadio "Paranoid" ShallowParanoid (defaultConfig.evaluator),
+            labeledRadio "BRS" ShallowBRS (defaultConfig.evaluator)
+          ],
+          vstack [
+            label $ T.pack ("Search depth: " ++ show (model ^. (defaultConfig.depth))),
+            hslider (defaultConfig.depth) 2 4
+          ] `nodeEnabled` (model ^. defaultConfig.evaluator == ShallowBRS),
+          label "MCTS control",
+          hgrid [ --_ [childSpacing_ 10][
+            labeledRadio "Iterations" 0 (defaultConfig.control),
+            labeledRadio "Expansion" 1 (defaultConfig.control),
+            labeledRadio "Time" 2 (defaultConfig.control)
+          ],
+          label $ T.pack ("Control value: " ++ show (model ^. (defaultConfig.cvalue))),
+          numericField (defaultConfig.cvalue)
         ],
         spacer,
 
-        label "Number of Computer Players" `styleBasic`[textSize 30],
-        hgrid_ [childSpacing_ 10](computerPlayersChoices <$> [0..model ^. playersAmount]),
+        -- then the message area, where the error message will be shown if needed, not visiable until the game is started
+        box $ label_ (T.pack $ model ^. errorMessage) [ellipsis] `styleBasic` [textFont "Italic", textSize 20] `nodeVisible` model ^. startGame,
         spacer,
+        -- the two buttons that allow user to quit the game or cancel the last move made, not visiable until the game is started
+        box $ hgrid[
+            filler,
+            button "Quit" EndGameButtonClick `styleBasic`[textSize 20],
+            filler,
+            button "Cancel" CancelMove `styleBasic`[textSize 20],
+            filler
+        ]`nodeVisible` (model ^. startGame),
+        filler,
+        -- provide the options the user could choose for game and player configurations
+        box $ vstack[
+          label "Number of Players" `styleBasic`[textSize 30],
+          hgrid_ [childSpacing_ 10][
+            labeledRadio_ "2" 2 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30], -- the change of total players amount will also change the allowed AI players
+            labeledRadio_ "3" 3 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
+            labeledRadio_ "4" 4 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
+            labeledRadio_ "6" 6 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30]
+          ],
+          spacer,
 
-        button "Start Game" StartGameButtonClick `styleBasic`[textSize 50]
-      ] `nodeVisible` not (model ^. startGame), -- only visitable in the menu page
-      spacer,
-      -- finally render the pieces row by row
-      filler,
-      vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. displayBoard)) `nodeVisible` (model ^. startGame)--,
-      -- filler
-    ] `styleBasic` [padding 20]
+          label "Number of Computer Players" `styleBasic`[textSize 30],
+          hgrid_ [childSpacing_ 10](computerPlayersChoices <$> [0..model ^. playersAmount]),
+          spacer,
+
+          button "Start Game" StartGameButtonClick `styleBasic`[textSize 50]{-,
+          spacer,
+
+          button "Show Dialog" StartGameButtonClick-}
+        ] `nodeVisible` not (model ^. startGame), -- only visitable in the menu page
+        spacer,
+        -- finally render the pieces row by row
+        filler,
+        vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. displayBoard)) `nodeVisible` (model ^. startGame)--,
+        -- filler
+      ] `styleBasic` [padding 20]
 
 -- declare how the events are handled respectively
 handleEvent
@@ -233,18 +284,17 @@ handleEvent
   -> AppEvent
   -> [AppEventResponse AppModel AppEvent]
 handleEvent wenv node model evt = case evt of
-  AppInit -> [Producer computerTurn] -- an additional thread for checking computer player's turn
-
+  AppInit -> [{-Producer computerTurn-}] -- an additional thread for checking computer player's turn
   -- setup the game board according to the options in the menu page: 
   -- declare that the game is started letting certain subjects to be visiable or invisiable
   -- generate the game board based on the chosen players number, and the corresponding length of hash state
-  StartGameButtonClick -> [Model $ model & startGame .~ True
+  StartGameButtonClick -> [] {-[Model $ model & startGame .~ True
                                          & displayBoard .~ eraseBoard (playerColourList pn) externalBoard
                                          & internalStates .~ replicate pn hashInitial
-                                         & computerIdxList .~ idxList]
+                                         & computerIdxList .~ idxList]-}
     where
       -- get the computer players indices randomly
-      pn = model ^. playersAmount 
+      pn = model ^. playersAmount
       idxList = take (model ^. computerPlayersAmount) (randomIndices pn)
 
   -- the event of cancel the last piece change made, and revert it to the previous board state   
@@ -253,8 +303,8 @@ handleEvent wenv node model evt = case evt of
     | model ^. ifWin || model ^. computerIdxList /= [] -> [] -- ignore if the win state is confirmed or computer player involves
     | not (ifInitialPiece pf) && not (ifInitialPiece pt) -> [Model $ model & displayBoard .~ newBoard -- reset the board, hash, and turn states
                                                                            & internalStates .~ insertState
-                                                                           & previousFromPiece .~ U(-1, -1)
-                                                                           & previousToPiece .~ U(-1, -1)
+                                                                           & previousFromPiece .~ initialPos
+                                                                           & previousToPiece .~ initialPos
                                                                            & turnS .~ lastTurn]
     | otherwise -> [] -- ignore if not record is stored for that
     where
@@ -281,8 +331,8 @@ handleEvent wenv node model evt = case evt of
                                                                 & turnS .~ newTurn
                                                                 & previousFromPiece .~ f
                                                                 & previousToPiece .~ t
-                                                                & fromPiece .~ U(-1, -1)
-                                                                & toPiece .~ U(-1,-1)
+                                                                & fromPiece .~ initialPos
+                                                                & toPiece .~ initialPos
                                                                 & movesList .~ []
                                                                 & ifWin .~ newWinState] -- if a win is reached then update it
     | otherwise -> []
@@ -303,10 +353,10 @@ handleEvent wenv node model evt = case evt of
   EndGameButtonClick -> [Model $ model & turnS .~ 0 -- resetting all states
                                        & ifWin .~ False
                                        & startGame .~ False
-                                       & fromPiece .~ U (-1, -1)
-                                       & toPiece .~ U (-1, -1)
-                                       & previousFromPiece .~ U(-1, -1)
-                                       & previousToPiece .~ U(-1, -1)
+                                       & fromPiece .~ initialPos
+                                       & toPiece .~ initialPos
+                                       & previousFromPiece .~ initialPos
+                                       & previousToPiece .~ initialPos
                                        & errorMessage .~ ""
                                        & movesList .~ []
                                        & gameHistory .~ RBLeaf]
@@ -345,7 +395,7 @@ handleEvent wenv node model evt = case evt of
     | otherwise -> []
     where
       c = model ^. computerPlayersAmount
-
+{-
   -- only react when the during the game and is currently the computer player's turn
   ComputerAction -> case model ^. startGame && (model ^. turnS `elem` model ^. computerIdxList) && not (model ^. ifWin) of
                       True  -> [Model $ model & displayBoard .~ newBoard
@@ -362,7 +412,7 @@ handleEvent wenv node model evt = case evt of
       insertState = replace (model ^. turnS) newState (model ^. internalStates)
       newWinState = winStateDetectHash newState
       newTurn = if not newWinState then turnChange model else model ^. turnS
-
+-}
 
 -- update the turn based on the order or reverting order
 turnChange :: AppModel -> Int
@@ -375,6 +425,7 @@ revertTurnChange model
   | model ^. turnS == 0 = model ^. playersAmount - 1
   | otherwise = model ^. turnS - 1
 
+{-
 -- keep calling the event for checking the computer player's movement
 computerTurn :: (AppEvent -> IO a) -> IO b
 computerTurn sendMsg = do sendMsg ComputerAction
@@ -392,6 +443,7 @@ aiDecision model = let root = GRoot 0 []  -- makeRoot (model ^. playersAmount) (
     pn = model ^. playersAmount
     ht = model ^. gameHistory
     ps = initialInternalBoard eboard pn
+-}
 
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
@@ -420,11 +472,14 @@ main = do startApp model handleEvent buildUI config
       _computerPlayersAmount = 0,
       _computerIdxList = [],
       _startGame = False,
-      _fromPiece = U (-1, -1),
-      _toPiece = U (-1, -1),
-      _previousFromPiece = U(-1, -1),
-      _previousToPiece = U(-1, -1),
+      _fromPiece = initialPos,
+      _toPiece = initialPos,
+      _previousFromPiece = initialPos,
+      _previousToPiece = initialPos,
       _errorMessage = "",
       _movesList = [],
-      _gameHistory = RBLeaf
+      _gameHistory = RBLeaf,
+      _showDialog = False,
+      _defaultConfig = ComputerPlayerConfig 0 0 MoveEvaluator 0 0 10
+
     }
