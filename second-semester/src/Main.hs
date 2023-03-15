@@ -111,7 +111,7 @@ data AppModel = AppModel {
   _movesList :: [BoardPos],
   _gameHistory :: HistoryTrace, -- the history trace applied by MCTS that stores movements states
 
-  _showDialog :: Bool, -- whether to display the mini control panel
+  _configIdx :: Int, -- whether to display the mini control panel
   _defaultConfig :: ComputerPlayerConfig -- the container that holds the configuration of a list of computer players
 
 } deriving (Eq, Show)
@@ -125,6 +125,8 @@ data AppEvent
   | CancelMove  -- cancel the last played movement
   | EndGameButtonClick -- quit the current game and go back to the menu page
   | ResetChoice Int -- reset the game configuration
+  | NextPage
+  | LastPage
   deriving (Eq, Show)
 
 makeLenses 'ComputerPlayerConfig
@@ -201,41 +203,115 @@ buildUI wenv model = widgetTree where
 
   -- display the player settings, the amount of AI plauers
   computerPlayersChoices :: Int -> WidgetNode AppModel AppEvent
-  computerPlayersChoices amount = labeledRadio (showt amount) amount computerPlayersAmount `styleBasic`[textSize 30]
+  computerPlayersChoices amount = labeledRadio_ (showt amount) amount computerPlayersAmount [textRight] `nodeVisible` (model ^. playersAmount >= amount)
+
+
+  featureLayer = 
+    vstack [
+      label (T.pack ("Exploration Factor: " ++ show (model ^. (defaultConfig.uct)))) `styleBasic` [textSize 20],
+      spacer,
+      hslider_ (defaultConfig.uct) 0 5 [dragRate 0.1] `styleBasic` [fgColor orange],
+      spacer,
+      
+      label (T.pack ("History Factor: " ++ show (model ^. (defaultConfig.ph)))) `styleBasic` [textSize 20],
+      spacer,
+      hslider_ (defaultConfig.ph) 0 5 [dragRate 0.1] `styleBasic` [fgColor orange],
+      spacer,
+
+      hstack [
+
+       box_ [alignTop] $ vgrid_ [childSpacing_ 5] [
+          label "Simulation Evaluator" `styleBasic` [textSize 20],
+          labeledRadio_ "Random" RandomEvaluator (defaultConfig.evaluator) [textRight],
+          labeledRadio_ "Move" MoveEvaluator (defaultConfig.evaluator) [textRight],
+          labeledRadio_ "Board" BoardEvaluator (defaultConfig.evaluator) [textRight],
+          
+          hstack [
+            labeledRadio_ "Paranoid" ShallowParanoid (defaultConfig.evaluator) [textRight],
+            spacer,
+            hgrid_ [childSpacing_ 5] [
+              label "(depth)", 
+              labeledRadio_ "2" 2 (defaultConfig.depth) [textRight],
+              labeledRadio_ "3" 3 (defaultConfig.depth) [textRight],
+              labeledRadio_ "4" 4 (defaultConfig.depth) [textRight]
+            ] `nodeVisible` (model ^. defaultConfig.evaluator == ShallowParanoid)
+          ],
+
+          hstack [
+            labeledRadio_ "BRS" ShallowBRS (defaultConfig.evaluator) [textRight],
+            spacer,
+            hgrid_ [childSpacing_ 5] [
+              label "(depth)", 
+              labeledRadio_ "2" 2 (defaultConfig.depth) [textRight],
+              labeledRadio_ "3" 3 (defaultConfig.depth) [textRight],
+              labeledRadio_ "4" 4 (defaultConfig.depth) [textRight]
+            ] `nodeVisible` (model ^. defaultConfig.evaluator == ShallowBRS)
+          ]
+        ],
+
+        filler,
+        box_ [alignTop] $ 
+          vgrid_ [childSpacing_ 10] [
+            label "MCTS Control" `styleBasic` [textSize 20],
+            labeledRadio_ "Iterations" 0 (defaultConfig.control) [textRight],
+            labeledRadio_ "Expansion (nodes)" 1 (defaultConfig.control) [textRight],
+            labeledRadio_ "Time (seconds)" 2 (defaultConfig.control) [textRight]
+          ]
+      ],
+      spacer,
+      
+      vstack [
+        label (T.pack ("Control Value: " ++ show (model ^. (defaultConfig.cvalue)))) `styleBasic` [textSize 20],
+        spacer,
+        hslider (defaultConfig.cvalue) 1 1000 `styleBasic` [fgColor orange]
+      ],
+
+      spacer,
+      hstack [
+        button "Last" LastPage `nodeEnabled` (model ^. configIdx /= 0),
+        filler,
+        label (T.pack ("Computer Player: " ++ show (model ^. configIdx))),
+        filler,
+        button "Next" NextPage `nodeEnabled` (model ^. configIdx /= model ^. computerPlayersAmount)
+      ] `styleBasic` [textSize 20]
+
+    ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
+
+  playerLayer = 
+    hstack[
+      vstack [
+        label "Total Players",
+        spacer_ [width 15],
+        label "Computer Players" 
+      ]`styleBasic` [textSize 20],
+      spacer,
+
+      box_ [alignTop] $ vstack [
+        box_ [alignLeft] $ hgrid_ [childSpacing_ 10] [
+          labeledRadio_ "2" 2 playersAmount [onChange ResetChoice, textRight], -- the change of total players amount will also change the allowed AI players
+          labeledRadio_ "3" 3 playersAmount [onChange ResetChoice, textRight],
+          labeledRadio_ "4" 4 playersAmount [onChange ResetChoice, textRight],
+          labeledRadio_ "6" 6 playersAmount [onChange ResetChoice, textRight]
+        ],
+        spacer,
+        box_ [alignLeft] $ hgrid_ [childSpacing_ 10] (computerPlayersChoices <$> [0..6])
+      ]
+    ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
+
+
+
+
   -- build strcutute/layout of the application
   widgetTree =
       vstack [
         -- the toppest one is the title
         box $ label_ (T.pack $ titleText model) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
-        spacer,
-
-        box $ vstack[
-          label $ T.pack ("Exploration Factor: " ++ show (model ^. (defaultConfig.uct))),
-          hslider_ (defaultConfig.uct) 0 5 [dragRate 0.1, thumbVisible_ True],
-          label $ T.pack ("History Factor: " ++ show (model ^. (defaultConfig.ph))),
-          hslider_ (defaultConfig.ph) 0 5 [dragRate 0.1],
-          label "Playout evaluator",
-          hgrid[ --_ [childSpacing_ 10][
-            labeledRadio "Random" RandomEvaluator (defaultConfig.evaluator),
-            labeledRadio "Move" MoveEvaluator (defaultConfig.evaluator),
-            labeledRadio "Board" BoardEvaluator (defaultConfig.evaluator),
-            labeledRadio "Paranoid" ShallowParanoid (defaultConfig.evaluator),
-            labeledRadio "BRS" ShallowBRS (defaultConfig.evaluator)
-          ],
-          vstack [
-            label $ T.pack ("Search depth: " ++ show (model ^. (defaultConfig.depth))),
-            hslider (defaultConfig.depth) 2 4
-          ] `nodeEnabled` (model ^. defaultConfig.evaluator == ShallowBRS),
-          label "MCTS control",
-          hgrid [ --_ [childSpacing_ 10][
-            labeledRadio "Iterations" 0 (defaultConfig.control),
-            labeledRadio "Expansion" 1 (defaultConfig.control),
-            labeledRadio "Time" 2 (defaultConfig.control)
-          ],
-          label $ T.pack ("Control value: " ++ show (model ^. (defaultConfig.cvalue))),
-          numericField (defaultConfig.cvalue)
-        ],
-        spacer,
+        -- box_ [alignCenter, alignMiddle]
+        filler,
+        
+        box featureLayer `nodeVisible` not (model ^. startGame),
+        {-spacer,
+        
 
         -- then the message area, where the error message will be shown if needed, not visiable until the game is started
         box $ label_ (T.pack $ model ^. errorMessage) [ellipsis] `styleBasic` [textFont "Italic", textSize 20] `nodeVisible` model ^. startGame,
@@ -248,32 +324,20 @@ buildUI wenv model = widgetTree where
             button "Cancel" CancelMove `styleBasic`[textSize 20],
             filler
         ]`nodeVisible` (model ^. startGame),
-        filler,
+        -- filler,
+        -}
         -- provide the options the user could choose for game and player configurations
-        box $ vstack[
-          label "Number of Players" `styleBasic`[textSize 30],
-          hgrid_ [childSpacing_ 10][
-            labeledRadio_ "2" 2 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30], -- the change of total players amount will also change the allowed AI players
-            labeledRadio_ "3" 3 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
-            labeledRadio_ "4" 4 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30],
-            labeledRadio_ "6" 6 playersAmount [onChange ResetChoice] `styleBasic`[textSize 30]
-          ],
-          spacer,
-
-          label "Number of Computer Players" `styleBasic`[textSize 30],
-          hgrid_ [childSpacing_ 10](computerPlayersChoices <$> [0..model ^. playersAmount]),
-          spacer,
-
-          button "Start Game" StartGameButtonClick `styleBasic`[textSize 50]{-,
-          spacer,
-
-          button "Show Dialog" StartGameButtonClick-}
-        ] `nodeVisible` not (model ^. startGame), -- only visitable in the menu page
+        filler,
+        box playerLayer `nodeVisible` not (model ^. startGame), -- only visitable in the menu page
+        
+        filler,
+        box $ button "Start Game" StartGameButtonClick `styleBasic`[textSize 30],
+        filler
+        {-
         spacer,
         -- finally render the pieces row by row
-        filler,
-        vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. displayBoard)) `nodeVisible` (model ^. startGame)--,
-        -- filler
+        -- filler,
+        vgrid_ [childSpacing_ 5] (makeRowState <$> (model ^. displayBoard)) `nodeVisible` (model ^. startGame)-}
       ] `styleBasic` [padding 20]
 
 -- declare how the events are handled respectively
@@ -296,6 +360,9 @@ handleEvent wenv node model evt = case evt of
       -- get the computer players indices randomly
       pn = model ^. playersAmount
       idxList = take (model ^. computerPlayersAmount) (randomIndices pn)
+
+  NextPage ->  [Model $ model & configIdx .~ model ^. configIdx + 1]
+  LastPage ->  [Model $ model & configIdx .~ model ^. configIdx - 1]
 
   -- the event of cancel the last piece change made, and revert it to the previous board state   
   -- movement cancel is not allowed to be made over a player, meaning that once another player makes the move, you can no longer cancel yours                             
@@ -479,7 +546,6 @@ main = do startApp model handleEvent buildUI config
       _errorMessage = "",
       _movesList = [],
       _gameHistory = RBLeaf,
-      _showDialog = False,
+      _configIdx = 0,
       _defaultConfig = ComputerPlayerConfig 0 0 MoveEvaluator 0 0 10
-
     }
