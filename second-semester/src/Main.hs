@@ -73,12 +73,17 @@ import Data.Fixed
 -- the container for storing the parameters for MCTS frameworks
 -- the configuration of a single computer player
 data ComputerPlayerConfig = ComputerPlayerConfig {
+  _active :: Bool,
   _uct :: Double,
   _ph :: Double,
   _evaluator :: PlayoutEvaluator,
   _depth :: Int,     -- same as above
   _control :: Int, -- the choice of how the mcts computes, either based on total iterations, expansions count or the time
   _cvalue :: Int
+} deriving (Eq, Show)
+
+newtype ConfigList = ConfigList {
+  _configList :: [ComputerPlayerConfig]
 } deriving (Eq, Show)
 
 -- the GUI for the game platform allowing user to set player and board configuration
@@ -96,9 +101,7 @@ data AppModel = AppModel {
   _internalStates :: [Int],
   -- the players of the game
   _playersAmount :: Int,
-  -- the AI players of the game
-  _computerPlayersAmount :: Int,
-  _computerIdxList :: [Int], -- the index to determine if the current player an AI or human player
+  -- _computerIdxList :: [Int], -- the index to determine if the current player an AI or human player
   -- the current player's move: from a position to another new position
   _fromPiece :: BoardPos,
   _toPiece :: BoardPos,
@@ -111,9 +114,8 @@ data AppModel = AppModel {
   _movesList :: [BoardPos],
   _gameHistory :: HistoryTrace, -- the history trace applied by MCTS that stores movements states
 
-  _configIdx :: Int, -- whether to display the mini control panel
-  _defaultConfig :: ComputerPlayerConfig -- the container that holds the configuration of a list of computer players
-
+  _pageIndex :: Int,
+  _defaultConfig :: ConfigList -- the container that holds the configuration of a list of computer players
 } deriving (Eq, Show)
 
 -- the event that the model triggers and handles, the different actions that the handler could react to
@@ -130,18 +132,22 @@ data AppEvent
   deriving (Eq, Show)
 
 makeLenses 'ComputerPlayerConfig
+makeLenses 'ConfigList
 makeLenses 'AppModel
 
 -- produce the title text 
 titleText :: AppModel -> String
 titleText model
   | not (model ^. startGame) = "Haskell Chinese Checkers" -- print welcome text at the menu page
+  | otherwise = ""
+  {-
   | model ^. ifWin = name ++ show turn ++ " wins" -- print winning player's colour when the win state of a player is achieved
   | otherwise = name ++ show turn ++ "'s turn" -- print current player's turn and colour if win state is not satisfied
   where
     turn = model ^. turnS
     name = if turn `elem` model ^. computerIdxList then "Computer Player " else "Player "
     -- colour = playerColour (model ^. turnS) (model ^. playersAmount)
+  -}
 
 -- determine if the state of fromPiece, toPiece, previousFromPiece, previousToPiece, is changed
 ifInitialPiece :: BoardPos -> Bool
@@ -203,86 +209,98 @@ buildUI wenv model = widgetTree where
 
   -- display the player settings, the amount of AI plauers
   computerPlayersChoices :: Int -> WidgetNode AppModel AppEvent
-  computerPlayersChoices amount = labeledRadio_ (showt amount) amount computerPlayersAmount [textRight] `nodeVisible` (model ^. playersAmount >= amount)
+  computerPlayersChoices idx = -- labeledRadio_ (showt amount) amount computerPlayersAmount [textRight]
+                                  labeledCheckbox_ (showt idx) (defaultConfig . configList . singular (ix idx) . active) [checkboxSquare, textRight]
 
+  featureLayer =
 
-  featureLayer = 
-    vstack [
-      label (T.pack ("Exploration Factor: " ++ show (model ^. (defaultConfig.uct)))) `styleBasic` [textSize 20],
-      spacer,
-      hslider_ (defaultConfig.uct) 0 5 [dragRate 0.1] `styleBasic` [fgColor orange],
-      spacer,
-      
-      label (T.pack ("History Factor: " ++ show (model ^. (defaultConfig.ph)))) `styleBasic` [textSize 20],
-      spacer,
-      hslider_ (defaultConfig.ph) 0 5 [dragRate 0.1] `styleBasic` [fgColor orange],
-      spacer,
+      vstack [
+        label (T.pack ("Exploration Factor: " ++ show (vitem ^. uct))) `styleBasic` [textSize 20],
+        spacer,
+        hslider_ (mitem.uct) 0 5 [dragRate 0.1] `styleBasic` [fgColor orange],
+        spacer,
+        label (T.pack ("History Factor: " ++ show (vitem ^. ph))) `styleBasic` [textSize 20],
+        spacer,
+        hslider_ (mitem.ph) 0 5 [dragRate 0.1] `styleBasic` [fgColor orange],
+        spacer,
 
-      hstack [
+        hstack [
 
-       box_ [alignTop] $ vgrid_ [childSpacing_ 5] [
-          label "Simulation Evaluator" `styleBasic` [textSize 20],
-          labeledRadio_ "Random" RandomEvaluator (defaultConfig.evaluator) [textRight],
-          labeledRadio_ "Move" MoveEvaluator (defaultConfig.evaluator) [textRight],
-          labeledRadio_ "Board" BoardEvaluator (defaultConfig.evaluator) [textRight],
-          
-          hstack [
-            labeledRadio_ "Paranoid" ShallowParanoid (defaultConfig.evaluator) [textRight],
-            spacer,
-            hgrid_ [childSpacing_ 5] [
-              label "(depth)", 
-              labeledRadio_ "2" 2 (defaultConfig.depth) [textRight],
-              labeledRadio_ "3" 3 (defaultConfig.depth) [textRight],
-              labeledRadio_ "4" 4 (defaultConfig.depth) [textRight]
-            ] `nodeVisible` (model ^. defaultConfig.evaluator == ShallowParanoid)
+        box_ [alignTop] $ vgrid_ [childSpacing_ 5] [
+            label "Simulation Evaluator" `styleBasic` [textSize 20],
+            labeledRadio_ "Random" RandomEvaluator eitem [textRight],
+            labeledRadio_ "Move" MoveEvaluator eitem [textRight],
+            labeledRadio_ "Board" BoardEvaluator eitem [textRight],
+
+            hstack [
+              labeledRadio_ "Paranoid" ShallowParanoid eitem [textRight],
+              spacer,
+              hgrid_ [childSpacing_ 5] [
+                label "(depth)",
+                labeledRadio_ "2" 2 ditem [textRight],
+                labeledRadio_ "3" 3 ditem [textRight],
+                labeledRadio_ "4" 4 ditem [textRight]
+              ] `nodeVisible` (vitem ^. evaluator == ShallowParanoid)
+            ],
+
+            hstack [
+              labeledRadio_ "BRS" ShallowBRS eitem [textRight],
+              spacer,
+              hgrid_ [childSpacing_ 5] [
+                label "(depth)",
+                labeledRadio_ "2" 2 ditem [textRight],
+                labeledRadio_ "3" 3 ditem [textRight],
+                labeledRadio_ "4" 4 ditem [textRight]
+              ] `nodeVisible` (vitem ^. evaluator == ShallowBRS)
+            ]
           ],
 
-          hstack [
-            labeledRadio_ "BRS" ShallowBRS (defaultConfig.evaluator) [textRight],
-            spacer,
-            hgrid_ [childSpacing_ 5] [
-              label "(depth)", 
-              labeledRadio_ "2" 2 (defaultConfig.depth) [textRight],
-              labeledRadio_ "3" 3 (defaultConfig.depth) [textRight],
-              labeledRadio_ "4" 4 (defaultConfig.depth) [textRight]
-            ] `nodeVisible` (model ^. defaultConfig.evaluator == ShallowBRS)
-          ]
+          filler,
+          box_ [alignTop] $
+            vgrid_ [childSpacing_ 10] [
+              label "MCTS Control" `styleBasic` [textSize 20],
+              labeledRadio_ "Iterations" 0 citem [textRight],
+              labeledRadio_ "Expansion (nodes)" 1 citem [textRight],
+              labeledRadio_ "Time (seconds)" 2 citem [textRight]
+            ]
         ],
-
-        filler,
-        box_ [alignTop] $ 
-          vgrid_ [childSpacing_ 10] [
-            label "MCTS Control" `styleBasic` [textSize 20],
-            labeledRadio_ "Iterations" 0 (defaultConfig.control) [textRight],
-            labeledRadio_ "Expansion (nodes)" 1 (defaultConfig.control) [textRight],
-            labeledRadio_ "Time (seconds)" 2 (defaultConfig.control) [textRight]
-          ]
-      ],
-      spacer,
-      
-      vstack [
-        label (T.pack ("Control Value: " ++ show (model ^. (defaultConfig.cvalue)))) `styleBasic` [textSize 20],
         spacer,
-        hslider (defaultConfig.cvalue) 1 1000 `styleBasic` [fgColor orange]
-      ],
 
-      spacer,
+        vstack [
+          label (T.pack ("Control Value: " ++ show (vitem ^. cvalue))) `styleBasic` [textSize 20],
+          spacer,
+          hslider cvitem 1 1000 `styleBasic` [fgColor orange]
+        ]
+      ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
+
+    
+  pi = model ^. pageIndex
+  vitem = model ^. defaultConfig ^?! configList . ix pi
+  aitem = model ^. defaultConfig ^?! configList . ix pi . active
+  mitem = defaultConfig . configList . singular (ix pi)
+  eitem = defaultConfig . configList . singular (ix pi) . evaluator
+  ditem = defaultConfig . configList . singular (ix pi) . depth
+  citem = defaultConfig . configList . singular (ix pi) . control
+  cvitem = defaultConfig . configList . singular (ix pi) . cvalue
+
+
+  selectButtonLayer =
       hstack [
-        button "Last" LastPage `nodeEnabled` (model ^. configIdx /= 0),
+        button "Last" LastPage `nodeEnabled` (pi > 0),
         filler,
-        label (T.pack ("Computer Player: " ++ show (model ^. configIdx))),
+        label (T.pack ( (if aitem then "Computer Player: " else "Human Player: ")
+                        ++ show pi)) `styleBasic` [textSize 30],
         filler,
-        button "Next" NextPage `nodeEnabled` (model ^. configIdx /= model ^. computerPlayersAmount)
-      ] `styleBasic` [textSize 20]
+        button "Next" NextPage `nodeEnabled` (pi < 5)
+      ] `styleBasic` [maxWidth 600, padding 20]
 
-    ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
 
-  playerLayer = 
+  playerLayer =
     hstack[
       vstack [
         label "Total Players",
         spacer_ [width 15],
-        label "Computer Players" 
+        label "Computer Players"
       ]`styleBasic` [textSize 20],
       spacer,
 
@@ -294,12 +312,9 @@ buildUI wenv model = widgetTree where
           labeledRadio_ "6" 6 playersAmount [onChange ResetChoice, textRight]
         ],
         spacer,
-        box_ [alignLeft] $ hgrid_ [childSpacing_ 10] (computerPlayersChoices <$> [0..6])
+        box_ [alignLeft] $ hgrid_ [childSpacing_ 10] (computerPlayersChoices <$> [0.. model ^. playersAmount - 1])
       ]
     ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
-
-
-
 
   -- build strcutute/layout of the application
   widgetTree =
@@ -308,8 +323,10 @@ buildUI wenv model = widgetTree where
         box $ label_ (T.pack $ titleText model) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
         -- box_ [alignCenter, alignMiddle]
         filler,
-        
-        box featureLayer `nodeVisible` not (model ^. startGame),
+
+        box featureLayer `nodeVisible` not (model ^. startGame) `nodeEnabled` aitem,
+        spacer,
+        box selectButtonLayer,
         {-spacer,
         
 
@@ -327,9 +344,9 @@ buildUI wenv model = widgetTree where
         -- filler,
         -}
         -- provide the options the user could choose for game and player configurations
-        filler,
+        spacer,
         box playerLayer `nodeVisible` not (model ^. startGame), -- only visitable in the menu page
-        
+
         filler,
         box $ button "Start Game" StartGameButtonClick `styleBasic`[textSize 30],
         filler
@@ -359,14 +376,14 @@ handleEvent wenv node model evt = case evt of
     where
       -- get the computer players indices randomly
       pn = model ^. playersAmount
-      idxList = take (model ^. computerPlayersAmount) (randomIndices pn)
+      -- idxList = take (model ^. computerPlayersAmount) (randomIndices pn)
 
-  NextPage ->  [Model $ model & configIdx .~ model ^. configIdx + 1]
-  LastPage ->  [Model $ model & configIdx .~ model ^. configIdx - 1]
+  NextPage ->  [Model $ model & pageIndex .~ model ^. pageIndex + 1]
+  LastPage ->  [Model $ model & pageIndex .~ model ^. pageIndex - 1]
 
   -- the event of cancel the last piece change made, and revert it to the previous board state   
   -- movement cancel is not allowed to be made over a player, meaning that once another player makes the move, you can no longer cancel yours                             
-  CancelMove
+  CancelMove -> [] {-
     | model ^. ifWin || model ^. computerIdxList /= [] -> [] -- ignore if the win state is confirmed or computer player involves
     | not (ifInitialPiece pf) && not (ifInitialPiece pt) -> [Model $ model & displayBoard .~ newBoard -- reset the board, hash, and turn states
                                                                            & internalStates .~ insertState
@@ -374,6 +391,7 @@ handleEvent wenv node model evt = case evt of
                                                                            & previousToPiece .~ initialPos
                                                                            & turnS .~ lastTurn]
     | otherwise -> [] -- ignore if not record is stored for that
+    -}
     where
       pf = model ^. previousFromPiece
       pt = model ^. previousToPiece
@@ -431,7 +449,8 @@ handleEvent wenv node model evt = case evt of
   -- the movement check, how a movement is passed is done as follows:
   -- first enter the starting point, and check for the correctness
   -- then enter the destination, if no error is made then process, otherwise, discard that and print the error message 
-  MoveCheck b pi -> case model ^. ifWin || (model ^. turnS `elem` model ^. computerIdxList) of -- if already won or it's computer's turn, then do nothing
+  MoveCheck b pi -> []
+                {-case model ^. ifWin || (model ^. turnS `elem` model ^. computerIdxList) of -- if already won or it's computer's turn, then do nothing
                   True ->  []
                   False -> case ifInitialPiece $ model ^. fromPiece of -- if first time for entering starting position
                               True  -> if turn == pi then [Model $ model & fromPiece .~ b     -- check if the entered position is valid for the current player
@@ -450,18 +469,23 @@ handleEvent wenv node model evt = case evt of
                                                                         False -> [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination unreacbable" -- if the desintation is not in the list, then invalid
                                                                                                 & fromPiece .~ U (-1, -1)]
                                                       True -> [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination occupied" -- if the destination is occupied, then invalid
-                                                                             & fromPiece .~ U (-1, -1)]
+                                                                             & fromPiece .~ U (-1, -1)]-}
     where
       turn = model ^. turnS
       -- currentColour = playerColour (model ^. turnS) (model ^. playersAmount)
       newMovesList = evalState (destinationList b) (model ^. displayBoard)
 
   -- reset the total player amount for computer player options
-  ResetChoice v
-    | v < c -> [Model $ model & computerPlayersAmount .~ v]
-    | otherwise -> []
+  ResetChoice v -> [Model $ model & defaultConfig . configList . ix 0 . active .~ head newList
+                                  & defaultConfig . configList . ix 1 . active .~ newList !! 1
+                                  & defaultConfig . configList . ix 2 . active .~ newList !! 2
+                                  & defaultConfig . configList . ix 3 . active .~ newList !! 3
+                                  & defaultConfig . configList . ix 4 . active .~ newList !! 4
+                                  & defaultConfig . configList . ix 5 . active .~ newList !! 5 ]
     where
-      c = model ^. computerPlayersAmount
+      newList = take v remainedList ++ replicate (6 - v) False
+      remainedList = map modelList [0..5]
+      modelList x = model ^?! defaultConfig . configList . singular (ix x) . active
 {-
   -- only react when the during the game and is currently the computer player's turn
   ComputerAction -> case model ^. startGame && (model ^. turnS `elem` model ^. computerIdxList) && not (model ^. ifWin) of
@@ -536,8 +560,7 @@ main = do startApp model handleEvent buildUI config
       _displayBoard = externalBoard,
       _internalStates = [],
       _playersAmount = 2,
-      _computerPlayersAmount = 0,
-      _computerIdxList = [],
+
       _startGame = False,
       _fromPiece = initialPos,
       _toPiece = initialPos,
@@ -546,6 +569,7 @@ main = do startApp model handleEvent buildUI config
       _errorMessage = "",
       _movesList = [],
       _gameHistory = RBLeaf,
-      _configIdx = 0,
-      _defaultConfig = ComputerPlayerConfig 0 0 MoveEvaluator 0 0 10
+
+      _pageIndex = 0
+      , _defaultConfig = ConfigList $ replicate 6 (ComputerPlayerConfig False 0 0 MoveEvaluator 0 0 10)
     }
