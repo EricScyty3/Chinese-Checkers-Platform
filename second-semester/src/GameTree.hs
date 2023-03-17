@@ -85,11 +85,11 @@ setPlayerIdx pi = do (_, bi, b, ps, pn, ht, cons, pa) <- get; put (pi, bi, b, ps
 -- change the player turns based on index from 0 to the number - 1
 turnBase :: Int -> PlayerIndex -> PlayerIndex
 turnBase players idx = if idx == players - 1 then 0 else idx + 1
-{--- revert the turn to the last one
+-- revert the turn to the last one
 turnRevert :: Int -> PlayerIndex -> PlayerIndex
 turnRevert players idx
   | idx == 0 = players - 1
-  | otherwise = idx - 1-}
+  | otherwise = idx - 1
 -- increment the board index by 1
 updateBoardIdx :: State GameTreeStatus ()
 updateBoardIdx = do (pi, bi, b, ps, pn, ht, cons, pa) <- get; put (pi, bi+1, b, ps, pn, ht, cons, pa)
@@ -201,6 +201,7 @@ colouredMovesList idx = do board <- getBoard
                                bs = ps `par` colour `pseq` map (appendColour colour . reversion colour) ps -- invert the internal positions to external ones
                                ds = evalState (do mapM destinationList bs) board -- the new positions resulting from moving the above pieces
                            return (pairArrange bs ds) -- zip the resulting movements with the current pieces
+
 pairArrange :: [BoardPos] -> [[BoardPos]] -> [Transform]
 pairArrange _ [] = []
 pairArrange [] _ = []
