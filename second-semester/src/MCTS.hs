@@ -150,19 +150,16 @@ switchEvaluator :: PlayoutArgument -> Colour -> [Transform] -> [KillerMoves] -> 
 switchEvaluator (evaluator, depth) colour tfs kms =
                                                 if not (randomPercentage 95) || evaluator == RandomEvaluator
                                                 then do let idx = randomMove (length tfs)
-                                                        return (popedList, tfs !! idx) -- randomly choose a movement and generate the resulting board  
+                                                        return (kms, tfs !! idx) -- randomly choose a movement and generate the resulting board  
                                                 else case evaluator of
                                                         -- move evaluator
-                                                        MoveEvaluator -> do move <- moveEvaluator tfs; return (popedList, move)
+                                                        MoveEvaluator -> do move <- moveEvaluator tfs; return (kms, move)
                                                         -- board evaluator
-                                                        BoardEvaluator -> do move <- boardEvaluator tfs; return (popedList, move)
+                                                        BoardEvaluator -> do move <- boardEvaluator tfs; return (kms, move)
                                                         ShallowParanoid -> do (move, nkms) <- paranoidEvaluator depth kms; return (nkms, move)
                                                         ShallowBRS -> do (move, nkms) <- brsEvaluator depth kms; return (nkms, move)
                                                         _ -> error "Undefined Evaluator"
     where
-        popedList :: [KillerMoves]
-        popedList = tail kms ++ [[]]
-
         moveEvaluator :: [Transform] -> State GameTreeStatus Transform
         moveEvaluator tfs = do colour <- getPlayerColour
                                let ptfs = map (projectMove colour) tfs
@@ -177,11 +174,13 @@ switchEvaluator (evaluator, depth) colour tfs kms =
                                 return (tfs !! idx)
 
         paranoidEvaluator :: Int -> [KillerMoves] -> State GameTreeStatus (Transform, [KillerMoves])
+        paranoidEvaluator 0 _ = error "the depth should be larger than zero"
         paranoidEvaluator depth kms = do (ri, _, eboard, iboard, pn, _, _, _) <- get
                                          let ((move, _), nkms) = runState (mEvaluation (depth, ri, eboard, iboard, pn, (-999, 999), Paranoid) ri) kms
                                          return (move, nkms)
 
         brsEvaluator :: Int -> [KillerMoves] -> State GameTreeStatus (Transform, [KillerMoves])
+        brsEvaluator 0 _ = error "the depth should be larger than zero"
         brsEvaluator depth kms = do (ri, _, eboard, iboard, pn, _, _, _) <- get
                                     let ((move, _), nkms) = runState (mEvaluation (depth, ri, eboard, iboard, pn, (-999, 999), BRS) ri) kms
                                     return (move, nkms)
@@ -212,7 +211,8 @@ playout moves killerMoves =
                                    if winStateDetermine colour nboard then return (pi, getTurns moves pn) -- if a player wins, then return the player's index
                                    else do updatePlayerIdx -- otherwise, keep simulating on the next turn
                                            setBoard nboard
-                                           playout (moves + 1) newKs -- inherit the killer moves for the next interation
+                                           playout (moves + 1) (tail newKs ++ [[]]) -- inherit the killer moves for the next interation
+                                           
 
 getTurns :: Int -> Int -> Int
 getTurns moves pn = ceiling (fromIntegral moves / fromIntegral pn)
@@ -258,7 +258,7 @@ mcts tree = do (idxList, hashList, lastnode) <- selection tree [] []
                                                newHistory2 <- editHT hashList2 winIdx ht
                                                return (newTree2, bi, newHistory2, 0) -- get the new tree and game history with playout turn equals to 0 
 
-                       else do (winIdx, turns) <- playout 1 [] -- start the playout phase with certain policy and heuristic
+                       else do (winIdx, turns) <- playout 1 (replicate pn []) -- start the playout phase with certain policy and heuristic
                                newTree3 <- backpropagation winIdx idxList2 tree expandednode -- treat the tree as a child by setting it into a list, and update it
                                bi <- getBoardIdx
                                ht <- getHistoryTrace

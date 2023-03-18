@@ -72,8 +72,8 @@ hashEnd :: Int
 hashEnd = hash goalBase
 
 -- a win for a player can be detected based on comparing the hashed values
-winStateDetectHash :: Int -> Bool
-winStateDetectHash h = hashEnd == h
+winStateDetect :: [Pos] -> Bool
+winStateDetect ps = hashEnd == hash ps
 
 -- given a list of positions on the pieces on the current occupied board and return a hashed value
 hash :: [Pos] -> Int

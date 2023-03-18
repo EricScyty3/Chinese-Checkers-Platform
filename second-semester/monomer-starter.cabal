@@ -28,14 +28,13 @@ executable app
       MCTS
       Minimax
       RBTree
-      TestBoard
       Zobrist
       Paths_monomer_starter
   hs-source-dirs:
       src
   default-extensions:
       OverloadedStrings
-  ghc-options: -fwarn-incomplete-patterns -threaded
+  ghc-options: -fwarn-incomplete-patterns -threaded -O2 -fllvm
   build-depends:
       base >=4.7 && <5
     , containers

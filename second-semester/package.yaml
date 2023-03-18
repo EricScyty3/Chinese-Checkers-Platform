@@ -35,3 +35,5 @@ executables:
     ghc-options:
     - -fwarn-incomplete-patterns
     - -threaded
+    - -O2
+    - -fllvm 

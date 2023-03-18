@@ -14,13 +14,14 @@ import Configuration
 import Data.Fixed
 
 -- ghc -main-is Extension Extension.hs -O2 -fllvm -outputdir dist
--- main = do arg <- getArgs
---           start <- lookupTable `seq` getCurrentTime
---           -- let iter = read (head arg) 
---               -- eval = read (arg !! 1)
---           testRun (Nothing, Just 100, Nothing)
---           end <- getCurrentTime
---           print $ "Time cost: " ++ show (diffUTCTime end start)
+main = do arg <- getArgs
+          start <- lookupTable `seq` getCurrentTime
+          let eval = read $ head arg
+              depth = read $ arg !! 1
+              (board, _, _, _) = finalSelection (GRoot 0 []) (0, 1, eraseBoard (playerColourList 3) externalBoard, replicate 3 startBase, 3, RBLeaf, (3, 1), (eval, depth)) (Just 1, Nothing, Nothing)
+          printEoard board
+          end <- getCurrentTime
+          print $ "Time cost: " ++ show (diffUTCTime end start)
 
 -- testRun control = do let (nboard, _, _, turns) = finalSelectionE (GRoot 0 []) (0, 1, eboard, iboard, pn, RBLeaf, (3, 0.9), (MoveEvaluator, 2)) 0 control
 --                      printEoard nboard
@@ -30,35 +31,38 @@ import Data.Fixed
 --         eboard = eraseBoard (playerColourList pn) externalBoard
 --         iboard = initialInternalBoard eboard pn
 
-finalSelection :: GameTree -> GameTreeStatus -> Int -> (Maybe Int, Maybe Int, Maybe Pico) -> (Board, Int, HistoryTrace, [Int])
-finalSelection  tree s@(pi, _, board, _, pn, _, _, _) bhash control = let (ntree, scores, nht, playoutTurns) = getResultsUnderControl tree s control
-                                                                      in  if null scores then error (show ntree)
-                                                                          else let -- get the maximum win rate move as the next movement
-                                                                                  chosenNode = getChildren ntree !! randomMaxSelection scores
-                                                                                  -- return the resulting decision
-                                                                                  colour = playerColour pi pn
-                                                                                  (from, to) = getTransform chosenNode
-                                                                                  newBoard = evalState (repaintBoard (from, to)) s
-                                                                                  (pfrom, pto) = projectMove colour (from ,to)
-                                                                                  newBoardHash = changeHash pfrom pto bhash
-                                                                              in  newBoard `par` newBoardHash `pseq` (newBoard, newBoardHash, nht, playoutTurns)
+finalSelection :: GameTree -> GameTreeStatus -> (Maybe Int, Maybe Int, Maybe Pico) -> (Board, [Pos], HistoryTrace, [Int])
+finalSelection tree s@(pi, _, _, iboard, pn, _, _, _) control = 
+                                                               let (ntree, scores, nht, playoutTurns) = getResultsUnderControl tree s control
+                                                               in  if null scores then error (show ntree)
+                                                                   else let -- get the maximum win rate move as the next movement
+                                                                            chosenNode = getChildren ntree !! randomMaxSelection scores
+                                                                            -- return the resulting decision
+                                                                            colour = playerColour pi pn
+                                                                            (from, to) = getTransform chosenNode
+                                                                            newBoard = evalState (repaintBoard (from, to)) s
+                                                                            (pfrom, pto) = projectMove colour (from ,to)
+                                                                            newInternalState = flipBoard (iboard !! pi) (pfrom, pto)
+                                                                        in  newBoard `par` newInternalState `pseq` (newBoard, newInternalState, nht, playoutTurns)
 
 getResultsUnderControl :: GameTree -> GameTreeStatus -> (Maybe Int, Maybe Int, Maybe Pico) -> (GameTree, [Double], HistoryTrace, [Int])
 getResultsUnderControl tree status (Just iters, Nothing, Nothing) = let (ntree, _, nht, playoutTurns) = iterations tree status [] iters
                                                                         pi = evalState getPlayerIdx status
                                                                         scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
                                                                     in  (ntree, scores, nht, playoutTurns)
-getResultsUnderControl tree status (Nothing, Nothing, Just seconds) = let startTime = unsafePerformIO getCurrentTime
-                                                                          (ntree, _, nht, playoutTurns) = unsafePerformIO $ timeLimits tree status [] (startTime, seconds)
-                                                                          pi = evalState getPlayerIdx status
-                                                                          scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
-                                                                      in  (ntree, scores, nht, playoutTurns)   
-getResultsUnderControl tree status (Nothing, Just nodes, Nothing) = let (ntree, _, nht, playoutTurns) = expansionLimits tree status [] nodes
-                                                                        pi = evalState getPlayerIdx status
-                                                                        scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
-                                                                    in  (ntree, scores, nht, playoutTurns)
+                                                                    
+-- getResultsUnderControl tree status (Nothing, Nothing, Just seconds) = let startTime = unsafePerformIO getCurrentTime
+--                                                                           (ntree, _, nht, playoutTurns) = unsafePerformIO $ timeLimits tree status [] (startTime, seconds)
+--                                                                           pi = evalState getPlayerIdx status
+--                                                                           scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
+--                                                                       in  (ntree, scores, nht, playoutTurns)   
+-- getResultsUnderControl tree status (Nothing, Just nodes, Nothing) = let (ntree, _, nht, playoutTurns) = expansionLimits tree status [] nodes
+--                                                                         pi = evalState getPlayerIdx status
+--                                                                         scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
+--                                                                     in  (ntree, scores, nht, playoutTurns)
 getResultsUnderControl tree status _ = error "More than two controls are added"
 
+{-
 -- repeating the MCTS until certain time setting (in seconds) are reached
 timeLimits :: GameTree -> GameTreeStatus -> [Int] -> (UTCTime, Pico) -> IO (GameTree, BoardIndex, HistoryTrace, [Int])
 timeLimits tree s@(pi, bi, board, ps, pn, ht, cons, pa) playoutTurns (start, duration) = do currentTime <- getCurrentTime
@@ -71,3 +75,4 @@ expansionLimits :: GameTree -> GameTreeStatus -> [Int] -> Int -> (GameTree, Boar
 expansionLimits tree s@(pi, bi, board, ps, pn, ht, cons, pa) playoutTurns nodes = if bi >= nodes then (tree, bi, ht, reverse playoutTurns)
                                                                                   else let (newTree, newIdx, newHistory, turns) = evalState (mcts tree) s
                                                                                        in  expansionLimits newTree (pi, newIdx, board, ps, pn, newHistory, cons, pa) (turns:playoutTurns) nodes
+-}

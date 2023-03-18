@@ -16,6 +16,7 @@ import Data.Maybe
 import Data.Time
 import System.Environment
 import GHC.IO
+import System.Directory.Extra (doesFileExist)
 
 type LookupTable = RBTree (Int, Int) -- the structure of the lookup tree
 
@@ -149,12 +150,13 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
 boardEvaluations :: [[Pos]] -> [Int]
 boardEvaluations ps = if ifExistMidgame ps then map centroid ps
                       else map boardEvaluation ps
-                      
--- search for a shortest path for a certain board configuration based on the lookup table
-boardEvaluation :: [Pos] -> Int
-boardEvaluation ps = if isMidgame ps then centroid ps else (case evaluateBoard ps (isOpening ps) of
-                                                               Nothing -> error ("Cannot find such board configuration: " ++ show ps)
-                                                               Just x  -> 28 - x)
+    where                      
+        -- search for a shortest path for a certain board configuration based on the lookup table
+        boardEvaluation :: [Pos] -> Int
+        boardEvaluation ps = if isMidgame ps then centroid ps 
+                             else (case evaluateBoard ps (isOpening ps) of
+                                        Nothing -> error ("Cannot find such board configuration: " ++ show ps)
+                                        Just x  -> 28 - x)
 
 -- search for the shortest path value of a certain board configuration
 evaluateBoard :: [Pos] -> Bool -> Maybe Int
@@ -205,10 +207,15 @@ constructTable ((bh, top, bottom):xs) tree = constructTable xs (rbInsert bh (top
 
 -- load the stored lookup table data from the file
 loadTableElements :: [(Int, Int, Int)]
-loadTableElements = let filename = "./dataset/lookup_table.txt"
-                    in  unsafePerformIO $ do filePath <- openFile filename ReadMode
-                                             contents <- hGetContents filePath
-                                             return $ convertToElement (lines contents)
+loadTableElements = let filename1 = "../dataset/lookup_table.txt"
+                        filename2 = "./dataset/lookup_table.txt"
+                    in  unsafePerformIO $ 
+                        do 
+                           does1Exist <- doesFileExist filename1
+                           filePath <- if does1Exist then openFile filename1 ReadMode
+                                       else openFile filename2 ReadMode
+                           contents <- hGetContents filePath
+                           return $ convertToElement (lines contents)
     where
         convertToElement :: [String] -> [(Int, Int, Int)]
         convertToElement s = concatMap read s

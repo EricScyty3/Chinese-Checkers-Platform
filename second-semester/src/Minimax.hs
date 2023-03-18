@@ -9,7 +9,6 @@ import Zobrist
 import Data.Time
 import Data.List
 import System.Environment
-import TestBoard
 
 
 -- the node is divided into two groups, Max for root layer and the rest is Min 
@@ -54,20 +53,23 @@ type KillerMoves = [Transform] -- the two last moves that were best or caused a 
 --      0.45    4.48    0.78
 --      0.53    0.39    12.57
 
-testRun :: Int -> TreeType -> (Transform, [KillerMoves])
-testRun depth treetype = let (status, ks) = runState (iStatus depth treetype) []
-                             ((move, score), nks) = runState (mEvaluation status 0) ks
-                         in  (move, tail nks ++ [[]]) -- omits the first layer, and append another empty elements to fit the next iteration
-                         
+-- runMinimax :: Int -> TreeType -> (Transform, [KillerMoves])
+-- runMinimax depth treetype = let (status, ks) = runState (iStatus depth treetype) []
+--                                 ((move, score), nks) = runState (mEvaluation status 0) ks
+--                             in  (move, tail nks ++ [[]]) -- omits the first layer, and append another empty elements to fit the next iteration
 
-iStatus :: Int -> TreeType -> State [KillerMoves] MGameTreeStatus
-iStatus depth tt = do put initialKillerMoves
-                      return (depth, 0, eboard, internalBoards, pn, (-999, 999), tt)
-    where
-        pn = 3
-        eboard = eraseBoard (playerColourList pn) testBoard
-        internalBoards = map (convertToInternalBoard eboard) (playerColourList pn)
-        initialKillerMoves = replicate depth []
+
+-- iStatus :: Int -> TreeType -> State [KillerMoves] MGameTreeStatus
+-- iStatus depth tt = do put initialKillerMoves
+--                       return (depth, 0, eboard, internalBoards, pn, (-999, 999), tt)
+--     where
+--         pn = 3
+--         eboard = eraseBoard (playerColourList pn) testBoard
+--         internalBoards = map (convertToInternalBoard eboard) (playerColourList pn)
+--         initialKillerMoves = replicate depth []
+
+
+
 
 -- the pruning is available based on evaluating the nodes below
 -- normally, when a Min node's (beta) value is larger than any parent (Max)'s alpha value, that branch can be pruned
@@ -87,18 +89,18 @@ iStatus depth tt = do put initialKillerMoves
 -- given a depth and tree status, and the current player to start with, first generats its movements based on current board
 -- and send it to evaluate the resulting boards from the movements
 -- besides of returning the optimal score it could retrieve, it will also return the corresponding movement that generates that score
-
+-- while digging the search tree (expanding the movements), in addition to the cut-off caused by the pruning, 
+-- the search should also be stopped if one wins the game, in other hand, if the root player wins then 
 mEvaluation :: MGameTreeStatus -> PlayerIndex -> State [KillerMoves] (Transform, Int)
-mEvaluation st@(0, _, _, _, _, _, _)  pi = return (defaultMove, nEvaluation st pi)
-mEvaluation st@(height, ri, _, _, pn, _, _) pi =
-                                                 do kp <- getCurrentKillerPair height
-                                                    let ms = mplayerMovesList st pi -- provide a list of possible movements (pruned)
-                                                        colour = playerColour pi pn
-                                                        orderedList = moveOrder colour ms
-                                                        reorderedList = killerMoveTest kp orderedList
-                                                    let prunedList = take 10 reorderedList
-                                                    if ri /= pi then minEvaluation st pi prunedList defaultMove
-                                                    else maxEvaluation st pi prunedList defaultMove
+mEvaluation st@(0, _, _, _, _, _, _) pi = return (defaultMove, nEvaluation st pi)
+mEvaluation st@(height, ri, _, ps, pn, _, _) pi = do kp <- getCurrentKillerPair height
+                                                     let ms = mplayerMovesList st pi -- provide a list of possible movements (pruned)
+                                                         colour = playerColour pi pn
+                                                         orderedList = moveOrder colour ms
+                                                         reorderedList = killerMoveTest kp orderedList
+                                                     let prunedList = take 10 reorderedList
+                                                     if ri /= pi then minEvaluation st pi prunedList defaultMove
+                                                     else maxEvaluation st pi prunedList defaultMove
 defaultMove :: Transform
 defaultMove = (U(-1,-1), U(-1,-1))
 
@@ -158,14 +160,16 @@ turnBaseBRS pn ri pi = if ri /= pi then [ri] else otherPlayers pn ri
 -- evaluate the bottom node (where the depth is equal to 0) of the search tree
 -- since the evaluation should be made based on the root's perspective, the evaluation of the other layer player is done by evaluating how the root player could benefit
 nEvaluation :: MGameTreeStatus -> PlayerIndex -> Int
-nEvaluation st@(_, ri, _, iboard, pn, _, _) pi =
-                                                 if ri == pi then boardEvaluation (iboard !! ri) -- for root, just simply measure its score
-                                                 else let rolour = playerColour ri pn -- for other players, measure the possible root player's move could perform based on the changed board
-                                                          rs = iboard !! ri
-                                                          tfs = mplayerMovesList st ri -- the avaliable root's movements (pruned)
-                                                          bs = map (flipBoard rs . projectMove rolour) tfs -- the resulting boards that could generated by the root player
-                                                          scores = map boardEvaluation bs -- the corresponding score
-                                                      in  maximum scores -- return the maximum one
+nEvaluation st@(h, ri, _, iboard, pn, _, _) pi = 
+    if ri == pi then head $ boardEvaluations [iboard !! ri] -- for root, just simply measure its score
+    else let rolour = playerColour ri pn -- for other players, measure the possible root player's move could perform based on the changed board
+             rs = iboard !! ri
+             tfs = mplayerMovesList st ri -- the avaliable root's movements (pruned)
+             -- ms = take 10 $ moveOrder rolour tfs
+             bs = map (flipBoard rs . projectMove rolour) tfs -- the resulting boards that could generated by the root player
+             scores = boardEvaluations bs -- the corresponding score
+         in  if null scores then 28 else maximum scores -- return the maximum one
+
 
 -- the enhancements applied here should include the: move ordering + k best pruning + killer moves for each layer
 -- given a certain piece's colour, return a list of avaliable movements (transforms) on the external board
@@ -220,4 +224,4 @@ killerMoveTest (e:es) xs = case elemIndex e xs of
                 (front, item:end) = splitAt idx xs
 
 updateKillerMoves :: Transform -> KillerMoves -> KillerMoves
-updateKillerMoves move ks = take 2 $ nub $ move:ks -- only keep two killer moves 
+updateKillerMoves move ks = take 3 $ nub $ move:ks -- only keep two killer moves 
