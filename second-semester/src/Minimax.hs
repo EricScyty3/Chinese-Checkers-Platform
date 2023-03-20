@@ -9,6 +9,8 @@ import Zobrist
 import Data.Time
 import Data.List
 import System.Environment
+import GHC.IO
+import System.Random
 
 
 -- the node is divided into two groups, Max for root layer and the rest is Min 
@@ -31,44 +33,60 @@ type KillerMoves = [Transform] -- the two last moves that were best or caused a 
 -- the maximum value of the subtree could be the minimum value of its parent, when the layers of Max and Min are switched
 
 -- ghc -main-is Minimax Minimax.hs -O2 -fllvm -outputdir dist
--- main = do arg <- getArgs
---           let depth = read $ head arg
---               tree = read $ arg !! 1
---           start <- getCurrentTime
---           print (testRun depth tree)
---           end <- getCurrentTime
---           print $ diffUTCTime end start
 
--- added enhancements (k-best pruning (10) and killer moves (2))
---      2       3        4
--- P    0.29    0.45    0.29
--- B    0.37    0.28    1.71
--- only k-best pruning
---      0.30    0.46    0.37
---      0.38    0.34    1.79
--- only killer moves
---      0.42    4.13    0.56
---      0.54    0.37    12.46
--- remove all
---      0.45    4.48    0.78
---      0.53    0.39    12.57
+main = do arg <- getArgs
+          start <- getCurrentTime
+          x <- runEnd (initialGameState 3) (initialKillerMoves 2) []
+          print (length x)
+          print (length $ nub x)
+          printEoard (head x)
+          end <- getCurrentTime
+          print $ diffUTCTime end start
 
--- runMinimax :: Int -> TreeType -> (Transform, [KillerMoves])
--- runMinimax depth treetype = let (status, ks) = runState (iStatus depth treetype) []
---                                 ((move, score), nks) = runState (mEvaluation status 0) ks
---                             in  (move, tail nks ++ [[]]) -- omits the first layer, and append another empty elements to fit the next iteration
+initialGameState :: Int -> MGameTreeStatus
+initialGameState players = (2, 0, eraseBoard (playerColourList players) externalBoard, replicate players startBase, players, (-999, 999), Paranoid)
+initialKillerMoves :: Int -> [KillerMoves]
+initialKillerMoves depth = replicate depth []
+
+-- generate a random value from 0 to 100, for random percentage decision making
+randomPercentage' :: Int -> IO Bool
+randomPercentage' n  = do x <- randomRIO (0, 100)
+                          return (x <= n)
+-- generate a random index with a given length, for random choice
+randomMove' :: Int -> IO Int
+randomMove' l  = do randomRIO (0, l-1)
+
+-- a test program that runs minimax search from the initial board til the end of the game
+-- runEnd :: MGameTreeStatus -> [KillerMoves] -> [Board] -> [Board]
+runEnd status@(depth, ri, eboard, iboard, pn, ab, tt) killerMoves x =
+                 do -- printEoard eboard
+                    if length x >= 1000 then do return x
+                    else do randomFlag <- randomPercentage' 95
+                            (move, newKillerMoves) <- chooseWithRandomness randomFlag status ri killerMoves
+                            let neboard = repaintPath eboard move
+                                niboard = flipBoard (iboard !! ri) (projectMove (playerColour ri pn) move)
+                                nextTurn = turnBase pn ri
+                            if  winStateDetermine' (playerColour ri pn) neboard then return (neboard : x)
+                            else runEnd (depth, nextTurn, neboard, replace ri niboard iboard, pn, ab, tt) (tail newKillerMoves ++ [[]]) (neboard:x)
 
 
--- iStatus :: Int -> TreeType -> State [KillerMoves] MGameTreeStatus
--- iStatus depth tt = do put initialKillerMoves
---                       return (depth, 0, eboard, internalBoards, pn, (-999, 999), tt)
---     where
---         pn = 3
---         eboard = eraseBoard (playerColourList pn) testBoard
---         internalBoards = map (convertToInternalBoard eboard) (playerColourList pn)
---         initialKillerMoves = replicate depth []
+chooseWithRandomness :: Bool -> MGameTreeStatus -> PlayerIndex -> [KillerMoves] -> IO (Transform, [KillerMoves])
+chooseWithRandomness False status pi kms = let ms = mplayerMovesList status pi
+                                           in  do randomIndex <- randomMove' (length ms)
+                                                  return (ms !! randomIndex, kms)
+chooseWithRandomness True status pi kms = let ((move, _), nkms) = runState (mEvaluation status pi) kms
+                                          in  return (move, nkms)
 
 
+winStateDetermine' :: Colour -> Board -> Bool
+winStateDetermine' c b = let hs = map (reversion c) goalBase -- get the goal positions of certain player
+                             bs = evalState (do mapM getElement hs) b -- get the corresponding board state
+                         in  isFull bs && existColour c bs -- check if the two conditions are satisfied
+    where
+        isFull :: [BoardPos] -> Bool
+        isFull = foldr ((&&) . isOccupied) True
+        existColour :: Colour -> [BoardPos] -> Bool
+        existColour c bs = Just c `elem` map Board.getColour bs
 
 
 -- the pruning is available based on evaluating the nodes below
@@ -101,6 +119,7 @@ mEvaluation st@(height, ri, _, ps, pn, _, _) pi = do kp <- getCurrentKillerPair 
                                                      let prunedList = take 10 reorderedList
                                                      if ri /= pi then minEvaluation st pi prunedList defaultMove
                                                      else maxEvaluation st pi prunedList defaultMove
+
 defaultMove :: Transform
 defaultMove = (U(-1,-1), U(-1,-1))
 
@@ -159,16 +178,28 @@ turnBaseBRS pn ri pi = if ri /= pi then [ri] else otherPlayers pn ri
 
 -- evaluate the bottom node (where the depth is equal to 0) of the search tree
 -- since the evaluation should be made based on the root's perspective, the evaluation of the other layer player is done by evaluating how the root player could benefit
+-- nEvaluation :: MGameTreeStatus -> PlayerIndex -> Int
+-- nEvaluation st@(h, ri, _, iboard, pn, _, _) pi = 
+--     if ri == pi then head $ boardEvaluations [iboard !! ri] -- for root, just simply measure its score
+--     else let rolour = playerColour ri pn -- for other players, measure the possible root player's move could perform based on the changed board
+--              rs = iboard !! ri
+--              tfs = mplayerMovesList st ri -- the avaliable root's movements (pruned)
+--              -- ms = take 10 $ moveOrder rolour tfs
+--              bs = map (flipBoard rs . projectMove rolour) tfs -- the resulting boards that could generated by the root player
+--              scores = boardEvaluations bs -- the corresponding score
+--          in  if null scores then 28 else maximum scores -- return the maximum one
+
 nEvaluation :: MGameTreeStatus -> PlayerIndex -> Int
-nEvaluation st@(h, ri, _, iboard, pn, _, _) pi = 
-    if ri == pi then head $ boardEvaluations [iboard !! ri] -- for root, just simply measure its score
-    else let rolour = playerColour ri pn -- for other players, measure the possible root player's move could perform based on the changed board
-             rs = iboard !! ri
-             tfs = mplayerMovesList st ri -- the avaliable root's movements (pruned)
-             -- ms = take 10 $ moveOrder rolour tfs
-             bs = map (flipBoard rs . projectMove rolour) tfs -- the resulting boards that could generated by the root player
-             scores = boardEvaluations bs -- the corresponding score
-         in  if null scores then 28 else maximum scores -- return the maximum one
+nEvaluation st@(h, ri, _, iboard, pn, _, _) pi
+  | ri == pi = head $ boardEvaluations [iboard !! ri] -- if it is root player's turn, then just measure the board state
+--   | winStateDetect (iboard !! pi) && not (winStateDetect (iboard !! ri)) = 0 -- if other player wins the game then root player gains 0
+--   | winStateDetect (iboard !! ri) = 28 -- if root player wins, then it gains 28
+  | otherwise = let rolour = playerColour ri pn  -- for other player's turn, measure the best possible root player's move based on the board
+                    rs = iboard !! ri
+                    tfs = mplayerMovesList st ri -- the avaliable root's movements (pruned)
+                    bs = map (flipBoard rs . projectMove rolour) tfs -- the resulting boards that could generated by the root player
+                    scores = boardEvaluations bs -- the corresponding score
+                in  maximum scores
 
 
 -- the enhancements applied here should include the: move ordering + k best pruning + killer moves for each layer
@@ -224,4 +255,4 @@ killerMoveTest (e:es) xs = case elemIndex e xs of
                 (front, item:end) = splitAt idx xs
 
 updateKillerMoves :: Transform -> KillerMoves -> KillerMoves
-updateKillerMoves move ks = take 3 $ nub $ move:ks -- only keep two killer moves 
+updateKillerMoves move ks = take 2 $ nub $ move:ks -- only keep two killer moves 

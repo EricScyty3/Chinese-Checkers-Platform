@@ -18,8 +18,9 @@ main = do arg <- getArgs
           start <- lookupTable `seq` getCurrentTime
           let eval = read $ head arg
               depth = read $ arg !! 1
-              (board, _, _, _) = finalSelection (GRoot 0 []) (0, 1, eraseBoard (playerColourList 3) externalBoard, replicate 3 startBase, 3, RBLeaf, (3, 1), (eval, depth)) (Just 1, Nothing, Nothing)
-          printEoard board
+              (board, _, _, turns) = finalSelection (GRoot 0 []) (0, 1, eraseBoard (playerColourList 3) externalBoard, replicate 3 startBase, 3, RBLeaf, (3, 1), (eval, depth)) (Just 1, Nothing, Nothing)
+          -- printEoard board
+          print turns
           end <- getCurrentTime
           print $ "Time cost: " ++ show (diffUTCTime end start)
 
