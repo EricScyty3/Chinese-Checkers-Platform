@@ -203,7 +203,7 @@ playout moves killerMoves =
                                                         -- return (randomMaxSelection scoreList, getTurns moves pn)
                                                         error ("Exceed 1000 turns " ++ show killerMoves)
                    else do pi <- getPlayerIdx
-                           tfs <- colouredMovesList pi    -- get all of the avaliable moves
+                           tfs <- colouredMovesList pi    -- get all of the avaliable moves (might cause cycling)
                            board <- getBoard
                            pa <- getPlayoutArgument
                            colour <- getPlayerColour

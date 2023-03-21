@@ -35,17 +35,16 @@ type KillerMoves = [Transform] -- the two last moves that were best or caused a 
 -- ghc -main-is Minimax Minimax.hs -O2 -fllvm -outputdir dist
 
 main = do arg <- getArgs
+          let pn = read (head arg)
           start <- getCurrentTime
-          x <- runEnd status killerMoves []
-          print (length x)
-          print (length $ nub x)
-          printEoard (head x)
+          x <- runEnd (status pn) (killerMoves pn) 0 []
+          printEoard x
           end <- getCurrentTime
           print $ diffUTCTime end start
     where 
-        pn = 3
-        status = (0, eraseBoard (playerColourList pn) externalBoard, replicate pn startBase, pn, (-999, 999), Paranoid)
-        killerMoves = replicate pn []
+        -- pn = 3
+        status pn = (0, eraseBoard (playerColourList pn) externalBoard, replicate pn startBase, pn, (-999, 999), Paranoid)
+        killerMoves pn = replicate pn []
 
 {-
     -- a test program that runs minimax search from the initial board til the end of the game
@@ -69,31 +68,30 @@ main = do arg <- getArgs
     chooseWithRandomness True status pi kms = let ((move, _), nkms) = runState (mEvaluation status pi) kms
                                             in  return (move, nkms)
 
+-}
+winStateDetermine' :: Colour -> Board -> Bool
+winStateDetermine' c b = let hs = map (reversion c) goalBase -- get the goal positions of certain player
+                             bs = evalState (do mapM getElement hs) b -- get the corresponding board state
+                         in  isFull bs && existColour c bs -- check if the two conditions are satisfied
+    where
+        isFull :: [BoardPos] -> Bool
+        isFull = foldr ((&&) . isOccupied) True
+        existColour :: Colour -> [BoardPos] -> Bool
+        existColour c bs = Just c `elem` map Board.getColour bs
 
-    winStateDetermine' :: Colour -> Board -> Bool
-    winStateDetermine' c b = let hs = map (reversion c) goalBase -- get the goal positions of certain player
-                                bs = evalState (do mapM getElement hs) b -- get the corresponding board state
-                            in  isFull bs && existColour c bs -- check if the two conditions are satisfied
-        where
-            isFull :: [BoardPos] -> Bool
-            isFull = foldr ((&&) . isOccupied) True
-            existColour :: Colour -> [BoardPos] -> Bool
-            existColour c bs = Just c `elem` map Board.getColour bs
--}-- 
 
 
-runEnd :: MGameTreeStatus -> [KillerMoves] -> [Board] -> IO [Board]
-runEnd st@(ri, eboard, iboard, pn, ab, tt) kms boards =
-                                                    if length boards >= 1000 then return boards
-                                                    else do let (move, nkms) = (if not (randomPercentage' 95) then  let ms = mplayerMovesList st ri
-                                                                                                                        randIdx = randomMove' (length ms)
-                                                                                                                    in  (ms !! randIdx, kms)
+runEnd :: MGameTreeStatus -> [KillerMoves] -> Int -> [Transform] -> IO Board
+runEnd st@(ri, eboard, iboard, pn, ab, tt) kms counts record =
+                                                         do let (move, nkms) = (if not (randomPercentage' 95) then (randomChoice, kms)
                                                                                 else runState (mEvaluation st) kms)
-                                                                neboard = repaintPath eboard move
-                                                                niboard = flipBoard (iboard !! ri) (projectMove (playerColour ri pn) move)
+                                                                checkedMove = (if move `elem` record then randomChoice else move) 
+                                                                neboard = repaintPath eboard checkedMove
+                                                                niboard = flipBoard (iboard !! ri) (projectMove currentColour checkedMove)
                                                                 nextTurn = turnBase pn ri
-                                                            if winStateDetect niboard then return boards
-                                                            else runEnd (nextTurn, neboard, replace ri niboard iboard, pn, ab, tt) nkms (neboard : boards)
+                                                            if winStateDetermine' currentColour neboard then do print counts
+                                                                                                                return neboard
+                                                            else runEnd (nextTurn, neboard, replace ri niboard iboard, pn, ab, tt) nkms (counts + 1) (checkedMove:record)
 
     where
         -- generate a random value from 0 to 100, for random percentage decision making
@@ -102,6 +100,12 @@ runEnd st@(ri, eboard, iboard, pn, ab, tt) kms boards =
         -- generate a random index with a given length, for random choice
         randomMove' :: Int -> Int
         randomMove' l = unsafePerformIO $ do randomRIO (0, l-1)
+        currentColour = playerColour ri pn
+
+        randomChoice :: Transform
+        randomChoice = let ms = mplayerMovesList st ri
+                           randIdx = randomMove' (length ms)  
+                       in  ms !! randIdx
 
 -- the pruning is available based on evaluating the nodes below
 -- normally, when a Min node's (beta) value is larger than any parent (Max)'s alpha value, that branch can be pruned
@@ -127,17 +131,22 @@ mEvaluation :: MGameTreeStatus -> State [KillerMoves] Transform
 mEvaluation st@(ri, _, ps, pn, _, _) =
                                        do kp <- getCurrentKillerPair ri
                                           let ms = mplayerMovesList st ri -- provide a list of possible movements that can be generated by the root layer
-                                              newMovesList = kbestpruning (playerColour ri pn) ms
-                                              reorderedList = killerMoveTest kp newMovesList
+                                            --   newMovesList = kbestpruning (playerColour ri pn) ms
+                                              reorderedMoves = reorderMovements ri ms kp (playerColour ri pn)
                                                         --  reorderedList = killerMoveTest kp orderedList
                                                     --  let prunedList = take 10 reorderedList
                                                     --  if ri /= pi then minEvaluation st pi prunedList defaultMove
                                                     --  else maxEvaluation st pi prunedList defaultMove
-                                          (returnedMove, _) <- maxEvaluation st ri reorderedList defaultMove
+                                          (returnedMove, _) <- maxEvaluation st ri reorderedMoves defaultMove
                                           return returnedMove
 
 defaultMove :: Transform
 defaultMove = (U(-1,-1), U(-1,-1))
+
+reorderMovements :: PlayerIndex -> [Transform] -> KillerMoves -> Colour -> [Transform]
+reorderMovements pi ms kms colour = let (appliedKms, remainMoves) = killerMoveTest kms ms []
+                                        orderedMoves = kbestpruning colour remainMoves
+                                    in  appliedKms ++ orderedMoves
 
 -- the evaluation here will first sync the game status based on the given movements, and then passes it to the next layer until reaching the bottom (set depth)  
 -- while maintaining the best score and the corresponding movement                                                               
@@ -152,11 +161,10 @@ maxEvaluation st@(ri, board, pl, pn, ab@(alpha, beta), tt) mi (m:ms) bestMove =
                                                                                     -- digging down
                                                                                     nextTurnPlayer = turnBase pn mi
                                                                                     nextTurnMoves = mplayerMovesList nextTurnState nextTurnPlayer
-                                                                                    newMovesList = kbestpruning (playerColour nextTurnPlayer pn) nextTurnMoves
 
                                                                                 kpm <- getCurrentKillerPair mi
                                                                                 kpn <- getCurrentKillerPair nextTurnPlayer
-                                                                                let reorderedList = killerMoveTest kpn newMovesList
+                                                                                let reorderedList = reorderMovements nextTurnPlayer nextTurnMoves kpn (playerColour nextTurnPlayer pn)
 
                                                                                 -- let reorderList = killerMoveTest kp1 newMovesList
                                                                                 (_, score) <- minEvaluation nextTurnState nextTurnPlayer reorderedList defaultMove
@@ -245,16 +253,19 @@ treeSearch st@(_, ri, _, _, pn, _, BRS) pi = do ls <- mapM (mEvaluation st) (tur
 --              scores = boardEvaluations bs -- the corresponding score
 --          in  if null scores then 28 else maximum scores -- return the maximum one
 
-nEvaluation :: MGameTreeStatus -> PlayerIndex -> Int -- only care about the root layer's score
-nEvaluation st@(ri, _, iboard, pn, _, _) pi =
-                                      if ri == pi then head $ boardEvaluations [iboard !! ri]
-                                      else
-                                          let rolour = playerColour ri pn
-                                              ms = mplayerMovesList st ri
-                                              rs = iboard !! ri
-                                              nbs = map (flipBoard rs . projectMove rolour) ms
-                                              scores = boardEvaluations nbs
-                                          in  if null scores then 28 else maximum scores
+nEvaluation :: MGameTreeStatus -> PlayerIndex -> Int -- only care about the root layer's score, make the win determination softer
+nEvaluation st@(ri, eboard, iboard, pn, _, _) pi
+    | winStateDetermine' rolour eboard = 28
+    | winStateDetermine' polour eboard = 0
+    | ri == pi = head $ boardEvaluations [iboard !! ri]
+    | otherwise = let ms = mplayerMovesList st ri
+                      rs = iboard !! ri
+                      nbs = map (flipBoard rs . projectMove rolour) ms
+                      scores = boardEvaluations nbs
+                  in  if null scores then error (show eboard) else maximum scores
+    where 
+        rolour = playerColour ri pn
+        polour = playerColour pi pn
 
 --   | ri == pi = head $ boardEvaluations [iboard !! ri] -- if it is root player's turn, then just measure the board state
 -- --   | winStateDetect (iboard !! pi) && not (winStateDetect (iboard !! ri)) = 0 -- if other player wins the game then root player gains 0
@@ -303,7 +314,7 @@ moveOrder co ms =
 
 
 kbestpruning :: Colour -> [Transform] -> [Transform]
-kbestpruning colour tfs = take 10 $ moveOrder colour tfs
+kbestpruning colour tfs = take 5 $ moveOrder colour tfs
 
 -- search if there exist any killer moves at the current layer of minimax search
 -- if it does, then we have to put it to the front of the sorted list such that them will be tried first
@@ -317,16 +328,13 @@ getCurrentKillerPair pi = do ks <- get; return $ ks !! pi
 replaceCurrentKillerPair :: PlayerIndex -> KillerMoves -> State [KillerMoves] ()
 replaceCurrentKillerPair pi newk = do ks <- get; put (replace pi newk ks)
 
-killerMoveTest :: KillerMoves -> [Transform] -> [Transform]
-killerMoveTest [] xs = xs
-killerMoveTest (e:es) xs = case elemIndex e xs of
-                            Nothing  -> killerMoveTest es xs
-                            Just idx -> killerMoveTest es (switchItem2Front xs idx)
-    where
-        switchItem2Front :: [a] -> Int -> [a]
-        switchItem2Front xs idx = item:front ++ end
-            where
-                (front, item:end) = splitAt idx xs
+killerMoveTest :: KillerMoves -> [Transform] -> [Transform] -> ([Transform], [Transform])
+killerMoveTest [] ms selected = (selected, ms)
+killerMoveTest (k:ks) ms selected = case elemIndex k ms of
+                                        Nothing  -> killerMoveTest ks ms selected
+                                        Just idx -> killerMoveTest ks (removeByIdx ms idx) (k:selected)
+removeByIdx :: [a] -> Int -> [a]
+removeByIdx xs idx = take idx xs ++ drop (idx + 1) xs
 
 updateKillerMoves :: Transform -> KillerMoves -> KillerMoves
-updateKillerMoves move km = take 3 $ nub $ move:km -- only keep two killer moves 
+updateKillerMoves move km = take 2 $ nub $ move:km -- only keep several killer moves 
