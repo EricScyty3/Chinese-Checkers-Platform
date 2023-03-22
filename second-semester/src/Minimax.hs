@@ -44,7 +44,7 @@ main = do arg <- getArgs
           print $ diffUTCTime end start
     where 
         -- pn = 3
-        searchDepth = 2
+        searchDepth = 3
         status pn = (0, eraseBoard (playerColourList pn) externalBoard, replicate pn startBase, pn, (-999, 999), Paranoid)
         killerMoves pn = replicate pn []
 
