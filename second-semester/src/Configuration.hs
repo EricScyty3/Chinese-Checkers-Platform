@@ -172,8 +172,8 @@ evaluateBoard ps flag = -- if the entered board is at the opening stage
         getSnd (Just (_, y)) = Just y
         getSnd Nothing = Nothing
 
-isOpeningPos :: Pos -> Bool
-isOpeningPos p = centroidPos p <= -1
+-- isOpeningPos :: Pos -> Bool
+-- isOpeningPos p = centroidPos p <= -1
 
 -- determine if a board configuration is at the opening, endgame or midgame state
 isOpening :: [Pos] -> Bool -- requires a symmetric operation to search in the lookup tree
