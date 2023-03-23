@@ -149,7 +149,7 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
 switchEvaluator :: PlayoutArgument -> Colour -> [Transform] -> State GameTreeStatus Transform
 switchEvaluator (evaluator, depth, killerMoves) colour tfs =
-                                                if not (randomPercentage 90) || evaluator == RandomEvaluator
+                                                if not (randomPercentage 95) || evaluator == RandomEvaluator
                                                 then do let idx = randomMove (length tfs)
                                                         return (tfs !! idx) -- randomly choose a movement and generate the resulting board  
                                                 else case evaluator of

@@ -22,7 +22,7 @@ main = do arg <- getArgs
               (_, _, _, turns) = finalSelection 
                                 (GRoot 0 []) 
                                 (0, 1, eraseBoard (playerColourList pn) externalBoard, replicate pn startBase, pn, RBLeaf, (3, 1), 
-                                 (eval, depth, replicate pn [])) 
+                                (eval, depth, replicate pn [])) 
                                 control
           print turns
           -- printEoard board

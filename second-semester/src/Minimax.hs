@@ -87,6 +87,8 @@ runEnd h st@(ri, eboard, iboards, pn, ab, tt) kms counts record =
         -- generate a random index with a given length, for random choice
         randomMove' :: Int -> Int
         randomMove' l = unsafePerformIO $ do randomRIO (0, l-1)
+        
+        currentColour :: Colour
         currentColour = playerColour ri pn
 
         randomChoice :: Transform
@@ -193,7 +195,7 @@ defaultMove = (U(-1,-1), U(-1,-1))
 reorderMovements :: [Transform] -> Int -> KillerMoves -> ([PlayerIndex], [Transform])
 reorderMovements ms pn kms = let (appliedKms, remainMoves) = killerMoveTest kms ms []
                                  orderedMoves = kbestpruning remainMoves
-                                 reorderedMove = appliedKms ++ orderedMoves
+                                 reorderedMove = appliedKms `par` orderedMoves `pseq` appliedKms ++ orderedMoves
                                  indices = assignIndex reorderedMove pn
                              in  (indices, reorderedMove)
 
@@ -201,7 +203,9 @@ assignIndex :: [Transform] -> Int -> [PlayerIndex]
 assignIndex [] _ = []
 assignIndex ((from, _):ms) pn = case getColour from of
                                     Nothing -> error "invalid movement"
-                                    Just colour -> colourIndex colour pn : assignIndex ms pn
+                                    Just colour -> let index = colourIndex colour pn 
+                                                       indices = assignIndex ms pn
+                                                   in  index `par` indices `pseq` index:indices
 
 -- the difference between two shallow minimax search: the Paranoid search follows the regular order base, while the BRS considers all players other than
 -- the root as a layer, so it actually evaluates a list of boards from different players 
@@ -211,8 +215,8 @@ treeSearch 0 st pi = do (_, score) <- mEvaluation 0 st pi
                         return score
 treeSearch h st@(ri, _, _, pn, _, Paranoid) pi = do (_, score) <- mEvaluation h st (turnBase pn pi)
                                                     return score
-treeSearch h st@(ri, _, _, pn, _, BRS) pi = do (_, score) <- {-mapM (mEvaluation h st)-} mEvaluation2 h st (turnBaseBRS pn ri pi)
-                                               return score -- exist problem: the k-best pruning should be applied totally not per player
+treeSearch h st@(ri, _, _, pn, _, BRS) pi = do (_, score) <- mEvaluation2 h st (turnBaseBRS pn ri pi)
+                                               return score
 
 -- the evaluation here will first sync the game status based on the given movements, and then passes it to the next layer until reaching the bottom (set depth)  
 -- while maintaining the best score and the corresponding movement                                                       
@@ -225,7 +229,7 @@ maxEvaluation height st@(ri, eboard, iboards, pn, ab@(alpha, beta), tt) (m:ms) b
                                                                newiboard = flipBoard (iboards !! pi) (projectMove currentColour m)
                                                                newiboards = replace pi newiboard iboards
                                                                neweboard = repaintPath eboard m
-                                                               nextTurnState = (ri, neweboard, newiboards, pn, ab, tt)
+                                                               nextTurnState = neweboard `par` newiboards `pseq` (ri, neweboard, newiboards, pn, ab, tt)
                                                            -- pass the status to the next layer and retrieve the evaluated result
                                                            score <- treeSearch height nextTurnState pi
                                                            kp <- getCurrentKillerPair pi
@@ -247,7 +251,7 @@ minEvaluation height st@(ri, eboard, iboards, pn, ab@(alpha, beta), tt) (m:ms) b
                                                                newiboard = flipBoard (iboards !! pi) (projectMove currentColour m)
                                                                newiboards = replace pi newiboard iboards
                                                                neweboard = repaintPath eboard m
-                                                               nextTurnState = (ri, neweboard, newiboards, pn, ab, tt)
+                                                               nextTurnState = neweboard `par` newiboards `pseq` (ri, neweboard, newiboards, pn, ab, tt)
 
                                                            score <- treeSearch height nextTurnState pi
                                                            kp <- getCurrentKillerPair pi
@@ -284,8 +288,7 @@ nEvaluation st@(ri, eboard, iboard, pn, _, _) pi
 -- the enhancements applied here should include the: move ordering + k best pruning + killer moves for each layer
 -- given a certain piece's colour, return a list of avaliable movements (transforms) on the external board
 mplayerMovesList :: MGameTreeStatus -> PlayerIndex -> [Transform]
-mplayerMovesList (_, eboard, iboard, pn, _, _) pi =
-                                                    let colour = playerColour pi pn -- the colour of the player's piece
+mplayerMovesList (_, eboard, iboard, pn, _, _) pi = let colour = playerColour pi pn -- the colour of the player's piece
                                                         ps = (iboard !! pi) -- the internal positions of a player
                                                         bs = map (appendColour colour . reversion colour) ps -- project those position onto the external board
                                                         ds = evalState (do mapM destinationList bs) eboard -- and generate movements based on the external board state

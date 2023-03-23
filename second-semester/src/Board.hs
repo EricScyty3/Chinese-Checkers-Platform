@@ -16,15 +16,16 @@ type Board = [[BoardPos]]
 type OccupiedBoard = [[Int]] -- for occupied board, only occupied state is needed
 type Transform = (BoardPos, BoardPos)
 
-
 -- the board setting for displaying
 boardWidth :: Int
 boardWidth = 19
 boardHeight :: Int
 boardHeight = 13
+
 -- the total pieces a player would need to play with
 totalPieces :: Int
 totalPieces = 6
+
 -- the star-shape board could also projected to a square board corresponding to different piece's colour
 occupiedBoardSize :: Int
 occupiedBoardSize = 7
@@ -53,20 +54,24 @@ getColour (R _) = Just Red
 getColour (O _) = Just Orange
 getColour (K _) = Just Black
 getColour _ = Nothing -- type E and U do not contain any colour information
+
 -- compare the colour of two board positions
 compareColour :: BoardPos -> Colour -> Bool
 compareColour bPos colour = case getColour bPos of
                                 Just bcolour -> bcolour == colour
                                 Nothing -> False
+
 -- identify if a position on the board is empty
 isEmpty :: BoardPos -> Bool
 isEmpty (E _) = True
 isEmpty _ = False
+
 -- identify if a position on the board is occupied
 isOccupied :: BoardPos -> Bool
 isOccupied bPos = case getColour bPos of
                     Just _ -> True
                     _      -> False
+
 -- type U should be ignored when rendering, therefore, skips as it is just a spacer                    
 isSpacer :: BoardPos -> Bool
 isSpacer (U _) = True
@@ -86,8 +91,9 @@ getPos (E p) = p
 -- update the new colour state for a board position
 -- can be combined when applying "getColour" function
 safeRepaint :: Maybe Colour -> BoardPos -> BoardPos
-safeRepaint Nothing b = b -- just do nothing if the given colour is nothing
+safeRepaint Nothing b = error "there is no colour to paint"
 safeRepaint (Just colour) b = repaint colour b
+
 -- change the colour state and return the new board position
 repaint :: Colour -> BoardPos -> BoardPos
 repaint Green b  = G (getPos b)
@@ -96,6 +102,7 @@ repaint Orange b = O (getPos b)
 repaint Red b    = R (getPos b)
 repaint Blue b   = B (getPos b)
 repaint Purple b = P (getPos b)
+
 -- discard a position's colour state
 erase :: BoardPos -> BoardPos
 erase b = E (getPos b)
@@ -125,32 +132,38 @@ externalBoard = [
 getElement :: Pos -> State [[a]] a
 getElement (x, y) = do n <- get
                        return ((n !! y) !! x)
+
 -- mutate an element in a 2d list
 replace2 :: Pos -> a -> [[a]] -> [[a]]
 replace2 (x, y) new ls = let row = replace x new (ls !! y)
                          in  replace y row ls
+
 -- mutate an element in a list
 replace :: Int -> a -> [a] -> [a]
 replace idx new ls = front ++ [new] ++ end
     where
         (front, _:end) = splitAt idx ls
+
 -- find the all pieces' positions
-findAllPieces :: Board -> [BoardPos]
-findAllPieces = concatMap (filter isOccupied)
+-- findAllPieces :: Board -> [BoardPos]
+-- findAllPieces = concatMap (filter isOccupied)
+
 -- find the all pieces' positions on the board based on the colour
-findPiecesWithColour :: Colour -> Board -> [BoardPos]
-findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
+-- findPiecesWithColour :: Colour -> Board -> [BoardPos]
+-- findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
+
 -- mutate a position of the whole board with certain function
 changeBoardElement :: (BoardPos -> BoardPos) -> BoardPos -> Board -> Board
 changeBoardElement f bPos board = let new = f bPos
                                       pos = getPos bPos
                                   in  new `par` pos `pseq` replace2 pos new board
+
 -- erase the pieces on the board and keep only certain coloured pieces, 
 -- this is to generate different board according to the input players amount
 eraseBoard :: [Colour] -> Board -> Board
-eraseBoard colourList eboard = runST $ do n <- newSTRef eboard
-                                          modifySTRef n (map (eraseRow colourList))
-                                          readSTRef n
+eraseBoard keptColours eboard = runST $ do n <- newSTRef eboard
+                                           modifySTRef n (map (eraseRow keptColours))
+                                           readSTRef n
     where
         eraseRow :: [Colour] -> [BoardPos] -> [BoardPos]
         eraseRow _ [] = []
@@ -158,6 +171,7 @@ eraseBoard colourList eboard = runST $ do n <- newSTRef eboard
                                 Nothing -> x:eraseRow cs xs
                                 Just c  -> if c `notElem` cs then erase x:eraseRow cs xs
                                            else x:eraseRow cs xs
+                                           
 -- given two positions, modify there colours to build a route/path
 repaintPath :: Board -> Transform -> Board
 repaintPath board (start, end) = let colour = getColour start
@@ -256,7 +270,9 @@ startBase = [(4,0),(5,0),(6,0),(5,1),(6,1),(6,2)]
 
 -- project the movement to the internal board 
 projectMove :: Colour -> Transform -> (Pos, Pos)
-projectMove colour (x, y) = (projection colour (getPos x), projection colour (getPos y))
+projectMove colour (x, y) = let px = projection colour (getPos x)
+                                py = projection colour (getPos y)
+                            in  px `par` py `pseq` (px, py)
 
 -- the projection of the main (display) board to the sub-occupied board for each player
 projection :: Colour -> Pos -> Pos
@@ -266,6 +282,7 @@ projection Purple  = projectPurple
 projection Red     = projectRed
 projection Orange  = projectOrange
 projection Black   = projectBlack
+
 -- the projection of the sub-occupied board of certain player to the main (display) board 
 reversion :: Colour -> Pos -> Pos
 reversion Green    = reverseGreen
@@ -274,6 +291,7 @@ reversion Purple   = reversePurple
 reversion Red      = reverseRed
 reversion Orange   = reverseOrange
 reversion Black    = reverseBlack
+
 appendColour :: Colour -> Pos -> BoardPos
 appendColour Green p = G p
 appendColour Blue p = B p
@@ -403,15 +421,15 @@ reverseBlack (x, y) = let (ox, oy) = (ix + 2 * x, iy) -- move x
 -- print the board (main and sub) in terminal: debugging usage
 
 -- occupied board printing
-printBoard :: OccupiedBoard -> IO ()
-printBoard b = do putStrLn ""
-                  printBoard' b
-    where
-        printBoard' [] = putStrLn ""
-        printBoard' (x:xs) = do print x -- putStrLn (convertWithTabs x)
-                                printBoard' xs
-        convertWithTabs [] = ""
-        convertWithTabs (x:xs) = show x ++ "\t" ++ convertWithTabs xs
+-- printBoard :: OccupiedBoard -> IO ()
+-- printBoard b = do putStrLn ""
+--                   printBoard' b
+--     where
+--         printBoard' [] = putStrLn ""
+--         printBoard' (x:xs) = do print x -- putStrLn (convertWithTabs x)
+--                                 printBoard' xs
+--         convertWithTabs [] = ""
+--         convertWithTabs (x:xs) = show x ++ "\t" ++ convertWithTabs xs
 
 -- main board printing
 printEoard :: Board -> IO ()
