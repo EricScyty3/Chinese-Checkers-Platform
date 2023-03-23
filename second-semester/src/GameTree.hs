@@ -27,7 +27,7 @@ data GameTree = GRoot BoardIndex [GameTree] |
                 deriving (Eq, Show)
 -- the options of playout policy
 data PlayoutEvaluator = RandomEvaluator | MoveEvaluator | BoardEvaluator | ShallowParanoid | ShallowBRS deriving (Eq, Show, Read)
-type PlayoutArgument = (PlayoutEvaluator, Int)
+type PlayoutArgument = (PlayoutEvaluator, Int, [[Transform]])
 -- in addition to the game tree itself, a history trace of how a move performs in previous game is also maintained
 -- which could be useful at the early stage of movement selection when no much moves are experienced 
 type HistoryTrace = RBTree [Wins]
@@ -115,6 +115,14 @@ updateCurrentInternalBoard ps = do psL <- getInternalBoard
 -- set the current history trace used for progressive history
 setHistoryTrace :: HistoryTrace -> State GameTreeStatus ()
 setHistoryTrace ht = do (pi, bi, b, ps, pn, _, cons, pa) <- get; put (pi, bi, b, ps, pn, ht, cons, pa)
+
+
+updatePlayoutArgument :: PlayoutArgument -> State GameTreeStatus ()
+updatePlayoutArgument pa = do (pi, bi, b, ps, pn, ht, cons, _) <- get; put (pi, bi, b, ps, pn, ht, cons, pa)
+
+updatePlayoutKillerMoves :: [[Transform]] -> State GameTreeStatus ()
+updatePlayoutKillerMoves killerMoves = do (eval, depth, _) <- getPlayoutArgument
+                                          updatePlayoutArgument (eval, depth, killerMoves)
 
 {-
 -- determine the game tree node type: root, node, and leaf

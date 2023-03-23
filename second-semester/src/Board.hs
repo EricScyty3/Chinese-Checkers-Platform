@@ -37,6 +37,12 @@ playerColourList 4 = [Blue, Purple, Orange, Black]
 playerColourList 6 = [Green, Blue, Purple, Red, Orange, Black]
 playerColourList _ = []
 
+colourIndex :: Colour -> Int -> Int
+colourIndex colour pn = let cl = playerColourList pn
+                           in  case colour `elemIndex` cl of
+                                Nothing -> error "Invalid colour"
+                                Just idx -> idx
+
 --Basic Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- determine the color of a piece
 getColour :: BoardPos -> Maybe Colour

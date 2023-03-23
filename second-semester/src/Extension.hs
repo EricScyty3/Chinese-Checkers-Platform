@@ -18,19 +18,18 @@ main = do arg <- getArgs
           start <- lookupTable `seq` getCurrentTime
           let eval = read $ head arg
               depth = read $ arg !! 1
-              (board, _, _, turns) = finalSelection (GRoot 0 []) (0, 1, eraseBoard (playerColourList 3) externalBoard, replicate 3 startBase, 3, RBLeaf, (3, 1), (eval, depth)) (Just 1, Nothing, Nothing)
-          -- printEoard board
+              control = read $ arg !! 2
+              (_, _, _, turns) = finalSelection 
+                                (GRoot 0 []) 
+                                (0, 1, eraseBoard (playerColourList pn) externalBoard, replicate pn startBase, pn, RBLeaf, (3, 1), 
+                                 (eval, depth, replicate pn [])) 
+                                control
           print turns
+          -- printEoard board
           end <- getCurrentTime
           print $ "Time cost: " ++ show (diffUTCTime end start)
-
--- testRun control = do let (nboard, _, _, turns) = finalSelectionE (GRoot 0 []) (0, 1, eboard, iboard, pn, RBLeaf, (3, 0.9), (MoveEvaluator, 2)) 0 control
---                      printEoard nboard
---                      print (show (length turns) ++ ": " ++ show turns)
---     where
---         pn = 3
---         eboard = eraseBoard (playerColourList pn) externalBoard
---         iboard = initialInternalBoard eboard pn
+    where 
+        pn = 3
 
 finalSelection :: GameTree -> GameTreeStatus -> (Maybe Int, Maybe Int, Maybe Pico) -> (Board, [Pos], HistoryTrace, [Int])
 finalSelection tree s@(pi, _, _, iboard, pn, _, _, _) control = 
@@ -51,29 +50,31 @@ getResultsUnderControl tree status (Just iters, Nothing, Nothing) = let (ntree, 
                                                                         pi = evalState getPlayerIdx status
                                                                         scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
                                                                     in  (ntree, scores, nht, playoutTurns)
-                                                                    
--- getResultsUnderControl tree status (Nothing, Nothing, Just seconds) = let startTime = unsafePerformIO getCurrentTime
---                                                                           (ntree, _, nht, playoutTurns) = unsafePerformIO $ timeLimits tree status [] (startTime, seconds)
---                                                                           pi = evalState getPlayerIdx status
---                                                                           scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
---                                                                       in  (ntree, scores, nht, playoutTurns)   
--- getResultsUnderControl tree status (Nothing, Just nodes, Nothing) = let (ntree, _, nht, playoutTurns) = expansionLimits tree status [] nodes
---                                                                         pi = evalState getPlayerIdx status
---                                                                         scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
---                                                                     in  (ntree, scores, nht, playoutTurns)
+
+getResultsUnderControl tree status (Nothing, Nothing, Just seconds) = let startTime = unsafePerformIO getCurrentTime
+                                                                          (ntree, _, nht, playoutTurns) = unsafePerformIO $ timeLimits tree status [] (startTime, seconds)
+                                                                          pi = evalState getPlayerIdx status
+                                                                          scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
+                                                                      in  (ntree, scores, nht, playoutTurns)   
+
+getResultsUnderControl tree status (Nothing, Just nodes, Nothing) = let (ntree, _, nht, playoutTurns) = expansionLimits tree status [] nodes
+                                                                        pi = evalState getPlayerIdx status
+                                                                        scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
+                                                                    in  (ntree, scores, nht, playoutTurns)
 getResultsUnderControl tree status _ = error "More than two controls are added"
 
-{-
+
 -- repeating the MCTS until certain time setting (in seconds) are reached
 timeLimits :: GameTree -> GameTreeStatus -> [Int] -> (UTCTime, Pico) -> IO (GameTree, BoardIndex, HistoryTrace, [Int])
-timeLimits tree s@(pi, bi, board, ps, pn, ht, cons, pa) playoutTurns (start, duration) = do currentTime <- getCurrentTime
-                                                                                            let interval = nominalDiffTimeToSeconds $ diffUTCTime currentTime start
-                                                                                            if interval >= duration then return (tree, bi, ht, reverse playoutTurns)
-                                                                                            else let r@(newTree, newIdx, newHistory, turns) = evalState (mcts tree) s -- force the evaluation to be done here 
-                                                                                                 in  r `seq` timeLimits newTree (pi, newIdx, board, ps, pn, newHistory, cons, pa) (turns:playoutTurns) (start, duration)
+timeLimits tree s@(pi, bi, board, ps, pn, ht, cons, (eval, depth, _)) playoutTurns (start, duration) = 
+    do currentTime <- getCurrentTime
+       let interval = nominalDiffTimeToSeconds $ diffUTCTime currentTime start
+       if interval >= duration then return (tree, bi, ht, reverse playoutTurns)
+       else let r@(newTree, newIdx, newHistory, turns, kms) = evalState (mcts tree) s -- force the evaluation to be done here 
+            in  r `seq` timeLimits newTree (pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, kms)) (turns:playoutTurns) (start, duration)
 
 expansionLimits :: GameTree -> GameTreeStatus -> [Int] -> Int -> (GameTree, BoardIndex, HistoryTrace, [Int])
-expansionLimits tree s@(pi, bi, board, ps, pn, ht, cons, pa) playoutTurns nodes = if bi >= nodes then (tree, bi, ht, reverse playoutTurns)
-                                                                                  else let (newTree, newIdx, newHistory, turns) = evalState (mcts tree) s
-                                                                                       in  expansionLimits newTree (pi, newIdx, board, ps, pn, newHistory, cons, pa) (turns:playoutTurns) nodes
--}
+expansionLimits tree s@(pi, bi, board, ps, pn, ht, cons, (eval, depth, _)) playoutTurns nodes = 
+    if bi >= nodes then (tree, bi, ht, reverse playoutTurns)
+    else let (newTree, newIdx, newHistory, turns, kms) = evalState (mcts tree) s
+         in  expansionLimits newTree (pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, kms)) (turns:playoutTurns) nodes

@@ -147,18 +147,18 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 -- 3. shallow search equipped with board evaluation
 
 -- random greedy policy with certain precentage of choosing the best option while the remaining chance of random choice if applied here
-switchEvaluator :: PlayoutArgument -> Colour -> [Transform] -> [KillerMoves] -> State GameTreeStatus ([KillerMoves], Transform)
-switchEvaluator (evaluator, depth) colour tfs kms =
-                                                if not (randomPercentage 95) || evaluator == RandomEvaluator
+switchEvaluator :: PlayoutArgument -> Colour -> [Transform] -> State GameTreeStatus Transform
+switchEvaluator (evaluator, depth, killerMoves) colour tfs =
+                                                if not (randomPercentage 90) || evaluator == RandomEvaluator
                                                 then do let idx = randomMove (length tfs)
-                                                        return (kms, tfs !! idx) -- randomly choose a movement and generate the resulting board  
+                                                        return (tfs !! idx) -- randomly choose a movement and generate the resulting board  
                                                 else case evaluator of
                                                         -- move evaluator
-                                                        MoveEvaluator -> do move <- moveEvaluator tfs; return (kms, move)
+                                                        MoveEvaluator -> do moveEvaluator tfs;
                                                         -- board evaluator
-                                                        BoardEvaluator -> do move <- boardEvaluator tfs; return (kms, move)
-                                                        ShallowParanoid -> do (move, nkms) <- minimaxSearch depth kms Paranoid; return (nkms, move)
-                                                        ShallowBRS -> do (move, nkms) <- minimaxSearch depth kms BRS; return (nkms, move)
+                                                        BoardEvaluator -> do boardEvaluator tfs;
+                                                        ShallowParanoid -> minimaxSearch depth killerMoves Paranoid
+                                                        ShallowBRS -> minimaxSearch depth killerMoves BRS
                                                         _ -> error "Undefined Evaluator"
     where
         moveEvaluator :: [Transform] -> State GameTreeStatus Transform
@@ -174,34 +174,23 @@ switchEvaluator (evaluator, depth) colour tfs kms =
                                     idx = randomMaxSelection scoreList
                                 return (tfs !! idx)
 
-        {-paranoidEvaluator :: Int -> [KillerMoves] -> State GameTreeStatus (Transform, [KillerMoves])
-        paranoidEvaluator 0 _ = error "the depth should be larger than zero"
-        paranoidEvaluator depth kms = do (ri, _, eboard, iboard, pn, _, _, _) <- get
-                                         let ((move, _), nkms) = runState (mEvaluation (depth, ri, eboard, iboard, pn, (-999, 999), Paranoid) ri) kms
-                                         return (move, nkms)
-
-        brsEvaluator :: Int -> [KillerMoves] -> State GameTreeStatus (Transform, [KillerMoves])
-        brsEvaluator 0 _ = error "the depth should be larger than zero"
-        brsEvaluator depth kms = do (ri, _, eboard, iboard, pn, _, _, _) <- get
-                                    let ((move, _), nkms) = runState (mEvaluation (depth, ri, eboard, iboard, pn, (-999, 999), BRS) ri) kms
-                                    return (move, nkms)-}
-        
-        minimaxSearch :: Int -> [KillerMoves] -> TreeType -> State GameTreeStatus (Transform, [KillerMoves])
+        minimaxSearch :: Int -> [KillerMoves] -> TreeType -> State GameTreeStatus Transform
         minimaxSearch 0 _ _ = error "the depth should be larger than zero"
-        minimaxSearch depth kms treetype = do (ri, _, eboard, iboard, pn, _, _, _) <- get
-                                              let ((move, _), nkms) = runState (mEvaluation (depth, ri, eboard, iboard, pn, (-999, 999), treetype) ri) kms
-                                              return (move, nkms)
+        minimaxSearch depth kms treetype = do (ri, _, eboard, iboards, pn, _, _, _) <- get
+                                              let ((move, _), nkms) = runState (mEvaluation depth (ri, eboard, iboards, pn, (-999, 999), treetype) ri) kms
+                                              updatePlayoutKillerMoves nkms
+                                              return move
 
 -- game simulation from a certain board state 
-playout :: Int -> [KillerMoves] -> State GameTreeStatus (PlayerIndex, Int)
-playout moves killerMoves =
+playout :: Int -> [Transform] -> State GameTreeStatus (PlayerIndex, Int)
+playout moves record =
                 do pn <- getPlayerNum
-                   if getTurns moves pn >= 1000 then do -- avoid the potential cycling, or stop the playouts if costing too much time
+                   if getTurns moves pn >= 1500 then do -- avoid the potential cycling, or stop the playouts if costing too much time
                                                         psList <- getInternalBoard
                                                         let scoreList = boardEvaluations psList
                                                         -- treat the one with the best board state (not move state) as winner
-                                                        -- return (randomMaxSelection scoreList, getTurns moves pn)
-                                                        error ("Exceed 1000 turns " ++ show killerMoves)
+                                                        return (randomMaxSelection scoreList, getTurns moves pn)
+                                                        -- error "Exceed 1000 turns"
                    else do pi <- getPlayerIdx
                            tfs <- colouredMovesList pi    -- get all of the avaliable moves (might cause cycling)
                            board <- getBoard
@@ -209,51 +198,26 @@ playout moves killerMoves =
                            colour <- getPlayerColour
                            if winStateDetermine colour board && moves == 1 then error ("Cannot start playout at terminal point:" ++ show pi ++ "\n" ++ show board)
                             -- if the started board state is already an end state, this means that some players take a suicidal action that cause other player to win
-                           else do (newKs, tf) <- switchEvaluator pa colour tfs killerMoves -- otherwise, choose one of the boards resulted from the current board
+                           else do resultedMove <- switchEvaluator pa colour tfs -- otherwise, choose one of the boards resulted from the current board   
                                    -- update internal board state
-                                   newps <- modifyCurrentInternalBoard tf
+                                   let checkedMove = (if resultedMove `elem` record then tfs !! randomMove (length tfs) else resultedMove)
+                                   newps <- modifyCurrentInternalBoard checkedMove
                                    updateCurrentInternalBoard newps
                                    -- reflect the change onto external board
-                                   nboard <- repaintBoard tf
+                                   nboard <- repaintBoard checkedMove
                                    if winStateDetermine colour nboard then return (pi, getTurns moves pn) -- if a player wins, then return the player's index
                                    else do updatePlayerIdx -- otherwise, keep simulating on the next turn
                                            setBoard nboard
-                                           playout (moves + 1) (tail newKs ++ [[]]) -- inherit the killer moves for the next interation
-                                   
-                                           
-
--- defaultStatus :: PlayoutEvaluator -> Int -> GameTreeStatus
--- defaultStatus eval depth = (0, 1, eraseBoard (playerColourList 3) externalBoard, replicate 3 startBase, 3, RBLeaf, (3, 1), (eval, depth))
-
--- testPlayout status = do let ((nboard, ifwingame), newStatus) = runState (playout 0 (replicate depth [])) status
---                         printEoard nboard
---                         if not ifwingame then testPlayout newStatus
---                         else print "End" 
-
-                                   
-
+                                           playout (moves + 1) (checkedMove:record) -- record the total moves
 
 getTurns :: Int -> Int -> Int
 getTurns moves pn = ceiling (fromIntegral moves / fromIntegral pn)
-
--- the win state detection here is not just checking the hash state, should consider not only the normal wining state, but also the potential blocking
--- a state is won for a player if its goal area is filled with pieces, and at least one of the pieces belongs it
-winStateDetermine :: Colour -> Board -> Bool
-winStateDetermine c b = let hs = map (reversion c) goalBase -- get the goal positions of certain player
-                            bs = evalState (do mapM getElement hs) b -- get the corresponding board state
-                        in  isFull bs && existColour c bs -- check if the two conditions are satisfied
-    where
-        isFull :: [BoardPos] -> Bool
-        isFull = foldr ((&&) . isOccupied) True
-        existColour :: Colour -> [BoardPos] -> Bool
-        existColour c bs = Just c `elem` map Board.getColour bs
-
 
 --MCTS Body--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the MCTS structure that first selects the node with largest profits, then expands it, 
 -- and play simulations on the expanded node, and finally update the reviewed nodes
 
-mcts :: GameTree -> State GameTreeStatus (GameTree, BoardIndex, HistoryTrace, Int)
+mcts :: GameTree -> State GameTreeStatus (GameTree, BoardIndex, HistoryTrace, Int, [KillerMoves])
 mcts tree = do (idxList, hashList, lastnode) <- selection tree [] []
                -- a check is taken to ensure whether the last node is a win state, this allowing the suicidal action that cause other player to win
                -- therefore, the check should consider all players
@@ -266,7 +230,8 @@ mcts tree = do (idxList, hashList, lastnode) <- selection tree [] []
                                        ht <- getHistoryTrace
                                        newHistory <- editHT hashList winIdx ht
                                        bi <- getBoardIdx
-                                       return (newTree, bi, newHistory, 0) -- get the new tree and game history with playout turn equals to 0 
+                                       (_, _, kms) <- getPlayoutArgument
+                                       return (newTree, bi, newHistory, 0, kms) -- get the new tree and game history with playout turn equals to 0 
 
                else do expandednode <- expansion lastnode -- expand the last leaf in the trace
                        (idxList2, hashList2, _) <- selection expandednode idxList hashList -- additional selection of the expanded node's children
@@ -276,15 +241,17 @@ mcts tree = do (idxList, hashList, lastnode) <- selection tree [] []
                                                bi <- getBoardIdx
                                                ht <- getHistoryTrace
                                                newHistory2 <- editHT hashList2 winIdx ht
-                                               return (newTree2, bi, newHistory2, 0) -- get the new tree and game history with playout turn equals to 0 
+                                               (_, _, kms) <- getPlayoutArgument
+                                               return (newTree2, bi, newHistory2, 0, kms) -- get the new tree and game history with playout turn equals to 0 
 
-                       else do (_, depth) <- getPlayoutArgument
-                               (winIdx, turns) <- playout 1 (replicate depth []) -- start the playout phase with certain policy and heuristic
+                       else do (winIdx, turns) <- playout 1 [] -- start the playout phase with certain policy and heuristic
+                               -- current killer moves and moves record are reset everytime entering the playout phase
                                newTree3 <- backpropagation winIdx idxList2 tree expandednode -- treat the tree as a child by setting it into a list, and update it
                                bi <- getBoardIdx
                                ht <- getHistoryTrace
                                newHistory3 <- editHT hashList2 winIdx ht
-                               return (newTree3, bi, newHistory3, turns) -- get the new tree 
+                               (_, _, kms) <- getPlayoutArgument
+                               return (newTree3, bi, newHistory3, turns, kms) -- get the new tree 
 
 -- check the win state of all players, since the suicidal action is allowed and can be performed either randomly or on purpose
 -- any value other than -1 means a win is reached, otherwise, nothing
@@ -298,31 +265,9 @@ checkPlayersWinState pn board = let ws = map (`winStateDetermine` board) (player
 -- repeating the MCTS until certain iterations are reached
 iterations :: GameTree -> GameTreeStatus -> [Int] -> Int -> (GameTree, BoardIndex, HistoryTrace, [Int])
 iterations tree s@(_, bi, _, _, _, ht, _, _) playoutTurns 0 = (tree, bi, ht, reverse playoutTurns)
-iterations tree s@(pi, bi, board, ps, pn, ht, cons, pp) playoutTurns count = let (newTree, newIdx, newHistory, turns) = evalState (mcts tree) s -- reset every status while maintaining the board index and move history
-                                                                             in  iterations newTree (pi, newIdx, board, ps, pn, newHistory, cons, pp) (turns:playoutTurns) (count-1) -- inherit the movement history, and record the playout turns
-{-
--- after the iterations of four stages are finished running, the root shoudl choose the child with the most win rate for the next move 
--- the tree could be re-used for saving computation, but if looking for different result, the tree should be started from scratch every several iterations
-finalSelection :: GameTree -> GameTreeStatus -> Int -> Int -> (Board, Int, HistoryTrace, [Int])
-finalSelection tree s@(pi, _, board, _, pn, _, _, _) bhash counts =
-                                                              let (ntree, _, nht, playoutTurns) = iterations tree s [] counts
-                                                                  scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
-                                                              in  if null scores then error (show ntree)
-                                                                  else let -- get the maximum win rate move as the next movement
-                                                                           chosenNode = getChildren ntree !! randomMaxSelection scores
-                                                                           -- return the resulting decision
-                                                                           colour = playerColour pi pn
-                                                                           (from, to) = getTransform chosenNode
-                                                                           newBoard = evalState (repaintBoard (from, to)) s
-                                                                           (pfrom, pto) = projectMove colour (from ,to)
-                                                                           newBoardHash = changeHash pfrom pto bhash
-                                                                       in  newBoard `par` newBoardHash `pseq` (newBoard, newBoardHash, nht, playoutTurns)
-
-                                                                      -- depending on the need, several information could be returned 
-                                                                      -- the new board state and the new board hash are generated for Computer decision in Main
-                                                                      -- while playouts are treated as one of the measurements in experiments
-                                                                      -- the game history is maintained globally for the next call
--}
+iterations tree s@(pi, bi, board, ps, pn, ht, cons, (eval, depth, _)) playoutTurns count = 
+    let (newTree, newIdx, newHistory, turns, kms) = evalState (mcts tree) s -- reset every status while maintaining the board index and move history
+    in  iterations newTree (pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, kms)) (turns:playoutTurns) (count-1) -- inherit the movement history, and record the playout turns
 
 
 
