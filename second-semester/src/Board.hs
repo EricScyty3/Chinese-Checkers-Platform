@@ -149,8 +149,8 @@ replace idx new ls = front ++ [new] ++ end
 -- findAllPieces = concatMap (filter isOccupied)
 
 -- find the all pieces' positions on the board based on the colour
--- findPiecesWithColour :: Colour -> Board -> [BoardPos]
--- findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
+findPiecesWithColour :: Colour -> Board -> [BoardPos]
+findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
 
 -- mutate a position of the whole board with certain function
 changeBoardElement :: (BoardPos -> BoardPos) -> BoardPos -> Board -> Board

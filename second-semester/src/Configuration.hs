@@ -156,10 +156,9 @@ boardEvaluations ps = if ifExistMidgame ps then map centroid ps
     where                      
         -- search for a shortest path for a certain board configuration based on the lookup table
         boardEvaluation :: [Pos] -> Int
-        boardEvaluation ps = if isMidgame ps then centroid ps 
-                             else (case evaluateBoard ps (isOpening ps) of
-                                        Nothing -> error ("Cannot find such board configuration: " ++ show ps)
-                                        Just x  -> 28 - x)
+        boardEvaluation ps = case evaluateBoard ps (isOpening ps) of
+                                Nothing -> error ("Cannot find such board configuration: " ++ show ps)
+                                Just x  -> 28 - x
 
 -- search for the shortest path value of a certain board configuration
 evaluateBoard :: [Pos] -> Bool -> Maybe Int
@@ -206,15 +205,14 @@ lookupTable = let elems = loadTableElements
 -- construct the red-black tree based on the stored data with and hash of the board and the corresponding moves and sysmmetric board's moves
 constructTable :: [(Int, Int, Int)] -> LookupTable -> LookupTable
 constructTable [] tree = tree
-constructTable ((bh, top, bottom):xs) tree = constructTable xs (rbInsert bh (top, bottom) tree)
+constructTable ((boardHash, opening, endgame):xs) tree = constructTable xs (rbInsert boardHash (opening, endgame) tree)
 
 -- load the stored lookup table data from the file
 loadTableElements :: [(Int, Int, Int)]
 loadTableElements = let filename1 = "../dataset/lookup_table.txt"
                         filename2 = "./dataset/lookup_table.txt"
                     in  unsafePerformIO $ 
-                        do 
-                           does1Exist <- doesFileExist filename1
+                        do does1Exist <- doesFileExist filename1
                            filePath <- if does1Exist then openFile filename1 ReadMode
                                        else openFile filename2 ReadMode
                            contents <- hGetContents filePath

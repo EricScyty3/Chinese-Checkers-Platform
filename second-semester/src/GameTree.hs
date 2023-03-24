@@ -26,8 +26,9 @@ data GameTree = GRoot BoardIndex [GameTree] |
                 GNode BoardIndex Transform [Wins] [GameTree]
                 deriving (Eq, Show)
 -- the options of playout policy
-data PlayoutEvaluator = RandomEvaluator | MoveEvaluator | BoardEvaluator | ShallowParanoid | ShallowBRS deriving (Eq, Show, Read)
-type PlayoutArgument = (PlayoutEvaluator, Int, [[Transform]])
+data PlayoutEvaluator = RandomEvaluator | MoveEvaluator | BoardEvaluator | MixedParanoid | MixedBRS deriving (Eq, Show, Read)
+type KillerMoves = [Transform] -- the two last moves that were best or caused a cutoff at the current layer
+type PlayoutArgument = (PlayoutEvaluator, Int, [KillerMoves])
 -- in addition to the game tree itself, a history trace of how a move performs in previous game is also maintained
 -- which could be useful at the early stage of movement selection when no much moves are experienced 
 type HistoryTrace = RBTree [Wins]
@@ -59,7 +60,7 @@ getBoard = do (_, _, b, _, _, _, _, _) <- get; return b
 getCurrentInternalBoard :: State GameTreeStatus [Pos]
 getCurrentInternalBoard = do ps <- getInternalBoard
                              pi <- getPlayerIdx
-                             return (ps !! pi)
+                             return $ ps `par` pi `pseq` (ps !! pi)
 -- return the positions list
 getInternalBoard :: State GameTreeStatus [[Pos]]
 getInternalBoard = do (_, _, _, ps, _, _, _, _) <- get; return ps
@@ -104,18 +105,17 @@ modifyCurrentInternalBoard :: Transform -> State GameTreeStatus [Pos]
 modifyCurrentInternalBoard tf = do ps <- getCurrentInternalBoard
                                    colour <- getPlayerColour
                                    let ptf = projectMove colour tf
-                                       newps = flipBoard ps ptf
+                                       newps = ps `par` ptf `pseq` flipBoard ps ptf
                                    return newps
 -- update the list of internal board hash values
 updateCurrentInternalBoard :: [Pos] -> State GameTreeStatus ()
-updateCurrentInternalBoard ps = do psL <- getInternalBoard
+updateCurrentInternalBoard ps = do iboards <- getInternalBoard
                                    pi <- getPlayerIdx
-                                   let npsL = replace pi ps psL
-                                   setInternalBoard npsL
+                                   let niboards = pi `par` iboards `pseq` replace pi ps iboards
+                                   setInternalBoard niboards
 -- set the current history trace used for progressive history
 setHistoryTrace :: HistoryTrace -> State GameTreeStatus ()
 setHistoryTrace ht = do (pi, bi, b, ps, pn, _, cons, pa) <- get; put (pi, bi, b, ps, pn, ht, cons, pa)
-
 
 updatePlayoutArgument :: PlayoutArgument -> State GameTreeStatus ()
 updatePlayoutArgument pa = do (pi, bi, b, ps, pn, ht, cons, _) <- get; put (pi, bi, b, ps, pn, ht, cons, pa)
@@ -201,13 +201,13 @@ repaintBoard tf = do board <- getBoard; return (repaintPath board tf) -- recolou
 
 -- given a certain piece's colour, return a list of avaliable movements (transforms)
 colouredMovesList :: PlayerIndex -> State GameTreeStatus [Transform]
-colouredMovesList idx = do board <- getBoard
-                           psL <- getInternalBoard 
+colouredMovesList idx = do eboard <- getBoard
+                           iboards <- getInternalBoard 
                            pn <- getPlayerNum
-                           let ps = psL !! idx
+                           let ps = iboards !! idx
                                colour = playerColour idx pn
                                bs = ps `par` colour `pseq` map (appendColour colour . reversion colour) ps -- invert the internal positions to external ones
-                               ds = evalState (do mapM destinationList bs) board -- the new positions resulting from moving the above pieces
+                               ds = eboard `par` bs `pseq` evalState (do mapM destinationList bs) eboard -- the new positions resulting from moving the above pieces
                            return (pairArrange bs ds) -- zip the resulting movements with the current pieces
 
 pairArrange :: [BoardPos] -> [[BoardPos]] -> [Transform]
@@ -256,8 +256,9 @@ estimateNodePH bhash visits wins = do pi <- getPlayerIdx
                                       constant <- getPHCons
                                       case rbSearch bhash ht of -- and find if similar move has been made in the past
                                         Nothing -> return 0
-                                        Just wins -> return $ fromIntegral (wins !! pi) / fromIntegral (sum wins)
-                                                            * constant / fromIntegral (visits - (wins !! pi) + 1)
+                                        Just wins -> return $ constant `par` pi `pseq` 
+                                                              fromIntegral (wins !! pi) / fromIntegral (sum wins)
+                                                              * constant / fromIntegral (visits - (wins !! pi) + 1)
                                                 -- if it does, then return the calculated result
 -- when estimating a node, skip if the entered node is root, otherwise, apply the formulas above
 estimateNode :: Int -> GameTree -> State GameTreeStatus Double
@@ -270,6 +271,6 @@ estimateNode pv node = if isRoot node then return 0
                                    visits = getVisits node
                                    wins = getWins node
                                uct <- estimateNodeUCT pv visits
-                               ph  <- estimateNodePH (hash ps) visits wins
+                               ph  <- ps `par` wins `pseq` estimateNodePH (hash ps) visits wins
                                return $ uct `par` ph `pseq` mean + uct + ph
 

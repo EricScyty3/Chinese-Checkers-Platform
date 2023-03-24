@@ -44,6 +44,7 @@ randomBoardState = [
 -- this is just for heuristic board evaluation, therefore, only need to know the occupy status for each position
 
 -- the empty state
+{-
 empty :: OccupiedBoard
 empty = replicate occupiedBoardSize (replicate occupiedBoardSize 0)
 -- the initial state
@@ -64,8 +65,9 @@ findOccupiedPieces board = sort $ [(x, y) | (y, row) <- zip [0..] board, x <- el
 -- instead of a full table, a list of occupied positions could be more efficient to represent the internal board
 convertToInternalBoard :: Board -> Colour -> [Pos]
 convertToInternalBoard eboard colour = map (projection colour . getPos) (findPiecesWithColour colour eboard)
+-}
 
--- the hashed values of the both states
+-- the hashed values of the both initial and win states
 hashInitial :: Int
 hashInitial = hash startBase
 hashEnd :: Int
@@ -79,7 +81,6 @@ winStateDetect ps = hashEnd == hash ps
 hash :: [Pos] -> Int
 hash ps = let posPL = filter (testValidPos occupiedBoardSize occupiedBoardSize) ps -- filter the negative positions
           in  evalState (hashBoardWithPos posPL) randomBoardState
-
     where
         hashBoardWithPos :: [Pos] -> State StateTable Int
         hashBoardWithPos [] = return 0
@@ -88,18 +89,18 @@ hash ps = let posPL = filter (testValidPos occupiedBoardSize occupiedBoardSize) 
                                      return $ randomState1 `par` randomState2 `pseq` (randomState1 `myXOR` randomState2)
 
 -- if the board state is change, just hash the changed positions with the previous value, and a new hash will be provided
-changeHash :: Pos -> Pos -> Int -> Int
-changeHash x y h = evalState (hashChange x y h) randomBoardState
-    where
-        -- after the first construct, each changed hash does not need to recalculate, just applys the two changed positions' hashes
-        hashChange :: Pos -> Pos -> Int -> State StateTable Int
-        hashChange fp tp xv = do f <- safeGetElement fp -- if the position is negative, then treat it as 0
-                                 t <- safeGetElement tp
-                                 return $ f `par` t `pseq` foldr myXOR 0 [xv, f, t]
+-- changeHash :: Pos -> Pos -> Int -> Int
+-- changeHash x y h = evalState (hashChange x y h) randomBoardState
+--     where
+--         -- after the first construct, each changed hash does not need to recalculate, just applys the two changed positions' hashes
+--         hashChange :: Pos -> Pos -> Int -> State StateTable Int
+--         hashChange fp tp xv = do f <- safeGetElement fp -- if the position is negative, then treat it as 0
+--                                  t <- safeGetElement tp
+--                                  return $ f `par` t `pseq` foldr myXOR 0 [xv, f, t]
 
-        safeGetElement :: Pos -> State StateTable Int
-        safeGetElement pos = do if not $ testValidPos occupiedBoardSize occupiedBoardSize pos then return 0
-                                else getElement pos
+--         safeGetElement :: Pos -> State StateTable Int
+--         safeGetElement pos = do if not $ testValidPos occupiedBoardSize occupiedBoardSize pos then return 0
+--                                 else getElement pos
 
 -- given a positions changes, generate a list of resulting boards
 -- flipBoards ::  [Pos] -> [(Pos, Pos)] -> [[Pos]]
@@ -107,8 +108,9 @@ changeHash x y h = evalState (hashChange x y h) randomBoardState
 -- flipBoards ps (x:xs) = flipBoard ps x:flipBoards ps xs
 -- given a positions change, reflect that onto the internal board
 flipBoard :: [Pos] -> (Pos, Pos) -> [Pos]
-flipBoard ps (x, y) = let idx = head $ elemIndices x ps
-                      in  replace idx y ps
+flipBoard ps (x, y) = case x `elemIndex` ps of
+                        Nothing -> error "Not existing such position in the list"
+                        Just idx -> replace idx y ps
 
 --Hash Construct---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- transform a decimal integer into a binary list
