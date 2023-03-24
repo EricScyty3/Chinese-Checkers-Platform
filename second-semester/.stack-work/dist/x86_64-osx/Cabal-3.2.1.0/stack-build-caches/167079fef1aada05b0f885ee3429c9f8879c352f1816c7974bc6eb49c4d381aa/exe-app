@@ -13,22 +13,22 @@
 /Users/eric/msc-project/second-semester/src/BFS.hs:
   hash: 58a5baf1146c3f9d13b4855652dd7f765c9845d5830c388907081f1f4bafc450
 /Users/eric/msc-project/second-semester/src/Board.hs:
-  hash: 936866dd8ad6b8e6bd59f0321186e013902e90cd0b9421d57457b45eb1431842
+  hash: c5029f3c896eebb3eb8f26580b70701af4829a00c4e19bb93628f441345521d1
 /Users/eric/msc-project/second-semester/src/Configuration.hs:
-  hash: bb73a45b76430da5b6a13b688dfc46b2c2fe2ec19c06e2f5c72c078e6e55de81
+  hash: c9230fa453f8475e69410ea635cdff5361be16495bccfb2ced289ec374ca2f64
 /Users/eric/msc-project/second-semester/src/Experiment.hs:
   hash: 36063c7903644c78ab345255e1463d897693b0c4d386b2b6d9b10f15eaff5a05
 /Users/eric/msc-project/second-semester/src/Extension.hs:
-  hash: 901a70c9e747af362ea960f67e966b5d897c53267bc9bc409484adf4f19edf5a
+  hash: b0deffa8b99b3a6c7bf502841d8edde7ec850aae09dc76b1b301a462a4094567
 /Users/eric/msc-project/second-semester/src/GameTree.hs:
-  hash: 6da702b90dabf59181c2ce50cd51c3172aebe78f7c3ac97a96ef70a2a2e0ffb4
+  hash: 387e5994c1b2e72ed0409e0e67113499b69a412b990fd2a670cd2351f2e0e99f
 /Users/eric/msc-project/second-semester/src/MCTS.hs:
-  hash: 7a19ce2589d4647291ca2ee3242a551a3af9ca5fa689ceb4e635e337ca5ff340
+  hash: 467ec50658a710c1d8ec032e03cb7e3de3f292550386f06568c50ecb012cd2c2
 /Users/eric/msc-project/second-semester/src/Main.hs:
-  hash: cc7a4b5f3238598f8e2bfa12559d6763154cce45ea348f432bf526f50bd6bb9b
+  hash: 47f253fc7ad63aaba8e7bb5dd5249c0b0930618ae646e24005154768fbdae88e
 /Users/eric/msc-project/second-semester/src/Minimax.hs:
-  hash: 759547cb6328792d767d188504962659312c05755de94348d038186e7c2bdb36
+  hash: d8d630164f4f23990e0b9f93e0a78e97345765271a3a4e8cfa4ed4870c4bae68
 /Users/eric/msc-project/second-semester/src/RBTree.hs:
   hash: 3b09836d24ea6e19165bd31feb33a8f9aafcbf494015400200a503c3ffe65f4a
 /Users/eric/msc-project/second-semester/src/Zobrist.hs:
-  hash: 5f5430cb5784fe04e580cd32211148f60ed0b58ca46f4731be8f890e6b3b2179
+  hash: 38748b952e18cb71b2cfbe28f8523e35c1762d39e25565d98c359412d491af49

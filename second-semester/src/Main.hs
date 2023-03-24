@@ -239,25 +239,25 @@ buildUI wenv model = widgetTree where
             labeledRadio_ "Board" BoardEvaluator eitem [textRight],
 
             hstack [
-              labeledRadio_ "Paranoid" ShallowParanoid eitem [textRight],
+              labeledRadio_ "Embedded Paranoid" MixedParanoid eitem [textRight],
               spacer,
               hgrid_ [childSpacing_ 5] [
                 label "(depth)",
                 labeledRadio_ "2" 2 ditem [textRight],
                 labeledRadio_ "3" 3 ditem [textRight],
                 labeledRadio_ "4" 4 ditem [textRight]
-              ] `nodeVisible` (vitem ^. evaluator == ShallowParanoid)
+              ] `nodeVisible` (vitem ^. evaluator == MixedParanoid)
             ],
 
             hstack [
-              labeledRadio_ "BRS" ShallowBRS eitem [textRight],
+              labeledRadio_ "Embedded BRS" MixedBRS eitem [textRight],
               spacer,
               hgrid_ [childSpacing_ 5] [
                 label "(depth)",
                 labeledRadio_ "2" 2 ditem [textRight],
                 labeledRadio_ "3" 3 ditem [textRight],
                 labeledRadio_ "4" 4 ditem [textRight]
-              ] `nodeVisible` (vitem ^. evaluator == ShallowBRS)
+              ] `nodeVisible` (vitem ^. evaluator == MixedBRS)
             ]
           ],
 
@@ -515,13 +515,13 @@ handleEvent wenv node model evt = case evt of
       newPageId = if v <= model ^. pageIndex then v - 1 else model ^. pageIndex
 
   -- only react when the during the game and is currently the computer player's turn
-  ComputerAction -> [] {-[Model $ model & displayBoard .~ newBoard
+  ComputerAction -> [{-Model $ model & displayBoard .~ newBoard
                                    & internalStates .~ insertState
                                    & gameHistory .~ newHistoryTree
                                    & playerIndex .~ newTurn
                                    & previousStartPos .~ initialPos
                                    & previousEndPos .~ initialPos
-                                   & ifWin .~ newWinState | model ^. startGame && ifComputersTurn && not (model ^. ifWin)]
+                                   & ifWin .~ newWinState | model ^. startGame && ifComputersTurn && not (model ^. ifWin)-}]
                     {-case model ^. startGame && (model ^. turnS `elem` model ^. computerIdxList) && not (model ^. ifWin) of
                       True  -> [Model $ model & displayBoard .~ newBoard
                                               & internalStates .~ insertState
@@ -532,26 +532,27 @@ handleEvent wenv node model evt = case evt of
                                               & ifWin .~ newWinState
                                               ] -- apply the movement retrieved from the MCTS decision, and perform
                       False -> []-}
-    where
-      pi = model ^. playerIndex
-      ifComputersTurn = model ^. defaultConfig ^?! configList . ix pi . active
-      (newBoard, newState, newHistoryTree) = aiDecision model
-      insertState = replace pi newState (model ^. internalStates)
-      newWinState = winStateDetect newState
-      newTurn = if not newWinState then turnBase (model ^. playersAmount) pi else pi-}
+    -- where
+    --   pi = model ^. playerIndex
+    --   ifComputersTurn = model ^. defaultConfig ^?! configList . ix pi . active
+    --   (newBoard, newState, newHistoryTree) = aiDecision model
+    --   insertState = replace pi newState (model ^. internalStates)
+    --   newWinState = winStateDetect newState
+    --   newTurn = if not newWinState then turnBase (model ^. playersAmount) pi else pi
 
-{-
+
 -- keep calling the event for checking the computer player's movement
-computerTurn :: (AppEvent -> IO a) -> IO b
-computerTurn sendMsg = do sendMsg ComputerAction
-                          threadDelay $ 1000 * 800 -- check every 800 microseconds
-                          computerTurn sendMsg
+-- computerTurn :: (AppEvent -> IO a) -> IO b
+-- computerTurn sendMsg = do sendMsg ComputerAction
+--                           threadDelay $ 1000 * 500 -- check every 1 second
+--                           computerTurn sendMsg
 
 -- pass the model information to the MCTS interface and accept the returned board state
+{-
 aiDecision :: AppModel -> (Board, [Pos], HistoryTrace)
 aiDecision model = let root = GRoot 0 []
                        (newBoard, newState, nht, _) = finalSelection root
-                                                      (pi, 1, eboard, iboard, pn, ht, (uctCons, phCons), (eval, dep))
+                                                      (pi, 1, eboard, iboard, pn, ht, (uctCons, phCons), (eval, dep, replicate pn []))
                                                       (mctsControl mctsCon ctVal)
                    in  (newBoard, newState, nht)
   where
@@ -573,7 +574,6 @@ aiDecision model = let root = GRoot 0 []
     mctsControl 1 x = (Nothing, Just x, Nothing)
     mctsControl _ x = (Nothing, Nothing, Just (fromIntegral x))
 -}
-
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
 main = do startApp model handleEvent buildUI config
