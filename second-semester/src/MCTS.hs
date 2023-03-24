@@ -38,14 +38,14 @@ makeLeaf transform = do bi <- getBoardIdx
 randomMove :: Int -> State GameTreeStatus Int
 randomMove len  = do gen <- getRandGen
                      let (randomValue, newGen) = randomR (0, len-1) gen
-                     setRandGen newGen
+                     setRandGen (snd (split newGen))
                      return randomValue
 
 -- generate a random value from 0 to 100, for random percentage decision making
 randomPercentage :: Int -> State GameTreeStatus Bool
 randomPercentage n = do gen <- getRandGen
                         let (randomValue, newGen) = randomR (0, 100) gen
-                        setRandGen newGen
+                        setRandGen (snd (split newGen))
                         return $ randomValue <= n
 
 -- selecting randomly if there exist multiple maximum elements in a list
