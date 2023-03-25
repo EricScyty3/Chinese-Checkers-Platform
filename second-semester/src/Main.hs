@@ -381,9 +381,21 @@ handleEvent wenv node model evt = case evt of
   StartGameButtonClick -> [Model $ model & startGame .~ True
                                          & displayBoard .~ eraseBoard (playerColourList pn) externalBoard
                                          & internalStates .~ replicate pn startBase
-                                         & killerMoves .~ replicate pn []]
+                                         & killerMoves .~ replicate pn []
+                                         & movesList .~ []
+                                         & gameHistory .~ RBLeaf
+                                         & startPos .~ initialPos
+                                         & endPos .~ initialPos
+                                         & playerIndex .~ 0 -- resetting all states
+                                         & ifWin .~ False
+                                         ]
     where
       pn = model ^. playersAmount
+
+  -- quit the game and return back to the menu page
+  EndGameButtonClick -> [Model $ model & startGame .~ False
+                                       & errorMessage .~ ""
+                                       ]
 
   -- update the page index with given increment
   PageUpdate x -> [Model $ model & pageIndex +~ x]
@@ -465,16 +477,6 @@ handleEvent wenv node model evt = case evt of
         pi = model ^. playerIndex
         newBoard = repaintPath (model ^. displayBoard) (sp, ep) -- generate the new board state by re-colouring the two board positions
 
-  -- quit the game and return back to the menu page
-  EndGameButtonClick -> [Model $ model & playerIndex .~ 0 -- resetting all states
-                                       & ifWin .~ False
-                                       & startGame .~ False
-                                       & startPos .~ initialPos
-                                       & endPos .~ initialPos
-                                       & errorMessage .~ ""
-                                       & movesList .~ []
-                                       & gameHistory .~ RBLeaf]
-
   -- the movement check, how a movement is passed is done as follows:
   -- first enter the starting point, and check for the correctness
   -- then enter the destination, if no error is made then process, otherwise, discard that and print the error message 
@@ -538,7 +540,7 @@ handleEvent wenv node model evt = case evt of
       newPageId = if v <= model ^. pageIndex then v - 1 else model ^. pageIndex
 
   RetrieveNewGen
-   | not ifComputersTurn || model ^. ifWin -> []
+   | not (model ^. startGame) || not ifComputersTurn || model ^. ifWin -> []
    | otherwise -> [Task $ ComputerAction <$> aiDecision model]
    where
     pi = model ^. playerIndex
