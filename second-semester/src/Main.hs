@@ -70,6 +70,7 @@ import Data.List (elemIndex)
 import Minimax
 import Data.Fixed
 import Extension
+import System.Random
 
 -- the container for storing the parameters for MCTS frameworks
 -- the configuration of a single computer player
@@ -107,15 +108,14 @@ data AppModel = AppModel {
   -- therefore, containing a start and an end
   _startPos :: BoardPos,
   _endPos :: BoardPos,
-  -- the move made by the last player previously, used for canceling if needed
-  _previousStartPos:: BoardPos,
-  _previousEndPos :: BoardPos,
   -- a message that will be display when an incorrect state appears
   _errorMessage :: String,
   -- a list of avaliable posistions that a player can move from an entered position
   _movesList :: [BoardPos],
   -- the history record of the game, which could be made use of by the MCTS
   _gameHistory :: HistoryTrace,
+  -- the movement record of moves that cause a alpha-beta pruning during minimax search
+  _killerMoves :: [KillerMoves],
   -- shows at the menu page, indicating the current player to be configured
   _pageIndex :: Int,
   -- the container that holds the configuration of a list of potential computer players
@@ -132,7 +132,9 @@ data AppEvent
   | EndGameButtonClick -- quit the current game and back to the menu page
   | CancelChecked Int -- modify the checkbox's result of computer players when the total players is changed
   | PageUpdate Int -- update the page index for the setting panel
-  | ComputerAction -- perform the move made by the computer player
+  | ComputerAction (Board, [Pos], HistoryTrace, [KillerMoves]) -- perform the move made by the computer player
+  | RetrieveNewGen -- get random number generator through IO action
+  | TurnSwitch -- jump to the next player's turn
   deriving (Eq, Show)
 
 makeLenses 'ComputerPlayerConfig
@@ -348,16 +350,19 @@ buildUI wenv model = widgetTree where
               filler,
               button "Quit" EndGameButtonClick,
               filler,
+              button_ "Confirm" TurnSwitch [onClick RetrieveNewGen],
+              filler,
               button "Cancel" CancelMove,
               filler
           ]`styleBasic`[textSize 20],
+          spacer,
           -- render the board's positions row by row
           vgrid_ [childSpacing_ 5] (rowButton <$> (model ^. displayBoard))
         ] `nodeVisible` (model ^. startGame),
 
         -- the button for starting the game
         spacer `nodeVisible` not (model ^. startGame),
-        box $ button "Start Game" StartGameButtonClick `styleBasic`[textSize 30] `nodeVisible` not (model ^. startGame),
+        box $ button_ "Start Game" StartGameButtonClick [onClick RetrieveNewGen] `styleBasic`[textSize 30] `nodeVisible` not (model ^. startGame),
         filler
       ] `styleBasic` [padding 20]
 
@@ -369,77 +374,96 @@ handleEvent
   -> AppEvent
   -> [AppEventResponse AppModel AppEvent]
 handleEvent wenv node model evt = case evt of
-  AppInit -> [{-Producer computerTurn-}] -- an additional thread for checking computer player's turn
+  AppInit -> [] -- [Producer computerTurn] -- an additional thread for checking computer player's turn
   -- setup the game board according to the options in the menu page: 
   -- declare that the game is started letting certain subjects to be visiable or invisiable
   -- generate the game board based on the chosen players number, and the corresponding length of hash state
   StartGameButtonClick -> [Model $ model & startGame .~ True
                                          & displayBoard .~ eraseBoard (playerColourList pn) externalBoard
-                                         & internalStates .~ replicate pn startBase]
+                                         & internalStates .~ replicate pn startBase
+                                         & killerMoves .~ replicate pn []]
     where
       pn = model ^. playersAmount
 
   -- update the page index with given increment
-  PageUpdate x -> [Model $ model & pageIndex .~ (model ^. pageIndex) + x]
+  PageUpdate x -> [Model $ model & pageIndex +~ x]
 
   -- the event of cancel the last piece change made, and revert it to the previous board state   
   -- movement cancel is not allowed to be made over a player, meaning that once another player makes the move, you can no longer cancel yours                             
   CancelMove
-    | model ^. ifWin || ifExistComputerPlayer -> [] -- ignore if the win state is confirmed or computer player involves
-    | not (ifInitialPiece ps) && not (ifInitialPiece pe) -> [Model $ model & displayBoard .~ newBoard -- reset the board, hash, and turn states
-                                                                           & internalStates .~ insertState
-                                                                           & previousStartPos .~ initialPos
-                                                                           & previousEndPos .~ initialPos
-                                                                           & playerIndex .~ lastTurn]
-    | otherwise -> [] -- ignore if not record is stored for that
+    | model ^. ifWin -> [] -- ignore if the win state is confirmed
+    | not (ifInitialPiece sp) && not (ifInitialPiece ep) -> [Model $ model & displayBoard .~ newBoard -- reset the board, hash, and turn states
+                                                                           -- & internalStates .~ insertState
+                                                                           --  & previousStartPos .~ initialPos
+                                                                           --  & previousEndPos .~ initialPos
+                                                                           -- & playerIndex .~ lastTurn
+                                                                           & startPos .~ initialPos
+                                                                           & endPos .~ initialPos
+                                                                           & errorMessage .~ ""]
+    | otherwise -> [Model $ model & errorMessage .~ "the comfirmed move cannot be cancelled"] -- ignore if not record is stored for that
     where
 
-      ifExistComputerPlayer = all getActive [0..5]
-      getActive idx = model ^. defaultConfig ^?! configList . ix idx . active
-      ps = model ^. previousStartPos
-      pe = model ^. previousEndPos
+      -- ifExistComputerPlayer = all getActive [0..5]
+      -- getActive idx = model ^. defaultConfig ^?! configList . ix idx . active
+
+      sp = model ^. startPos
+      ep = model ^. endPos
       pn = model ^. playersAmount
-      newBoard = repaintPath (model ^. displayBoard) (pe, ps)
+      currentColour = playerColour (model ^. playerIndex) pn
+
+      newBoard = repaintPath (model ^. displayBoard) (repaint currentColour ep, erase sp)
       -- revert the board state
 
       -- get the last turn value and retrieve the information for reverting the hash state
-      lastTurn = turnRevert pn (model ^. playerIndex)
-      lastColour = playerColour lastTurn pn
-      ips = projection lastColour (getPos ps)
-      ipe = projection lastColour (getPos pe)
+      -- lastTurn = turnRevert pn (model ^. playerIndex)
+      -- lastColour = playerColour lastTurn pn
+      -- ips = projection lastColour (getPos ps)
+      -- ipe = projection lastColour (getPos pe)
 
-      lastTurnState = (model ^. internalStates) !! lastTurn
-      newState = flipBoard lastTurnState (ipe, ips)
-      -- revert the internal positions and then replace it in the state list
-      insertState = replace lastTurn newState (model ^. internalStates)
+      -- lastTurnState = (model ^. internalStates) !! lastTurn
+      -- newState = flipBoard lastTurnState (ipe, ips)
+      -- -- revert the internal positions and then replace it in the state list
+      -- insertState = replace lastTurn newState (model ^. internalStates)
+
+  -- update the turn when a movement for a player is complete
+  TurnSwitch -> [Model $ model & playerIndex .~ newTurn
+                               & ifWin .~ newWinState
+                               & startPos .~ initialPos
+                               & endPos .~ initialPos
+                               & internalStates .~ insertState
+                               & errorMessage .~ ""
+                               ]
+    where
+      sp = model ^. startPos
+      ep = model ^. endPos
+      pi = model ^. playerIndex
+      pn = model ^. playersAmount
+
+      currentColour = playerColour pi pn
+      currentState = (model ^. internalStates) !! pi
+      isp = projection currentColour (getPos sp)
+      iep = projection currentColour (getPos ep)
+
+      newState = flipBoard currentState (isp, iep)
+      newWinState = winStateDetect newState
+
+      insertState = replace pi newState (model ^. internalStates)
+      newTurn = if not newWinState then turnBase pn pi else pi
 
   -- after a movement is determined valid, it will be rendered
   RenderMove
     | model ^. ifWin -> [] -- if already won then do nothing
     -- otherwise perform the change if a movement is constructed 
     | not (ifInitialPiece ep) -> [Model $ model & displayBoard .~ newBoard
-                                                & internalStates .~ insertState
-                                                & playerIndex .~ newTurn
-                                                & previousStartPos .~ sp
-                                                & previousEndPos .~ ep
-                                                & startPos .~ initialPos
-                                                & endPos .~ initialPos
+                                                -- & internalStates .~ insertState
                                                 & movesList .~ []
-                                                & ifWin .~ newWinState] -- if a win is reached then update it
+                                                ]
     | otherwise -> []
       where
         sp = model ^. startPos
         ep = model ^. endPos
         pi = model ^. playerIndex
         newBoard = repaintPath (model ^. displayBoard) (sp, ep) -- generate the new board state by re-colouring the two board positions
-        currentColour = playerColour pi (model ^. playersAmount)
-        currentState = (model ^. internalStates) !! pi
-        isp = projection currentColour (getPos sp)
-        iep = projection currentColour (getPos ep)
-        newState = flipBoard currentState (isp, iep)
-        insertState = replace pi newState (model ^. internalStates) -- replace the old hash state with the new one
-        newWinState = winStateDetect newState
-        newTurn = if not newWinState then turnBase (model ^. playersAmount) pi else pi
 
   -- quit the game and return back to the menu page
   EndGameButtonClick -> [Model $ model & playerIndex .~ 0 -- resetting all states
@@ -447,8 +471,6 @@ handleEvent wenv node model evt = case evt of
                                        & startGame .~ False
                                        & startPos .~ initialPos
                                        & endPos .~ initialPos
-                                       & previousStartPos .~ initialPos
-                                       & previousEndPos .~ initialPos
                                        & errorMessage .~ ""
                                        & movesList .~ []
                                        & gameHistory .~ RBLeaf]
@@ -457,7 +479,7 @@ handleEvent wenv node model evt = case evt of
   -- first enter the starting point, and check for the correctness
   -- then enter the destination, if no error is made then process, otherwise, discard that and print the error message 
   MoveCheck pos pi ->
-              if model ^. ifWin || ifComputersTurn then [] -- if already won or it's computer's turn, then do nothing
+              if model ^. ifWin || ifComputersTurn || (not (ifInitialPiece sp) && not (ifInitialPiece ep)) then [] -- if already won or it's computer's turn, then do nothing
               else if ifInitialPiece sp  -- if it is the first time for entering the position
                    then if turn == pi then [Model $ model & startPos .~ pos     -- check if the entered position is fitted for the current player
                                                           & errorMessage .~ ""  -- if valid, then checkout the avaliable movements
@@ -472,7 +494,8 @@ handleEvent wenv node model evt = case evt of
                                                                    & startPos .~ initialPos]
                                                else if pos `elem` model ^. movesList
                                                     then [Model $ model & endPos .~ pos
-                                                                        & errorMessage .~ ""] -- if reachable, then this movement will then be rendered
+                                                                        & errorMessage .~ "Please press comfirm to complete the move"
+                                                                        ] -- if reachable, then this movement will then be rendered
                                                     else [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination unreacbable" -- if the desintation is not in the list, then invalid
                                                                         & startPos .~ initialPos]
                 {-case ifInitialPiece $ model ^. fromPiece of 
@@ -514,14 +537,21 @@ handleEvent wenv node model evt = case evt of
       modelList x = model ^?! defaultConfig . configList . ix x . active
       newPageId = if v <= model ^. pageIndex then v - 1 else model ^. pageIndex
 
+  RetrieveNewGen
+   | not ifComputersTurn || model ^. ifWin -> []
+   | otherwise -> [Task $ ComputerAction <$> aiDecision model]
+   where
+    pi = model ^. playerIndex
+    ifComputersTurn = model ^. defaultConfig ^?! configList . ix pi . active
+
   -- only react when the during the game and is currently the computer player's turn
-  ComputerAction -> [{-Model $ model & displayBoard .~ newBoard
-                                   & internalStates .~ insertState
-                                   & gameHistory .~ newHistoryTree
-                                   & playerIndex .~ newTurn
-                                   & previousStartPos .~ initialPos
-                                   & previousEndPos .~ initialPos
-                                   & ifWin .~ newWinState | model ^. startGame && ifComputersTurn && not (model ^. ifWin)-}]
+  ComputerAction (nboard, nps, nht, nkms) -> [Model $ model & displayBoard .~ nboard
+                                                            & internalStates .~ insertState
+                                                            & gameHistory .~ nht
+                                                            & killerMoves .~ nkms
+                                                            & playerIndex .~ newTurn
+                                                            & ifWin .~ newWinState,
+                                              Task $ return RetrieveNewGen]
                     {-case model ^. startGame && (model ^. turnS `elem` model ^. computerIdxList) && not (model ^. ifWin) of
                       True  -> [Model $ model & displayBoard .~ newBoard
                                               & internalStates .~ insertState
@@ -532,14 +562,11 @@ handleEvent wenv node model evt = case evt of
                                               & ifWin .~ newWinState
                                               ] -- apply the movement retrieved from the MCTS decision, and perform
                       False -> []-}
-    -- where
-    --   pi = model ^. playerIndex
-    --   ifComputersTurn = model ^. defaultConfig ^?! configList . ix pi . active
-    --   (newBoard, newState, newHistoryTree) = aiDecision model
-    --   insertState = replace pi newState (model ^. internalStates)
-    --   newWinState = winStateDetect newState
-    --   newTurn = if not newWinState then turnBase (model ^. playersAmount) pi else pi
-
+    where
+      pi = model ^. playerIndex
+      insertState = replace pi nps (model ^. internalStates)
+      newWinState = winStateDetect nps
+      newTurn = if not newWinState then turnBase (model ^. playersAmount) pi else pi
 
 -- keep calling the event for checking the computer player's movement
 -- computerTurn :: (AppEvent -> IO a) -> IO b
@@ -548,19 +575,20 @@ handleEvent wenv node model evt = case evt of
 --                           computerTurn sendMsg
 
 -- pass the model information to the MCTS interface and accept the returned board state
-{-
-aiDecision :: AppModel -> (Board, [Pos], HistoryTrace)
-aiDecision model = let root = GRoot 0 []
-                       (newBoard, newState, nht, _) = finalSelection root
-                                                      (pi, 1, eboard, iboard, pn, ht, (uctCons, phCons), (eval, dep, replicate pn []))
-                                                      (mctsControl mctsCon ctVal)
-                   in  (newBoard, newState, nht)
+aiDecision :: AppModel -> IO (Board, [Pos], HistoryTrace, [KillerMoves])
+aiDecision model = do gen <- newStdGen
+                      let root = GRoot 0 []
+                      (newBoard, newState, nht, _, nkms) <- finalSelection root
+                                                            (gen, pi, 1, eboard, iboard, pn, ht, (uctCons, phCons), (eval, dep, kms))
+                                                            (mctsControl mctsCon ctVal)
+                      return (newBoard, newState, nht, nkms)
   where
     pi = model ^. playerIndex
     eboard = model ^. displayBoard
     iboard = model ^. internalStates
     pn = model ^. playersAmount
     ht = model ^. gameHistory
+    kms = model ^. killerMoves
 
     uctCons = model ^. defaultConfig ^?! configList . ix pi . uct
     phCons = model ^. defaultConfig ^?! configList . ix pi . ph
@@ -573,7 +601,7 @@ aiDecision model = let root = GRoot 0 []
     mctsControl 0 x = (Just x, Nothing, Nothing)
     mctsControl 1 x = (Nothing, Just x, Nothing)
     mctsControl _ x = (Nothing, Nothing, Just (fromIntegral x))
--}
+
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
 main = do startApp model handleEvent buildUI config
@@ -601,11 +629,10 @@ main = do startApp model handleEvent buildUI config
       _startGame = False,
       _startPos = initialPos,
       _endPos = initialPos,
-      _previousStartPos = initialPos,
-      _previousEndPos = initialPos,
       _errorMessage = "",
       _movesList = [],
       _gameHistory = RBLeaf,
+      _killerMoves = [],
       _pageIndex = 0,
       _defaultConfig = ConfigList $ replicate 6 (ComputerPlayerConfig False 3 1 MoveEvaluator 0 0 10)
     }

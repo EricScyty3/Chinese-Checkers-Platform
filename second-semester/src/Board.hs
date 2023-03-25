@@ -179,7 +179,6 @@ repaintPath board (start, end) = let colour = getColour start
                                                 modifySTRef n (changeBoardElement erase start) -- erase the starting position's colour
                                                 modifySTRef n (changeBoardElement (safeRepaint colour) end) -- over-write the ending position's colour
                                                 readSTRef n
-
 --Movement Operators-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Game Rules: players move their pieces one after another based on turn, 
 -- the first player that manages moving all of his pieces to the oppsite corner of the start wins the game
