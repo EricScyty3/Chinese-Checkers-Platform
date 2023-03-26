@@ -172,7 +172,7 @@ buildUI wenv model = widgetTree where
     -- place a spacer if the position type is "U"
     | isSpacer pos = spacer
     -- otherwise, place a button with related colour and index
-    | otherwise = button_ (T.pack textPi) (MoveCheck pos pi) [onClick RenderMove]
+    | otherwise = button (T.pack textPi) (MoveCheck pos pi)
       `styleBasic`[radius 45, bgColor white, border 2 white, textSize 20, textColor white, -- empty positions will be coloured in white
                    styleIf (compareColour pos Red)    (bgColor red),
                    styleIf (compareColour pos Blue)   (bgColor blue),
@@ -350,7 +350,7 @@ buildUI wenv model = widgetTree where
               filler,
               button "Quit" EndGameButtonClick,
               filler,
-              button_ "Confirm" TurnSwitch [onClick RetrieveNewGen],
+              button "Confirm" TurnSwitch,
               filler,
               button "Cancel" CancelMove,
               filler
@@ -362,9 +362,12 @@ buildUI wenv model = widgetTree where
 
         -- the button for starting the game
         spacer `nodeVisible` not (model ^. startGame),
-        box $ button_ "Start Game" StartGameButtonClick [onClick RetrieveNewGen] `styleBasic`[textSize 30] `nodeVisible` not (model ^. startGame),
+        box $ button "Start Game" StartGameButtonClick `styleBasic`[textSize 30] `nodeVisible` not (model ^. startGame),
         filler
       ] `styleBasic` [padding 20]
+
+ifComputersTurn :: AppModel -> Bool
+ifComputersTurn model = model ^. defaultConfig ^?! configList . ix (model ^. playerIndex) . active
 
 -- declare how the events are handled respectively
 handleEvent
@@ -387,8 +390,9 @@ handleEvent wenv node model evt = case evt of
                                          & startPos .~ initialPos
                                          & endPos .~ initialPos
                                          & playerIndex .~ 0 -- resetting all states
-                                         & ifWin .~ False
-                                         ]
+                                         & ifWin .~ False,
+                          Task $ return RetrieveNewGen
+                          ]
     where
       pn = model ^. playersAmount
 
@@ -403,7 +407,7 @@ handleEvent wenv node model evt = case evt of
   -- the event of cancel the last piece change made, and revert it to the previous board state   
   -- movement cancel is not allowed to be made over a player, meaning that once another player makes the move, you can no longer cancel yours                             
   CancelMove
-    | model ^. ifWin -> [] -- ignore if the win state is confirmed
+    | model ^. ifWin || ifComputersTurn model -> [] -- ignore if the win state is confirmed
     | not (ifInitialPiece sp) && not (ifInitialPiece ep) -> [Model $ model & displayBoard .~ newBoard -- reset the board, hash, and turn states
                                                                            -- & internalStates .~ insertState
                                                                            --  & previousStartPos .~ initialPos
@@ -438,13 +442,15 @@ handleEvent wenv node model evt = case evt of
       -- insertState = replace lastTurn newState (model ^. internalStates)
 
   -- update the turn when a movement for a player is complete
-  TurnSwitch -> [Model $ model & playerIndex .~ newTurn
-                               & ifWin .~ newWinState
-                               & startPos .~ initialPos
-                               & endPos .~ initialPos
-                               & internalStates .~ insertState
-                               & errorMessage .~ ""
-                               ]
+  TurnSwitch
+    | model ^. ifWin || ifComputersTurn model -> []
+    | otherwise -> [Model $ model & playerIndex .~ newTurn
+                                  & ifWin .~ newWinState
+                                  & startPos .~ initialPos
+                                  & endPos .~ initialPos
+                                  & internalStates .~ insertState
+                                  & errorMessage .~ "",
+                    Task $ return RetrieveNewGen]
     where
       sp = model ^. startPos
       ep = model ^. endPos
@@ -463,14 +469,9 @@ handleEvent wenv node model evt = case evt of
       newTurn = if not newWinState then turnBase pn pi else pi
 
   -- after a movement is determined valid, it will be rendered
-  RenderMove
-    | model ^. ifWin -> [] -- if already won then do nothing
-    -- otherwise perform the change if a movement is constructed 
-    | not (ifInitialPiece ep) -> [Model $ model & displayBoard .~ newBoard
-                                                -- & internalStates .~ insertState
-                                                & movesList .~ []
-                                                ]
-    | otherwise -> []
+  RenderMove -> [Model $ model & displayBoard .~ newBoard
+                               & movesList .~ []
+                               ]
       where
         sp = model ^. startPos
         ep = model ^. endPos
@@ -481,7 +482,7 @@ handleEvent wenv node model evt = case evt of
   -- first enter the starting point, and check for the correctness
   -- then enter the destination, if no error is made then process, otherwise, discard that and print the error message 
   MoveCheck pos pi ->
-              if model ^. ifWin || ifComputersTurn || (not (ifInitialPiece sp) && not (ifInitialPiece ep)) then [] -- if already won or it's computer's turn, then do nothing
+              if model ^. ifWin || ifComputersTurn model || (not (ifInitialPiece sp) && not (ifInitialPiece ep)) then [] -- if already won or it's computer's turn, then do nothing
               else if ifInitialPiece sp  -- if it is the first time for entering the position
                    then if turn == pi then [Model $ model & startPos .~ pos     -- check if the entered position is fitted for the current player
                                                           & errorMessage .~ ""  -- if valid, then checkout the avaliable movements
@@ -496,8 +497,8 @@ handleEvent wenv node model evt = case evt of
                                                                    & startPos .~ initialPos]
                                                else if pos `elem` model ^. movesList
                                                     then [Model $ model & endPos .~ pos
-                                                                        & errorMessage .~ "Please press comfirm to complete the move"
-                                                                        ] -- if reachable, then this movement will then be rendered
+                                                                        & errorMessage .~ "Please press comfirm to complete the move",
+                                                          Task $ return RenderMove] -- if reachable, then this movement will then be rendered
                                                     else [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination unreacbable" -- if the desintation is not in the list, then invalid
                                                                         & startPos .~ initialPos]
                 {-case ifInitialPiece $ model ^. fromPiece of 
@@ -522,7 +523,7 @@ handleEvent wenv node model evt = case evt of
       turn = model ^. playerIndex
       sp = model ^. startPos
       ep = model ^. endPos
-      ifComputersTurn = model ^. defaultConfig ^?! configList . ix turn . active
+      -- ifComputersTurn = model ^. defaultConfig ^?! configList . ix turn . active
       newMovesList = evalState (destinationList pos) (model ^. displayBoard)
 
   -- reset the selected computer player's indices when the total players is changed
@@ -540,11 +541,11 @@ handleEvent wenv node model evt = case evt of
       newPageId = if v <= model ^. pageIndex then v - 1 else model ^. pageIndex
 
   RetrieveNewGen
-   | not (model ^. startGame) || not ifComputersTurn || model ^. ifWin -> []
+   | not (ifComputersTurn model) || model ^. ifWin -> []
    | otherwise -> [Task $ ComputerAction <$> aiDecision model]
    where
     pi = model ^. playerIndex
-    ifComputersTurn = model ^. defaultConfig ^?! configList . ix pi . active
+    -- ifComputersTurn = model ^. defaultConfig ^?! configList . ix pi . active
 
   -- only react when the during the game and is currently the computer player's turn
   ComputerAction (nboard, nps, nht, nkms) -> [Model $ model & displayBoard .~ nboard
@@ -606,7 +607,8 @@ aiDecision model = do gen <- newStdGen
 
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
-main = do startApp model handleEvent buildUI config
+main = do lookupTable `seq` putStrLn "Loading completed"
+          startApp model handleEvent buildUI config
   where
     config = [
       appWindowTitle "Program",
