@@ -38,11 +38,20 @@ playerColourList 4 = [Blue, Purple, Orange, Black]
 playerColourList 6 = [Green, Blue, Purple, Red, Orange, Black]
 playerColourList _ = []
 
-colourIndex :: Colour -> Int -> Int
+colourIndex :: Colour -> Int -> Maybe Int
 colourIndex colour pn = let cl = playerColourList pn
-                           in  case colour `elemIndex` cl of
-                                Nothing -> error "Invalid colour"
-                                Just idx -> idx
+                        in  colour `elemIndex` cl
+
+-- determine if the state of fromPiece, toPiece, previousFromPiece, previousToPiece, is changed
+ifInitialPiece :: BoardPos -> Bool
+ifInitialPiece pos = pos == initialPos
+
+-- the default position, which just indicate nothing
+initialPos :: BoardPos
+initialPos = U (-1, -1)
+
+defaultMove :: Transform
+defaultMove = (initialPos, initialPos)
 
 --Basic Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- determine the color of a piece

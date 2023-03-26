@@ -4,9 +4,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
--- module Main where
 import Control.Lens
-import Data.Maybe
+    ( (&), (^?!), (^.), (+~), (.~), makeLenses, singular, Ixed(ix) )
+import Data.Maybe ( fromMaybe )
 import Data.Text (Text)
 import Monomer
     ( nodeKey,
@@ -53,39 +53,114 @@ import Monomer
       EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline), CmbPaddingB (paddingB), CmbOnClick (onClick), CmbBorder (border), black, gray, lightTheme )
 import TextShow
 import Board
+    ( Pos,
+      compareColour,
+      destinationList,
+      erase,
+      eraseBoard,
+      externalBoard,
+      getColour,
+      getPos,
+      isOccupied,
+      isSpacer,
+      playerColourList,
+      projection,
+      repaint,
+      repaintPath,
+      replace,
+      startBase,
+      Board,
+      BoardPos(U),
+      Colour(Black, Red, Blue, Green, Purple, Orange), colourIndex, initialPos, ifInitialPiece )
 import Control.Monad.State
 import qualified Data.Text as T
 import qualified Monomer.Lens as L
 import Monomer.Widgets
+    ( nodeEnabled,
+      nodeVisible,
+      box,
+      box_,
+      hgrid,
+      hgrid_,
+      vgrid_,
+      hstack,
+      vstack,
+      button,
+      label,
+      label_,
+      labeledCheckbox_,
+      labeledRadio_,
+      hslider,
+      hslider_,
+      filler,
+      spacer,
+      spacer_,
+      WidgetEnv,
+      WidgetNode,
+      EventResponse(Task, Model),
+      CmbCheckboxMark(checkboxSquare) )
 import Monomer.Main
+    ( startApp,
+      appFontDef,
+      appInitEvent,
+      appTheme,
+      appWindowIcon,
+      appWindowResizable,
+      appWindowState,
+      appWindowTitle,
+      styleIf,
+      AppEventResponse,
+      MainWindowState(MainWindowNormal) )
 import Monomer.Graphics.ColorTable
+    ( black, blue, darkOrange, green, orange, purple, red, white )
 import Monomer.Core.Combinators
-import Zobrist
+    ( CmbAlignLeft(alignLeft),
+      CmbAlignTop(alignTop),
+      CmbBgColor(bgColor),
+      CmbBorder(border),
+      CmbChildSpacing(childSpacing_),
+      CmbDragRate(dragRate),
+      CmbEllipsis(ellipsis),
+      CmbFgColor(fgColor),
+      CmbMaxWidth(maxWidth),
+      CmbOnChange(onChange),
+      CmbPadding(padding),
+      CmbRadius(radius),
+      CmbStyleBasic(styleBasic),
+      CmbTextColor(textColor),
+      CmbTextFont(textFont),
+      CmbTextRight(textRight),
+      CmbTextSize(textSize),
+      CmbWidth(width) )
+import Zobrist ( flipBoard, winStateDetect )
 import GameTree
+    ( playerColour,
+      turnBase,
+      GameTree(GRoot),
+      HistoryTrace,
+      KillerMoves,
+      PlayoutEvaluator(..) )
 import RBTree ( RBTree(RBLeaf) )
-import MCTS
-import Control.Concurrent
 import Configuration (LookupTable, lookupTable)
 import Data.List (elemIndex)
-import Minimax
-import Data.Fixed
-import Extension
-import System.Random
+import Extension ( finalSelection )
+import System.Random ( newStdGen )
 
--- the container for storing the parameters for MCTS frameworks
--- the configuration of a single computer player
+-- the container for storing the parameters for a selected computer player
 data ComputerPlayerConfig = ComputerPlayerConfig {
-  _active :: Bool, -- whether a comptuer player is placed at this position
-  _uct :: Double,  -- one of the the selection policy's parameters 
-  _ph :: Double,   -- same as above
-  _evaluator :: PlayoutEvaluator, -- how the board is evaluated when the simulation is taken place
-  _depth :: Int,   -- if the minimax search is applied, the related search depth is needed
-  _control :: Int, -- the choice of how the MCTS is processed
-  _cvalue :: Int   -- and how the control's threshold should be
+  _active :: Bool, -- whether a computer player is active at this position
+  _uct :: Double,  -- the constant of UCT formula in MCTS selection 
+  _ph :: Double,   -- the constant of Progressive History in MCTS selection
+  _evaluator :: PlayoutEvaluator, -- the board evaluator used during the MCTS playouts
+  _depth :: Int,   -- if the embedded minimax search is applied during the playouts, the related search depth is needed to be defined
+  _control :: Int, -- the choice of how the MCTS is processed, including iteration counts, time limits and tree expansions
+  _cvalue :: Int   -- as well as the exact control's value
 } deriving (Eq, Show)
 
+-- a list of configuration for each computer player
 newtype ConfigList = ConfigList {
-  _configList :: [ComputerPlayerConfig] -- stores a list of configuration for all potential computer players
+  _configList :: [ComputerPlayerConfig] 
+  -- since it is a list, if wanting to check whether a computer player is active, just check the boolean flag at that index
 } deriving (Eq, Show)
 
 -- the GUI for the game platform allowing user to set player and board configuration
@@ -93,48 +168,58 @@ newtype ConfigList = ConfigList {
 data AppModel = AppModel {
   -- the integer that identifies which player is currently playing
   _playerIndex :: Int,
-  -- a flag that declares the initial state of the game is setup, and can be started
+  -- a flag that declares the game is started
   _startGame :: Bool,
-  -- a flag that declares a player won the game, and any other actions should be stopped 
+  -- a flag that declares a player has win the game, and any action after that should be ignored except the "Quit" button clicked 
   _ifWin :: Bool,
   -- the representation of the board to be printed on the screen
   _displayBoard :: Board,
   -- the internal pieces' positions for each player (projected from the display board and can be reversed), 
-  -- reflecting the personal state for the players, and can be used to determine the win state
+  -- reflecting the personal state for the players, and can be used to determine the win state through certain hash function
   _internalStates :: [[Pos]],
   -- the total players in the game
   _playersAmount :: Int,
-  -- the current player's move is defined as moving from a position to another new position
-  -- therefore, containing a start and an end
+  -- the current player's move is defined as moving from a position to another, therefore, should contain a start and an end
   _startPos :: BoardPos,
   _endPos :: BoardPos,
-  -- a message that will be display when an incorrect state appears
+  -- hint/error message will be displayed when needed
   _errorMessage :: String,
-  -- a list of avaliable posistions that a player can move from an entered position
+  -- a list of available position that a player can move from a position that was chosen
   _movesList :: [BoardPos],
   -- the history record of the game, which could be made use of by the MCTS
   _gameHistory :: HistoryTrace,
-  -- the movement record of moves that cause a alpha-beta pruning during minimax search
+  -- the history record of moves that cause a alpha-beta pruning, which could be made use of by the minimax search
   _killerMoves :: [KillerMoves],
-  -- shows at the menu page, indicating the current player to be configured
+  -- indicates the current player to be configured at the setting dialog
   _pageIndex :: Int,
-  -- the container that holds the configuration of a list of potential computer players
-  _defaultConfig :: ConfigList
+  -- a list of potential computer players' configurations
+  _playerConfigs :: ConfigList
 } deriving (Eq, Show)
 
--- the event that the model triggers and handles, the different actions that the handler could react to
+-- the event that the model triggers and handles as well as the responses
 data AppEvent
-  = AppInit -- the initialisation of the model status
-  | MoveCheck BoardPos Int -- determine if a movement input is valid, if it is then render it, otherwise, display an error message
-  | StartGameButtonClick -- initialise the game configuration depending on user's settings
-  | RenderMove  -- show the change of the movement
-  | CancelMove  -- cancel the last played movement
-  | EndGameButtonClick -- quit the current game and back to the menu page
-  | CancelChecked Int -- modify the checkbox's result of computer players when the total players is changed
-  | PageUpdate Int -- update the page index for the setting panel
-  | ComputerAction (Board, [Pos], HistoryTrace, [KillerMoves]) -- perform the move made by the computer player
-  | RetrieveNewGen -- get random number generator through IO action
-  | TurnSwitch -- jump to the next player's turn
+  = -- the initialisation of the model status
+    AppInit 
+    -- determine if a movement input by the player is valid
+  | MoveCheck BoardPos Int 
+    -- initialise the board game based on user's input
+  | StartGameButtonClick 
+    -- if the movement passes the validity check, then display the change onto the board
+  | RenderMove  
+    -- allow the user to cancel the his move before the "Confirm" button is clicked
+  | CancelMove  
+    -- quit the current game and navigate back to the menu
+  | EndGameButtonClick 
+    -- modify the checkbox's results when the total players is changed
+  | CancelChecked Int 
+    -- update the page index for the setting panel
+  | PageUpdate Int 
+    -- display the move made by the computer player onto the board
+  | RenderComputerAction (Board, [Pos], HistoryTrace, [KillerMoves]) 
+    -- generate the corresponding movement based on the current game state and pass the result to the "RenderComputerAction" event
+  | GenerateComputerAction 
+    -- jump to the next player's turn, as well as check the next player's state
+  | TurnSwitch 
   deriving (Eq, Show)
 
 makeLenses 'ComputerPlayerConfig
@@ -144,21 +229,17 @@ makeLenses 'AppModel
 -- produce the title text 
 titleText :: AppModel -> String
 titleText model
-  | not (model ^. startGame) = "Haskell Chinese Checkers" -- print welcome text at the menu page
-  | model ^. ifWin = name ++ show turn ++ " wins" -- print winning player's colour when the win state of a player is achieved
-  | otherwise = name ++ show turn ++ "'s turn" -- print current player's turn and colour if win state is not satisfied
+    -- print welcome text at the menu page when the game is not started yet
+  | not (model ^. startGame) = "Haskell Chinese Checkers" 
+    -- print a message when the win state of a player is achieved
+  | model ^. ifWin = playerType ++ show pi ++ " wins" 
+    -- print the current player's turn to remind the user
+  | otherwise = playerType ++ show pi ++ "'s turn" 
   where
-    turn = model ^. playerIndex
-    name = if model ^. defaultConfig ^?! configList . ix turn . active then "Computer Player " else "Player "
+    pi = model ^. playerIndex
     -- determine if the current player is an AI or human player
-
--- determine if the state of fromPiece, toPiece, previousFromPiece, previousToPiece, is changed
-ifInitialPiece :: BoardPos -> Bool
-ifInitialPiece pos = pos == initialPos
--- the default position, which just indicate nothing
-initialPos :: BoardPos
-initialPos = U (-1, -1)
-
+    playerType = if model ^. playerConfigs ^?! configList . ix pi . active then "Computer Player " else "Player "
+    
 -- construct the graphical layout of the application
 buildUI
   :: WidgetEnv AppModel AppEvent
@@ -166,60 +247,62 @@ buildUI
   -> WidgetNode AppModel AppEvent
 buildUI wenv model = widgetTree where
 
-  -- render the color and index of a piece for certain player on the board
+  -- render the colour and index of a piece for certain player on the board
   pieceButton :: BoardPos -> WidgetNode AppModel AppEvent
   pieceButton pos
-    -- place a spacer if the position type is "U"
+    -- place a spacer if the position type is "U", which is just for separating the buttons
     | isSpacer pos = spacer
-    -- otherwise, place a button with related colour and index
-    | otherwise = button (T.pack textPi) (MoveCheck pos pi)
-      `styleBasic`[radius 45, bgColor white, border 2 white, textSize 20, textColor white, -- empty positions will be coloured in white
-                   styleIf (compareColour pos Red)    (bgColor red),
-                   styleIf (compareColour pos Blue)   (bgColor blue),
-                   styleIf (compareColour pos Green)  (bgColor green),
-                   styleIf (compareColour pos Purple) (bgColor purple),
-                   styleIf (compareColour pos Orange) (bgColor darkOrange),
-                   styleIf (compareColour pos Black)  (bgColor black),
-                   styleIf ({-pos == spiece ||-} pos `elem` model ^. movesList) (bgColor pieceColour),
-                   styleIf (pos == spiece) (border 2 pieceColour)
+    -- otherwise, place a button with related color and index
+    | otherwise = button (T.pack textBi) (MoveCheck pos bi)
+      `styleBasic`[radius 45, bgColor (pieceColour pos), border 2 white, textSize 20, textColor white,
+                   -- besides, once a button is clicked, the available destinations will be rendered with corresponding colour 
+                   styleIf (pos `elem` model ^. movesList) (bgColor (pieceColour sp)),
+                   -- and the clicked button's border will be repainted as well
+                   styleIf (pos == sp) (border 2 (pieceColour sp))
                   ]
-                  -- not only the pieces are in colour, but also the avaliable destinations
-                  -- additionally, the clicked position's boarder will be printed differently
     where
-      pi = getPlayerIndex (model ^. playersAmount) pos
-      textPi = if pi == (-1) then "" else show pi
+      -- get the player index based on the clicked button's colour, could be used to determine if the clicked button fit the current turn
+      -- the ones has no colour or is not in the current colour list due to the number of the players are assigned with (-1)
+      bi = case getColour pos of
+            Nothing -> (-1) 
+            Just c  -> fromMaybe (-1) $ colourIndex c (model ^. playersAmount)
+      -- the empty button shows no colour, therefore, will display nothing, while others will show their indices
+      textBi = if bi == (-1) then "" else show bi
 
-      spiece = model ^. startPos
-      pieceColour
-        | compareColour spiece Red = red
-        | compareColour spiece Blue = blue
-        | compareColour spiece Green = green
-        | compareColour spiece Purple = purple
-        | compareColour spiece Orange = darkOrange
-        | compareColour spiece Black = black
+      sp = model ^. startPos
+      -- "E" position will be coloured in white
+      -- other buttons with different type "R, B, G, P, O, K" will be coloured correspondingly
+      pieceColour inputPos
+        | compareColour inputPos Red = red
+        | compareColour inputPos Blue = blue
+        | compareColour inputPos Green = green
+        | compareColour inputPos Purple = purple
+        | compareColour inputPos Orange = darkOrange
+        | compareColour inputPos Black = black
         | otherwise = white
 
-      getPlayerIndex players piece = case getColour piece of
-                                      Nothing -> (-1)
-                                      Just c  -> fromMaybe (-1) (elemIndex c (playerColourList players))
-
-  -- display a row of buttons for rendering the board
+  -- display a row of buttons for colouring and indexing them
   rowButton :: [BoardPos] -> WidgetNode AppModel AppEvent
-  rowButton ps = hgrid (pieceButton <$> ps) -- render the rows of button in a grid style
+  rowButton ps = hgrid (pieceButton <$> ps) -- order in a grid style
 
-  -- display the player settings, the amount of AI plauers
+  -- display the checkbox for choosing the number of AI players
   computerPlayersChoices :: Int -> WidgetNode AppModel AppEvent
-  computerPlayersChoices idx = labeledCheckbox_ (showt idx) (defaultConfig . configList . singular (ix idx) . active) [checkboxSquare, textRight]
+  computerPlayersChoices idx = labeledCheckbox_ (showt idx) (playerConfigs . configList . singular (ix idx) . active) [checkboxSquare, textRight]
 
-  -- the access to the element of the config list of the current setting panel index
-  pi = model ^. pageIndex
-  vitem = model ^. defaultConfig ^?! configList . ix pi
-  mitem = defaultConfig . configList . singular (ix pi)
-  eitem = defaultConfig . configList . singular (ix pi) . evaluator
-  ditem = defaultConfig . configList . singular (ix pi) . depth
-  citem = defaultConfig . configList . singular (ix pi) . control
-  cvitem = defaultConfig . configList . singular (ix pi) . cvalue
+  -- the access to the element of the player configuration based on the current panel page
+  -- current page
+  pageIdx = model ^. pageIndex
+  -- retrieve an (read-only) instance of the configuration list
+  vitem = model ^. playerConfigs ^?! configList . ix pageIdx
+  -- retrieve an (changeable) instance of the configuration list
+  mitem = playerConfigs . configList . singular (ix pageIdx)
+  -- the detailed instance's information from the above instance
+  eitem = playerConfigs . configList . singular (ix pageIdx) . evaluator
+  ditem = playerConfigs . configList . singular (ix pageIdx) . depth
+  citem = playerConfigs . configList . singular (ix pageIdx) . control
+  cvitem = playerConfigs . configList . singular (ix pageIdx) . cvalue
 
+  -- the layer that integrates the options of player's settings
   featureLayer =
       vstack [
         -- slider for controlling the selection parameters: UCT and PH's constants
@@ -282,6 +365,7 @@ buildUI wenv model = widgetTree where
         ]
       ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
 
+  -- the layer that
   selectButtonLayer =
       -- the button for switching the panel's page
       hstack [
@@ -290,7 +374,7 @@ buildUI wenv model = widgetTree where
         label (T.pack ( playerType ++ show pi))
         `styleBasic` [textSize 30],
         filler,
-        button "Next" (PageUpdate 1) `nodeEnabled` (pi < model ^. playersAmount - 1)
+        button "Next" (PageUpdate 1) `nodeEnabled` (pageIdx < model ^. playersAmount - 1)
       ] `styleBasic` [maxWidth 600, padding 20]
 
     where
@@ -367,7 +451,7 @@ buildUI wenv model = widgetTree where
       ] `styleBasic` [padding 20]
 
 ifComputersTurn :: AppModel -> Bool
-ifComputersTurn model = model ^. defaultConfig ^?! configList . ix (model ^. playerIndex) . active
+ifComputersTurn model = model ^. playerConfigs ^?! configList . ix (model ^. playerIndex) . active
 
 -- declare how the events are handled respectively
 handleEvent
@@ -391,7 +475,7 @@ handleEvent wenv node model evt = case evt of
                                          & endPos .~ initialPos
                                          & playerIndex .~ 0 -- resetting all states
                                          & ifWin .~ False,
-                          Task $ return RetrieveNewGen
+                          Task $ return GenerateComputerAction
                           ]
     where
       pn = model ^. playersAmount
@@ -420,7 +504,7 @@ handleEvent wenv node model evt = case evt of
     where
 
       -- ifExistComputerPlayer = all getActive [0..5]
-      -- getActive idx = model ^. defaultConfig ^?! configList . ix idx . active
+      -- getActive idx = model ^. playerConfigs ^?! configList . ix idx . active
 
       sp = model ^. startPos
       ep = model ^. endPos
@@ -450,7 +534,7 @@ handleEvent wenv node model evt = case evt of
                                   & endPos .~ initialPos
                                   & internalStates .~ insertState
                                   & errorMessage .~ "",
-                    Task $ return RetrieveNewGen]
+                    Task $ return GenerateComputerAction]
     where
       sp = model ^. startPos
       ep = model ^. endPos
@@ -523,38 +607,38 @@ handleEvent wenv node model evt = case evt of
       turn = model ^. playerIndex
       sp = model ^. startPos
       ep = model ^. endPos
-      -- ifComputersTurn = model ^. defaultConfig ^?! configList . ix turn . active
+      -- ifComputersTurn = model ^. playerConfigs ^?! configList . ix turn . active
       newMovesList = evalState (destinationList pos) (model ^. displayBoard)
 
   -- reset the selected computer player's indices when the total players is changed
-  CancelChecked v -> [Model $ model & defaultConfig . configList . ix 0 . active .~ head newList
-                                    & defaultConfig . configList . ix 1 . active .~ newList !! 1
-                                    & defaultConfig . configList . ix 2 . active .~ newList !! 2
-                                    & defaultConfig . configList . ix 3 . active .~ newList !! 3
-                                    & defaultConfig . configList . ix 4 . active .~ newList !! 4
-                                    & defaultConfig . configList . ix 5 . active .~ newList !! 5
+  CancelChecked v -> [Model $ model & playerConfigs . configList . ix 0 . active .~ head newList
+                                    & playerConfigs . configList . ix 1 . active .~ newList !! 1
+                                    & playerConfigs . configList . ix 2 . active .~ newList !! 2
+                                    & playerConfigs . configList . ix 3 . active .~ newList !! 3
+                                    & playerConfigs . configList . ix 4 . active .~ newList !! 4
+                                    & playerConfigs . configList . ix 5 . active .~ newList !! 5
                                     & pageIndex .~ newPageId]
     where
       newList = take v remainedList ++ replicate (6 - v) False
       remainedList = map modelList [0..5]
-      modelList x = model ^?! defaultConfig . configList . ix x . active
+      modelList x = model ^?! playerConfigs . configList . ix x . active
       newPageId = if v <= model ^. pageIndex then v - 1 else model ^. pageIndex
 
-  RetrieveNewGen
+  GenerateComputerAction
    | not (ifComputersTurn model) || model ^. ifWin -> []
-   | otherwise -> [Task $ ComputerAction <$> aiDecision model]
+   | otherwise -> [Task $ RenderComputerAction <$> aiDecision model]
    where
     pi = model ^. playerIndex
-    -- ifComputersTurn = model ^. defaultConfig ^?! configList . ix pi . active
+    -- ifComputersTurn = model ^. playerConfigs ^?! configList . ix pi . active
 
   -- only react when the during the game and is currently the computer player's turn
-  ComputerAction (nboard, nps, nht, nkms) -> [Model $ model & displayBoard .~ nboard
+  RenderComputerAction (nboard, nps, nht, nkms) -> [Model $ model & displayBoard .~ nboard
                                                             & internalStates .~ insertState
                                                             & gameHistory .~ nht
                                                             & killerMoves .~ nkms
                                                             & playerIndex .~ newTurn
                                                             & ifWin .~ newWinState,
-                                              Task $ return RetrieveNewGen]
+                                              Task $ return GenerateComputerAction]
                     {-case model ^. startGame && (model ^. turnS `elem` model ^. computerIdxList) && not (model ^. ifWin) of
                       True  -> [Model $ model & displayBoard .~ newBoard
                                               & internalStates .~ insertState
@@ -593,13 +677,13 @@ aiDecision model = do gen <- newStdGen
     ht = model ^. gameHistory
     kms = model ^. killerMoves
 
-    uctCons = model ^. defaultConfig ^?! configList . ix pi . uct
-    phCons = model ^. defaultConfig ^?! configList . ix pi . ph
-    eval = model ^. defaultConfig ^?! configList . ix pi . evaluator
-    dep = model ^. defaultConfig ^?! configList . ix pi . depth
+    uctCons = model ^. playerConfigs ^?! configList . ix pi . uct
+    phCons = model ^. playerConfigs ^?! configList . ix pi . ph
+    eval = model ^. playerConfigs ^?! configList . ix pi . evaluator
+    dep = model ^. playerConfigs ^?! configList . ix pi . depth
 
-    mctsCon = model ^. defaultConfig ^?! configList . ix pi . control
-    ctVal = model ^. defaultConfig ^?! configList . ix pi . cvalue
+    mctsCon = model ^. playerConfigs ^?! configList . ix pi . control
+    ctVal = model ^. playerConfigs ^?! configList . ix pi . cvalue
 
     mctsControl 0 x = (Just x, Nothing, Nothing)
     mctsControl 1 x = (Nothing, Just x, Nothing)
@@ -607,8 +691,7 @@ aiDecision model = do gen <- newStdGen
 
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
-main = do lookupTable `seq` putStrLn "Loading completed"
-          startApp model handleEvent buildUI config
+main = do lookupTable `seq` startApp model handleEvent buildUI config
   where
     config = [
       appWindowTitle "Program",
@@ -638,5 +721,5 @@ main = do lookupTable `seq` putStrLn "Loading completed"
       _gameHistory = RBLeaf,
       _killerMoves = [],
       _pageIndex = 0,
-      _defaultConfig = ConfigList $ replicate 6 (ComputerPlayerConfig False 3 1 MoveEvaluator 0 0 10)
+      _playerConfigs = ConfigList $ replicate 6 (ComputerPlayerConfig False 3 1 MoveEvaluator 0 0 10)
     }

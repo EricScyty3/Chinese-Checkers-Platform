@@ -190,8 +190,7 @@ mEvaluation2 height st@(ri, _, ps, pn, _, _) indices =
                                                         (rindices, rmoves) = reorderMovements ms pn kp
                                                     if ri `elem` indices then maxEvaluation (height - 1) st rmoves defaultMove rindices
                                                     else minEvaluation (height - 1) st rmoves defaultMove rindices
-defaultMove :: Transform
-defaultMove = (U(-1,-1), U(-1,-1))
+
 
 -- given a list of avaliable movements, first take the existing killer moves away and reorder the movements based on distance increment
 -- after that, append the found killer moves to the front of the list
@@ -206,9 +205,10 @@ assignIndex :: [Transform] -> Int -> [PlayerIndex]
 assignIndex [] _ = []
 assignIndex ((from, _):ms) pn = case getColour from of
                                     Nothing -> error "invalid movement"
-                                    Just colour -> let index = colourIndex colour pn
-                                                       indices = assignIndex ms pn
-                                                   in  index `par` indices `pseq` index:indices
+                                    Just colour -> case colourIndex colour pn of
+                                                    Nothing -> error "invalid colour"
+                                                    Just index -> let indices = assignIndex ms pn
+                                                                  in  index `par` indices `pseq` index:indices
 
 -- the difference between two shallow minimax search: the Paranoid search follows the regular order base, while the BRS considers all players other than
 -- the root as a layer, so it actually evaluates a list of boards from different players 
