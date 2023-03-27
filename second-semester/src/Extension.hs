@@ -82,6 +82,6 @@ timeLimits tree s@(_, pi, bi, board, ps, pn, ht, cons, (eval, depth, kms)) playo
 
 expansionLimits :: GameTree -> GameTreeStatus -> [Int] -> Int -> IO (GameTree, BoardIndex, HistoryTrace, [Int], [KillerMoves])
 expansionLimits tree s@(_, pi, bi, board, ps, pn, ht, cons, (eval, depth, kms)) playoutTurns nodes =
-    if bi >= nodes then return (tree, bi, ht, reverse playoutTurns, kms)
+    if bi >= nodes then return (tree, bi, ht, reverse playoutTurns, kms) -- the expanded nodes might be restricted if the exploration factor is too low, normally won't applied here
     else let (newGen, newTree, newIdx, newHistory, turns, kms) = evalState (mcts tree) s
          in  expansionLimits newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, kms)) (turns:playoutTurns) nodes

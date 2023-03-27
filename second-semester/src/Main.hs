@@ -369,9 +369,9 @@ buildUI wenv model = widgetTree where
   selectButtonLayer =
       -- the button for switching the page, next or last page
       hstack [
-        button "Last" (PageUpdate (-1)) `nodeEnabled` (pi > 0),
+        button "Last" (PageUpdate (-1)) `nodeEnabled` (pageIdx > 0),
         filler,
-        label (T.pack ( playerType ++ show pi))
+        label (T.pack ( playerType ++ show pageIdx))
         `styleBasic` [textSize 30],
         filler,
         -- the maximum page index is restricted when the total players number is changed
@@ -412,7 +412,7 @@ buildUI wenv model = widgetTree where
   widgetTree =
       vstack [
         -- the title text
-        box $ label_ (T.pack $ titleText) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
+        box $ label_ (T.pack titleText) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
 
         filler,
         -- the setting panel
