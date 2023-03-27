@@ -159,7 +159,7 @@ data ComputerPlayerConfig = ComputerPlayerConfig {
 
 -- a list of configuration for each computer player
 newtype ConfigList = ConfigList {
-  _configList :: [ComputerPlayerConfig] 
+  _configList :: [ComputerPlayerConfig]
   -- since it is a list, if wanting to check whether a computer player is active, just check the boolean flag at that index
 } deriving (Eq, Show)
 
@@ -199,47 +199,33 @@ data AppModel = AppModel {
 -- the event that the model triggers and handles as well as the responses
 data AppEvent
   = -- the initialisation of the model status
-    AppInit 
+    AppInit
     -- determine if a movement input by the player is valid
-  | MoveCheck BoardPos Int 
+  | MoveCheck BoardPos Int
     -- initialise the board game based on user's input
-  | StartGameButtonClick 
+  | StartGameButtonClick
     -- if the movement passes the validity check, then display the change onto the board
-  | RenderMove  
+  | RenderMove
     -- allow the user to cancel the his move before the "Confirm" button is clicked
-  | CancelMove  
+  | CancelMove
     -- quit the current game and navigate back to the menu
-  | EndGameButtonClick 
+  | EndGameButtonClick
     -- modify the checkbox's results when the total players is changed
-  | CancelChecked Int 
+  | CancelChecked Int
     -- update the page index for the setting panel
-  | PageUpdate Int 
+  | PageUpdate Int
     -- display the move made by the computer player onto the board
-  | RenderComputerAction (Board, [Pos], HistoryTrace, [KillerMoves]) 
+  | RenderComputerAction (Board, [Pos], HistoryTrace, [KillerMoves])
     -- generate the corresponding movement based on the current game state and pass the result to the "RenderComputerAction" event
-  | GenerateComputerAction 
+  | GenerateComputerAction
     -- jump to the next player's turn, as well as check the next player's state
-  | TurnSwitch 
+  | TurnSwitch
   deriving (Eq, Show)
 
 makeLenses 'ComputerPlayerConfig
 makeLenses 'ConfigList
 makeLenses 'AppModel
 
--- produce the title text 
-titleText :: AppModel -> String
-titleText model
-    -- print welcome text at the menu page when the game is not started yet
-  | not (model ^. startGame) = "Haskell Chinese Checkers" 
-    -- print a message when the win state of a player is achieved
-  | model ^. ifWin = playerType ++ show pi ++ " wins" 
-    -- print the current player's turn to remind the user
-  | otherwise = playerType ++ show pi ++ "'s turn" 
-  where
-    pi = model ^. playerIndex
-    -- determine if the current player is an AI or human player
-    playerType = if model ^. playerConfigs ^?! configList . ix pi . active then "Computer Player " else "Player "
-    
 -- construct the graphical layout of the application
 buildUI
   :: WidgetEnv AppModel AppEvent
@@ -247,43 +233,56 @@ buildUI
   -> WidgetNode AppModel AppEvent
 buildUI wenv model = widgetTree where
 
-  -- render the colour and index of a piece for certain player on the board
-  pieceButton :: BoardPos -> WidgetNode AppModel AppEvent
-  pieceButton pos
-    -- place a spacer if the position type is "U", which is just for separating the buttons
-    | isSpacer pos = spacer
-    -- otherwise, place a button with related color and index
-    | otherwise = button (T.pack textBi) (MoveCheck pos bi)
-      `styleBasic`[radius 45, bgColor (pieceColour pos), border 2 white, textSize 20, textColor white,
-                   -- besides, once a button is clicked, the available destinations will be rendered with corresponding colour 
-                   styleIf (pos `elem` model ^. movesList) (bgColor (pieceColour sp)),
-                   -- and the clicked button's border will be repainted as well
-                   styleIf (pos == sp) (border 2 (pieceColour sp))
-                  ]
+  -- produce the title text 
+  titleText :: String
+  titleText
+      -- print welcome text at the menu page when the game is not started yet
+    | not (model ^. startGame) = "Haskell Chinese Checkers"
+      -- print a message when the win state of a player is achieved
+    | model ^. ifWin = playerType ++ show pi ++ " wins"
+      -- print the current player's turn to remind the user
+    | otherwise = playerType ++ show pi ++ "'s turn"
     where
-      -- get the player index based on the clicked button's colour, could be used to determine if the clicked button fit the current turn
-      -- the ones has no colour or is not in the current colour list due to the number of the players are assigned with (-1)
-      bi = case getColour pos of
-            Nothing -> (-1) 
-            Just c  -> fromMaybe (-1) $ colourIndex c (model ^. playersAmount)
-      -- the empty button shows no colour, therefore, will display nothing, while others will show their indices
-      textBi = if bi == (-1) then "" else show bi
-
-      sp = model ^. startPos
-      -- "E" position will be coloured in white
-      -- other buttons with different type "R, B, G, P, O, K" will be coloured correspondingly
-      pieceColour inputPos
-        | compareColour inputPos Red = red
-        | compareColour inputPos Blue = blue
-        | compareColour inputPos Green = green
-        | compareColour inputPos Purple = purple
-        | compareColour inputPos Orange = darkOrange
-        | compareColour inputPos Black = black
-        | otherwise = white
+      pi = model ^. playerIndex
+      -- determine if the current player is an AI or human player
+      playerType = if model ^. playerConfigs ^?! configList . ix pi . active then "Computer Player " else "Player "
 
   -- display a row of buttons for colouring and indexing them
-  rowButton :: [BoardPos] -> WidgetNode AppModel AppEvent
-  rowButton ps = hgrid (pieceButton <$> ps) -- order in a grid style
+  renderRowButtons :: [BoardPos] -> WidgetNode AppModel AppEvent
+  renderRowButtons ps = hgrid (pieceButton <$> ps) -- order in a grid style
+    where
+      -- render the colour and index of a piece for certain player on the board
+      pieceButton pos
+        -- place a spacer if the position type is "U", which is just for separating the buttons
+        | isSpacer pos = spacer
+        -- otherwise, place a button with related color and index
+        | otherwise = button (T.pack textBi) (MoveCheck pos ci)
+          `styleBasic`[radius 45, bgColor (pieceColour pos), border 2 white, textSize 20, textColor white,
+                      -- besides, once a button is clicked, the available destinations will be rendered with corresponding colour 
+                      styleIf (pos `elem` model ^. movesList) (bgColor (pieceColour sp)),
+                      -- and the clicked button's border will be repainted as well
+                      styleIf (pos == sp) (border 2 (pieceColour sp))
+                      ]
+        where
+          -- get the player index based on the clicked button's colour, could be used to determine if the clicked button fit the current turn
+          -- the ones has no colour or is not in the current colour list due to the number of the players are assigned with (-1)
+          ci = case getColour pos of
+                Nothing -> (-1)
+                Just c  -> fromMaybe (-1) $ colourIndex c (model ^. playersAmount)
+          -- the empty button shows no colour, therefore, will display nothing, while others will show their indices
+          textBi = if ci == (-1) then "" else show ci
+
+          sp = model ^. startPos
+          -- "E" position will be coloured in white
+          -- other buttons with different type "R, B, G, P, O, K" will be coloured correspondingly
+          pieceColour inputPos
+            | compareColour inputPos Red = red
+            | compareColour inputPos Blue = blue
+            | compareColour inputPos Green = green
+            | compareColour inputPos Purple = purple
+            | compareColour inputPos Orange = darkOrange
+            | compareColour inputPos Black = black
+            | otherwise = white
 
   -- display the checkbox for choosing the number of AI players
   computerPlayersChoices :: Int -> WidgetNode AppModel AppEvent
@@ -305,7 +304,7 @@ buildUI wenv model = widgetTree where
   -- the layer that integrates the options of player's settings
   featureLayer =
       vstack [
-        -- slider for controlling the selection parameters: UCT and PH's constants
+        -- slider for controlling the selection parameters: UCT and PH constants
         label (T.pack ("Exploration Factor: " ++ show (vitem ^. uct))) `styleBasic` [textSize 20],
         spacer,
         hslider_ (mitem.uct) 0 5 [dragRate 0.1] `styleBasic` [fgColor orange],
@@ -316,13 +315,13 @@ buildUI wenv model = widgetTree where
         spacer,
 
         hstack [
-          -- radio for controlling the playout evaluator and the corresponding search depth
+          -- radio for controlling the playout evaluator
           box_ [alignTop] $ vgrid_ [childSpacing_ 5] [
             label "Simulation Evaluator" `styleBasic` [textSize 20],
             labeledRadio_ "Random" RandomEvaluator eitem [textRight],
             labeledRadio_ "Move" MoveEvaluator eitem [textRight],
             labeledRadio_ "Board" BoardEvaluator eitem [textRight],
-
+            -- and the corresponding search depth if minimax search is chosen
             hstack [
               labeledRadio_ "Embedded Paranoid" MixedParanoid eitem [textRight],
               spacer,
@@ -348,7 +347,7 @@ buildUI wenv model = widgetTree where
 
           filler,
           box_ [alignTop] $
-            -- the choice of the control of the MCTS procedure and the corresponding value 
+            -- the choice of control the progress of MCTS, either iterations, time, and expansion
             vgrid_ [childSpacing_ 10] [
               label "MCTS Control" `styleBasic` [textSize 20],
               labeledRadio_ "Iterations" 0 citem [textRight],
@@ -358,6 +357,7 @@ buildUI wenv model = widgetTree where
         ],
 
         spacer,
+        -- the corresponding value of the control threshold
         vstack [
           label (T.pack ("Control Value: " ++ show (vitem ^. cvalue))) `styleBasic` [textSize 20],
           spacer,
@@ -365,21 +365,24 @@ buildUI wenv model = widgetTree where
         ]
       ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
 
-  -- the layer that
+  -- the layer that allow the user to flip the page of the setting panel
   selectButtonLayer =
-      -- the button for switching the panel's page
+      -- the button for switching the page, next or last page
       hstack [
         button "Last" (PageUpdate (-1)) `nodeEnabled` (pi > 0),
         filler,
         label (T.pack ( playerType ++ show pi))
         `styleBasic` [textSize 30],
         filler,
+        -- the maximum page index is restricted when the total players number is changed
         button "Next" (PageUpdate 1) `nodeEnabled` (pageIdx < model ^. playersAmount - 1)
       ] `styleBasic` [maxWidth 600, padding 20]
 
     where
+      -- besides, the description of the player is updated based on the user's choice
       playerType = if vitem ^. active then "Computer Player: " else "Human Player: "
 
+  -- the layer for user to set the number of human players and computer players, as well as order them
   playerLayer =
     hstack[
       vstack [
@@ -390,7 +393,7 @@ buildUI wenv model = widgetTree where
 
       spacer,
       box_ [alignTop] $ vstack [
-        -- control the total players
+        -- the radio buttons for controlling the total players
         box_ [alignLeft] $ hgrid_ [childSpacing_ 10] [
           -- the change of total players amount will also change the allowed AI players
           labeledRadio_ "2" 2 playersAmount [onChange CancelChecked, textRight],
@@ -400,27 +403,28 @@ buildUI wenv model = widgetTree where
         ],
 
         spacer,
-        -- as well as the position of computer players
+        -- as well as the position of computer players (checkbox)
         box_ [alignLeft] $ hgrid_ [childSpacing_ 10] (computerPlayersChoices <$> [0.. model ^. playersAmount - 1])
       ]
     ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
 
-  -- build layout of the application
+  -- combine all layers and other components together onto the screen
   widgetTree =
       vstack [
         -- the title text
-        box $ label_ (T.pack $ titleText model) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
-        -- the setting panel
+        box $ label_ (T.pack $ titleText) [ellipsis] `styleBasic` [textFont "Bold", textSize 50],
+
         filler,
+        -- the setting panel
         vstack [
           box featureLayer  `nodeEnabled` (vitem ^. active),
           spacer,
           box selectButtonLayer,
           spacer,
           box playerLayer
-        ] `nodeVisible` not (model ^. startGame),
+        ] `nodeVisible` not (model ^. startGame), -- not visible when the game is started
 
-        -- the game components  
+        -- the hint/error message, only visible when the game is started
         spacer `nodeVisible` (model ^. startGame),
         box $ label_ (T.pack $ model ^. errorMessage) [ellipsis]
                   `styleBasic` [textFont "Italic", textSize 20]
@@ -428,8 +432,7 @@ buildUI wenv model = widgetTree where
         spacer `nodeVisible` (model ^. startGame),
 
         vstack [
-          -- error message text
-          -- the two buttons that allow user to quit the game or cancel the last move made
+          -- the buttons that allow user to quit the game, confirm a movement, or cancel the move just made
           box $ hgrid[
               filler,
               button "Quit" EndGameButtonClick,
@@ -440,18 +443,15 @@ buildUI wenv model = widgetTree where
               filler
           ]`styleBasic`[textSize 20],
           spacer,
-          -- render the board's positions row by row
-          vgrid_ [childSpacing_ 5] (rowButton <$> (model ^. displayBoard))
-        ] `nodeVisible` (model ^. startGame),
+          -- render the board row by row
+          vgrid_ [childSpacing_ 5] (renderRowButtons <$> (model ^. displayBoard))
+        ] `nodeVisible` (model ^. startGame), -- only visible when the game is started
 
-        -- the button for starting the game
+        -- the button for starting the game, and will not be seen once clicked
         spacer `nodeVisible` not (model ^. startGame),
         box $ button "Start Game" StartGameButtonClick `styleBasic`[textSize 30] `nodeVisible` not (model ^. startGame),
         filler
       ] `styleBasic` [padding 20]
-
-ifComputersTurn :: AppModel -> Bool
-ifComputersTurn model = model ^. playerConfigs ^?! configList . ix (model ^. playerIndex) . active
 
 -- declare how the events are handled respectively
 handleEvent
@@ -461,10 +461,11 @@ handleEvent
   -> AppEvent
   -> [AppEventResponse AppModel AppEvent]
 handleEvent wenv node model evt = case evt of
-  AppInit -> [] -- [Producer computerTurn] -- an additional thread for checking computer player's turn
-  -- setup the game board according to the options in the menu page: 
-  -- declare that the game is started letting certain subjects to be visiable or invisiable
-  -- generate the game board based on the chosen players number, and the corresponding length of hash state
+  AppInit -> []
+
+  -- setup the game board according to the options in the menu page
+  -- declare that the game is started letting certain subjects to be visible or invisible
+  -- initialise the game board based on the chosen players number, and other corresponding states
   StartGameButtonClick -> [Model $ model & startGame .~ True
                                          & displayBoard .~ eraseBoard (playerColourList pn) externalBoard
                                          & internalStates .~ replicate pn startBase
@@ -473,221 +474,167 @@ handleEvent wenv node model evt = case evt of
                                          & gameHistory .~ RBLeaf
                                          & startPos .~ initialPos
                                          & endPos .~ initialPos
-                                         & playerIndex .~ 0 -- resetting all states
+                                         & playerIndex .~ 0
                                          & ifWin .~ False,
-                          Task $ return GenerateComputerAction
+                          Task $ return GenerateComputerAction -- also check if the first turn is played by the computer player
                           ]
-    where
-      pn = model ^. playersAmount
 
   -- quit the game and return back to the menu page
-  EndGameButtonClick -> [Model $ model & startGame .~ False
+  EndGameButtonClick -> [Model $ model & startGame .~ False -- flip the boolean flag
                                        & errorMessage .~ ""
                                        ]
 
-  -- update the page index with given increment
+  -- update the page index with given increment or decrement
   PageUpdate x -> [Model $ model & pageIndex +~ x]
 
-  -- the event of cancel the last piece change made, and revert it to the previous board state   
-  -- movement cancel is not allowed to be made over a player, meaning that once another player makes the move, you can no longer cancel yours                             
+  -- cancel the last piece change made, and revert it to the previous board state   
+  -- movement cancel is not allowed to be made over a player, meaning that once the "Confirm" button is clicked, you can no longer cancel the movement                             
   CancelMove
-    | model ^. ifWin || ifComputersTurn model -> [] -- ignore if the win state is confirmed
-    | not (ifInitialPiece sp) && not (ifInitialPiece ep) -> [Model $ model & displayBoard .~ newBoard -- reset the board, hash, and turn states
-                                                                           -- & internalStates .~ insertState
-                                                                           --  & previousStartPos .~ initialPos
-                                                                           --  & previousEndPos .~ initialPos
-                                                                           -- & playerIndex .~ lastTurn
-                                                                           & startPos .~ initialPos
+    | model ^. ifWin || ifComputersTurn -> [] -- ignore if the game is ended or the current turn is played by the computer
+    | not (ifInitialPiece sp) && not (ifInitialPiece ep) -> [Model $ model & displayBoard .~ newBoard -- revert the board
+                                                                           & startPos .~ initialPos -- the clean the buffer of movement's choice
                                                                            & endPos .~ initialPos
                                                                            & errorMessage .~ ""]
-    | otherwise -> [Model $ model & errorMessage .~ "the comfirmed move cannot be cancelled"] -- ignore if not record is stored for that
+    | otherwise -> [Model $ model & errorMessage .~ "the comfirmed move cannot be cancelled"] -- display an error message to disable the cancel action
     where
+      -- generate the reverted board representation
+      newBoard = repaintPath (model ^. displayBoard) (repaint currentColour ep, erase sp) -- revert the board state by recolouring the two board positions
 
-      -- ifExistComputerPlayer = all getActive [0..5]
-      -- getActive idx = model ^. playerConfigs ^?! configList . ix idx . active
-
-      sp = model ^. startPos
-      ep = model ^. endPos
-      pn = model ^. playersAmount
-      currentColour = playerColour (model ^. playerIndex) pn
-
-      newBoard = repaintPath (model ^. displayBoard) (repaint currentColour ep, erase sp)
-      -- revert the board state
-
-      -- get the last turn value and retrieve the information for reverting the hash state
-      -- lastTurn = turnRevert pn (model ^. playerIndex)
-      -- lastColour = playerColour lastTurn pn
-      -- ips = projection lastColour (getPos ps)
-      -- ipe = projection lastColour (getPos pe)
-
-      -- lastTurnState = (model ^. internalStates) !! lastTurn
-      -- newState = flipBoard lastTurnState (ipe, ips)
-      -- -- revert the internal positions and then replace it in the state list
-      -- insertState = replace lastTurn newState (model ^. internalStates)
-
-  -- update the turn when a movement for a player is complete
+  -- update the turn index when a movement is complete
   TurnSwitch
-    | model ^. ifWin || ifComputersTurn model -> []
-    | otherwise -> [Model $ model & playerIndex .~ newTurn
+    | model ^. ifWin || ifComputersTurn -> [] -- ignore if the game is ended or the current turn is played by the computer
+    | otherwise -> [Model $ model & playerIndex .~ newTurn -- update the game turn and internal state, check the win state, as well as clean the buffer
                                   & ifWin .~ newWinState
                                   & startPos .~ initialPos
                                   & endPos .~ initialPos
                                   & internalStates .~ insertState
                                   & errorMessage .~ "",
-                    Task $ return GenerateComputerAction]
+                    Task $ return GenerateComputerAction] -- also determine the next turn's player 
     where
-      sp = model ^. startPos
-      ep = model ^. endPos
-      pi = model ^. playerIndex
-      pn = model ^. playersAmount
-
-      currentColour = playerColour pi pn
-      currentState = (model ^. internalStates) !! pi
+      currentInternalState = iboards !! pi
       isp = projection currentColour (getPos sp)
       iep = projection currentColour (getPos ep)
 
-      newState = flipBoard currentState (isp, iep)
-      newWinState = winStateDetect newState
+      newInternalState = flipBoard currentInternalState (isp, iep) -- update the move change from the external board to the internal form
+      newWinState = winStateDetect newInternalState -- check if this movement lead to a win state for a player
 
-      insertState = replace pi newState (model ^. internalStates)
-      newTurn = if not newWinState then turnBase pn pi else pi
+      insertState = replace pi newInternalState iboards -- update the new internal state to the list of states
+      newTurn = if not newWinState then turnBase pn pi else pi -- based on the win state determination, decide if it is needed to update the game turn 
 
-  -- after a movement is determined valid, it will be rendered
+  -- after a movement is determined valid, it will be rendered onto the board
   RenderMove -> [Model $ model & displayBoard .~ newBoard
                                & movesList .~ []
                                ]
       where
-        sp = model ^. startPos
-        ep = model ^. endPos
-        pi = model ^. playerIndex
-        newBoard = repaintPath (model ^. displayBoard) (sp, ep) -- generate the new board state by re-colouring the two board positions
+        newBoard = repaintPath (model ^. displayBoard) (sp, ep) -- generate the new board state by recolouring the two board positions
 
-  -- the movement check, how a movement is passed is done as follows:
-  -- first enter the starting point, and check for the correctness
-  -- then enter the destination, if no error is made then process, otherwise, discard that and print the error message 
-  MoveCheck pos pi ->
-              if model ^. ifWin || ifComputersTurn model || (not (ifInitialPiece sp) && not (ifInitialPiece ep)) then [] -- if already won or it's computer's turn, then do nothing
-              else if ifInitialPiece sp  -- if it is the first time for entering the position
-                   then if turn == pi then [Model $ model & startPos .~ pos     -- check if the entered position is fitted for the current player
-                                                          & errorMessage .~ ""  -- if valid, then checkout the avaliable movements
+  -- the movement check, how a movement is validated is done as follows:
+  -- first check the validity of the start position, then the end position, if no error is made then process, otherwise, discard that and print the error message 
+  MoveCheck pos ci
+    -- if win state is confirmed, or it is not the turn for human player, or the position buffer is not cleaned (waiting for confirm or cancel)
+    -- then ignore the event
+    | model ^. ifWin || ifComputersTurn || (not (ifInitialPiece sp) && not (ifInitialPiece ep)) -> []
+    -- if entering the start position
+    | ifInitialPiece sp ->
+                          case () of
+                               -- check if the entered position is fitted for the current player
+                          () | pi == ci -> [Model $ model & startPos .~ pos
+                                                          & errorMessage .~ ""
                                                           & movesList .~ newMovesList]
-                                      else [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": invalid start"
-                                                          & startPos .~ initialPos] -- if not, then discard this, and wait for another valid input
-                   else if sp == pos then -- otherwise, this position is clicked twice, and is an invalid movement
-                                          [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": no effective move made"
-                                                         & startPos .~ initialPos]
-                        else -- check whether the second clicked position (destination) is avaliable/reachable from the first entered position
-                             if isOccupied pos then [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination occupied" -- if the destination is occupied, then invalid
-                                                                   & startPos .~ initialPos]
-                                               else if pos `elem` model ^. movesList
-                                                    then [Model $ model & endPos .~ pos
-                                                                        & errorMessage .~ "Please press comfirm to complete the move",
-                                                          Task $ return RenderMove] -- if reachable, then this movement will then be rendered
-                                                    else [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination unreacbable" -- if the desintation is not in the list, then invalid
-                                                                        & startPos .~ initialPos]
-                {-case ifInitialPiece $ model ^. fromPiece of 
-                              True  -> if turn == pi then [Model $ model & fromPiece .~ b     -- check if the entered position is valid for the current player
-                                                                         & errorMessage .~ "" -- if valid, then checkout the avaliable movements
-                                                                         & movesList .~ newMovesList]
-                                       else [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": invalid start"
-                                                           & fromPiece .~ U (-1, -1)] -- if not, then discard this, and wait for another valid input
+                              -- if not, then discard this, and wait for another valid input
+                             | pi /= ci -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": invalid start"
+                                                          & startPos .~ initialPos]
+                              -- if a position is clicked twice, and is an invalid movement
+                             | sp == pos -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": no effective move made"
+                                                           & startPos .~ initialPos]
+                              -- if the end position is occupied, then invalid
+                             | isOccupied pos -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": destination occupied"
+                                                                & startPos .~ initialPos]
+                             | otherwise -> []
+    -- if entering the end position
+    | not (ifInitialPiece sp) -> (if pos `elem` availableMoves 
+                                  then [Model $ model & endPos .~ pos
+                                                      & errorMessage .~ "Please press comfirm to complete the move",
+                                       Task $ return RenderMove] -- if reachable, then this movement will then be rendered
+                                  else [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": destination unreacbable"
+                                                      & startPos .~ initialPos]) -- if the destination is not in the list, then invalid
 
-                              False -> case model ^. fromPiece == b of -- otherwise, this position is clicked twice, and is an invalid movement
-                                          True  -> [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": no move made"
-                                                                  & fromPiece .~ U (-1, -1)]
-                                          False -> case isOccupied b of -- if not, then check whether the second clicked position (destination) is avaliable/reachable from the first entered position
-                                                      False -> case b `elem` model ^. movesList of
-                                                                        True  -> [Model $ model & toPiece .~ b
-                                                                                                & errorMessage .~ ""] -- if reachable, then this movement will then be rendered
-                                                                        False -> [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination unreacbable" -- if the desintation is not in the list, then invalid
-                                                                                                & fromPiece .~ U (-1, -1)]
-                                                      True -> [Model $ model & errorMessage .~ "Player " ++ show turn ++ ": destination occupied" -- if the destination is occupied, then invalid
-                                                                             & fromPiece .~ U (-1, -1)]-}
+
+
+    | otherwise -> []
     where
-      turn = model ^. playerIndex
-      sp = model ^. startPos
-      ep = model ^. endPos
-      -- ifComputersTurn = model ^. playerConfigs ^?! configList . ix turn . active
       newMovesList = evalState (destinationList pos) (model ^. displayBoard)
 
   -- reset the selected computer player's indices when the total players is changed
-  CancelChecked v -> [Model $ model & playerConfigs . configList . ix 0 . active .~ head newList
-                                    & playerConfigs . configList . ix 1 . active .~ newList !! 1
-                                    & playerConfigs . configList . ix 2 . active .~ newList !! 2
-                                    & playerConfigs . configList . ix 3 . active .~ newList !! 3
-                                    & playerConfigs . configList . ix 4 . active .~ newList !! 4
-                                    & playerConfigs . configList . ix 5 . active .~ newList !! 5
+  CancelChecked v -> [Model $ model & playerConfigs . configList . ix 0 . active .~ head newActiveList
+                                    & playerConfigs . configList . ix 1 . active .~ newActiveList !! 1
+                                    & playerConfigs . configList . ix 2 . active .~ newActiveList !! 2
+                                    & playerConfigs . configList . ix 3 . active .~ newActiveList !! 3
+                                    & playerConfigs . configList . ix 4 . active .~ newActiveList !! 4
+                                    & playerConfigs . configList . ix 5 . active .~ newActiveList !! 5
                                     & pageIndex .~ newPageId]
     where
-      newList = take v remainedList ++ replicate (6 - v) False
-      remainedList = map modelList [0..5]
-      modelList x = model ^?! playerConfigs . configList . ix x . active
+      -- set the computer players with larger index inactive, and keep the smaller ones unchanged
+      newActiveList = take v activeList ++ replicate (6 - v) False
+      -- access the active state for each potential computer player
+      activeList = map (\idx -> model ^?! playerConfigs . configList . ix idx . active) [0..5]
+      -- modify the current panel page index
       newPageId = if v <= model ^. pageIndex then v - 1 else model ^. pageIndex
 
+  -- called by other events to determine if needed to trigger AI decision function
   GenerateComputerAction
-   | not (ifComputersTurn model) || model ^. ifWin -> []
-   | otherwise -> [Task $ RenderComputerAction <$> aiDecision model]
-   where
-    pi = model ^. playerIndex
-    -- ifComputersTurn = model ^. playerConfigs ^?! configList . ix pi . active
+   | not ifComputersTurn || model ^. ifWin -> [] -- ignore if already win or not the turn for computer players
+   | otherwise -> [Task $ RenderComputerAction <$> aiDecision model] -- call the decision function with necessary IO actions
 
-  -- only react when the during the game and is currently the computer player's turn
-  RenderComputerAction (nboard, nps, nht, nkms) -> [Model $ model & displayBoard .~ nboard
-                                                            & internalStates .~ insertState
-                                                            & gameHistory .~ nht
-                                                            & killerMoves .~ nkms
-                                                            & playerIndex .~ newTurn
-                                                            & ifWin .~ newWinState,
-                                              Task $ return GenerateComputerAction]
-                    {-case model ^. startGame && (model ^. turnS `elem` model ^. computerIdxList) && not (model ^. ifWin) of
-                      True  -> [Model $ model & displayBoard .~ newBoard
-                                              & internalStates .~ insertState
-                                              & gameHistory .~ newHistoryTree
-                                              & turnS .~ newTurn
-                                              & previousFromPiece .~ U(-1, -1)
-                                              & previousToPiece .~ U(-1, -1)
-                                              & ifWin .~ newWinState
-                                              ] -- apply the movement retrieved from the MCTS decision, and perform
-                      False -> []-}
+  -- only react when the during the game that is currently played by the computer player
+  RenderComputerAction (newBoard, newInternalState, newHistory, newKillerMoves) 
+      -> [Model $ model & displayBoard .~ newBoard
+                        & internalStates .~ insertState
+                        & gameHistory .~ newHistory
+                        & killerMoves .~ newKillerMoves
+                        & playerIndex .~ newTurn
+                        & ifWin .~ newWinState,
+          Task $ return GenerateComputerAction]
     where
-      pi = model ^. playerIndex
-      insertState = replace pi nps (model ^. internalStates)
-      newWinState = winStateDetect nps
+      -- update the internal state resulted from the decision function, as well as check the win state
+      insertState = replace pi newInternalState iboards
+      newWinState = winStateDetect newInternalState
       newTurn = if not newWinState then turnBase (model ^. playersAmount) pi else pi
 
--- keep calling the event for checking the computer player's movement
--- computerTurn :: (AppEvent -> IO a) -> IO b
--- computerTurn sendMsg = do sendMsg ComputerAction
---                           threadDelay $ 1000 * 500 -- check every 1 second
---                           computerTurn sendMsg
-
--- pass the model information to the MCTS interface and accept the returned board state
-aiDecision :: AppModel -> IO (Board, [Pos], HistoryTrace, [KillerMoves])
-aiDecision model = do gen <- newStdGen
-                      let root = GRoot 0 []
-                      (newBoard, newState, nht, _, nkms) <- finalSelection root
-                                                            (gen, pi, 1, eboard, iboard, pn, ht, (uctCons, phCons), (eval, dep, kms))
-                                                            (mctsControl mctsCon ctVal)
-                      return (newBoard, newState, nht, nkms)
   where
-    pi = model ^. playerIndex
-    eboard = model ^. displayBoard
-    iboard = model ^. internalStates
+    -- boolean flag for checking whether the current turn is played by the computer player 
+    ifComputersTurn = model ^. playerConfigs ^?! configList . ix (model ^. playerIndex) . active
     pn = model ^. playersAmount
+    sp = model ^. startPos
+    ep = model ^. endPos
+    pi = model ^. playerIndex
+    iboards = model ^. internalStates
+    eboard = model ^. displayBoard
     ht = model ^. gameHistory
     kms = model ^. killerMoves
+    currentColour = playerColour pi pn -- retrieve the current turn's colour
+    availableMoves = model ^. movesList
 
-    uctCons = model ^. playerConfigs ^?! configList . ix pi . uct
-    phCons = model ^. playerConfigs ^?! configList . ix pi . ph
-    eval = model ^. playerConfigs ^?! configList . ix pi . evaluator
-    dep = model ^. playerConfigs ^?! configList . ix pi . depth
-
-    mctsCon = model ^. playerConfigs ^?! configList . ix pi . control
-    ctVal = model ^. playerConfigs ^?! configList . ix pi . cvalue
-
-    mctsControl 0 x = (Just x, Nothing, Nothing)
-    mctsControl 1 x = (Nothing, Just x, Nothing)
-    mctsControl _ x = (Nothing, Nothing, Just (fromIntegral x))
+    -- pass the model' state to the MCTS framework and run it, and finally return the new state
+    aiDecision :: AppModel -> IO (Board, [Pos], HistoryTrace, [KillerMoves])
+    aiDecision model = do gen <- newStdGen -- first get the random number generator for the later usage
+                          let root = GRoot 0 [] -- initialise the search tree
+                          (newBoard, newInternalState, newHistory, _, newKillerMoves) 
+                            <- finalSelection root (gen, pi, 1, eboard, iboards, pn, ht, (uctCons, phCons), (eval, dep, kms))
+                                                   (mctsControl mctsCon ctVal)
+                          return (newBoard, newInternalState, newHistory, newKillerMoves)
+      where
+        -- access to detailed configuration for the computer player
+        uctCons = model ^. playerConfigs ^?! configList . ix pi . uct
+        phCons = model ^. playerConfigs ^?! configList . ix pi . ph
+        eval = model ^. playerConfigs ^?! configList . ix pi . evaluator
+        dep = model ^. playerConfigs ^?! configList . ix pi . depth
+        -- the control of the search progress
+        mctsCon = model ^. playerConfigs ^?! configList . ix pi . control
+        ctVal = model ^. playerConfigs ^?! configList . ix pi . cvalue
+        mctsControl 0 x = (Just x, Nothing, Nothing)
+        mctsControl 1 x = (Nothing, Just x, Nothing)
+        mctsControl _ x = (Nothing, Nothing, Just (fromIntegral x))
 
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
@@ -706,7 +653,7 @@ main = do lookupTable `seq` startApp model handleEvent buildUI config
       appInitEvent AppInit
       ]
 
-    -- provide an initial model of the application
+    -- provide an initial model state
     model = AppModel {
       _playerIndex = 0,
       _ifWin = False,
