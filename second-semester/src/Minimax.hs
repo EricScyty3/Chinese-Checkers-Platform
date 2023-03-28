@@ -144,12 +144,7 @@ killerMoveTest :: KillerMoves -> [Transform] -> [Transform] -> ([Transform], [Tr
 killerMoveTest [] ms ss = (ss, ms)
 killerMoveTest (k:ks) ms ss = case elemIndex k ms of
                                     Nothing  -> killerMoveTest ks ms ss
-                                    Just idx -> killerMoveTest ks (removeByIdx ms idx) (ss ++ [k])
-
-removeByIdx :: [a] -> Int -> [a]
-removeByIdx xs idx = let front = take idx xs 
-                         back = drop (idx + 1) xs
-                     in  front `par` back `pseq` front ++ back
+                                    Just idx -> killerMoveTest ks (removeByIdx idx ms) (ss ++ [k])
 
 updateKillerMoves :: Transform -> KillerMoves -> KillerMoves
 updateKillerMoves move km = take 2 $ nub $ move:km -- only keep several killer moves 
@@ -277,12 +272,12 @@ turnBaseBRS pn ri pi = if ri /= pi then [ri] else otherPlayers pn ri
 nEvaluation :: MGameTreeStatus -> PlayerIndex -> Int -- only care about the root layer's score, make the win determination softer
 nEvaluation st@(ri, eboard, iboard, pn, _, _) pi
     | winStateDetermine rolour eboard = 28 -- if root player wins, then return the maximum gain
-    | ri == pi = head $ boardEvaluations [iboard !! ri] -- if no player winning, then just evaluate normally based on board evaluator
-                 -- centroid (iboard !! ri)
+    | ri == pi = -- head $ boardEvaluations [iboard !! ri] -- if no player winning, then just evaluate normally based on board evaluator
+                 centroid (iboard !! ri)
     | otherwise = let ms = mplayerMovesList st ri -- for other players, how a board is evaluated is based on how the root player could play on this board   
                       rs = iboard !! ri
                       nbs = ms `par` rs `pseq` map (flipBoard rs . projectMove rolour) ms
-                      scores = {-map centroid nbs-} boardEvaluations nbs
+                      scores = map centroid nbs -- boardEvaluations nbs
                   in  if null scores then error (show eboard) else maximum scores
     where
         rolour = playerColour ri pn

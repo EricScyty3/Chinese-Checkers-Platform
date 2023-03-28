@@ -14,19 +14,26 @@ import Configuration
 import Data.Fixed
 import System.Random
 
--- ghc -main-is Extension Extension.hs -O2 -fllvm -outputdir dist
-{-
-main = do arg <- getArgs
-          start <- lookupTable `seq` getCurrentTime
-          let eval = read $ head arg
-              depth = read $ arg !! 1
-              control = read $ arg !! 2
-          turns <- testRun eval depth control
-          print turns
-          -- printEoard board
-          end <- getCurrentTime
-          print $ "Time cost: " ++ show (diffUTCTime end start)
+-- testRun [] = []
+-- testRun (x:xs) = let n = x + 100
+--                      ns = testRun xs
+--                  in  n `par` ns `pseq` n:ns
+--                 --  (x+100):testRun xs
 
+-- ghc -main-is Extension Extension.hs -O2 -fllvm -outputdir dist
+
+-- main = do arg <- getArgs
+--           start <- {-lookupTable `seq`-} getCurrentTime
+--         --   let eval = read $ head arg
+--         --       depth = read $ arg !! 1
+--         --       control = read $ arg !! 2
+--         --   turns <- testRun eval depth control
+--           let result = sum $ testRun [0..10000]
+--           print result
+--           -- printEoard board
+--           end <- getCurrentTime
+--           print $ "Time cost: " ++ show (diffUTCTime end start)
+{-
 testRun eval depth control = do gen <- newStdGen
                                 (_, _, _, turns) <- finalSelection (GRoot 0 [])
                                                     (gen, 0, 1, eraseBoard (playerColourList pn) externalBoard, replicate pn startBase, pn, RBLeaf, (3, 1),

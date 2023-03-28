@@ -1,23 +1,22 @@
 module BFS where
 -- in order to complete a lookup table for evaluating the board state, the minimum moves for each board to reach the goal state is necessary
 -- hence, this module aims to search the sufficient moves of any state for a player to win the game in single-agent board
-import Board
-import Zobrist
-import Data.List
-import Control.Monad.ST
-import Data.STRef
-import Control.Monad.State
-import Control.Monad.Extra
-import Control.Parallel
-import Data.Containers.ListUtils
-import Data.Time
+-- if you're not interested in how to retrieve the lookup table used in this application, you can ignore this module
+    
+import Board ( goalBase, occupiedBoardSize, testValidPos, OccupiedBoard, Pos )
+import Data.List ( elemIndex, sort, sortBy, transpose )
+import Control.Monad.ST ( runST )
+import Data.STRef ( modifySTRef, newSTRef, readSTRef )
+import Control.Monad.State ( State, evalState, MonadState(get) )
+import Control.Monad.Extra ( concatMapM )
+import Control.Parallel ( par, pseq )
+import Data.Containers.ListUtils ( nubOrd )
 
-
--- basically will need a breadth-first search for preventing duplicate moves, and also, due to the difficulty of measuring the prediction in A star, BFS is somehow more accurate 
+-- it will need a breadth-first search for preventing duplicate moves, and also, due to the difficulty of measuring the prediction in A star, BFS is somehow more accurate 
 -- each level represents a move that is done only if certain moves before were done
 -- level 0 means the initial state
 -- level 1 means a move is performed by each piece from the initial state, might exists duplications
-
+-- as shown below:
 testBoard :: OccupiedBoard
 testBoard = [
         [0,1,0,0,1,1,0],
@@ -28,18 +27,17 @@ testBoard = [
         [0,0,0,0,0,0,0],
         [0,0,0,0,0,0,0]
     ]
-
 -- to speed up the processing, rather than having the whole occupied board, only the occupied positions are maintained in the state monad
--- additional consideration for more accurate estimate
+-- additional consideration for more accurate estimate might be considered in multi-agent form, but not necessary here
+
 -- breadth-first search
--- when searching, don't really need the whole occupied board, only need to known about the occupied positions
 shortestMoves :: [Pos] -> Int -> Int
 shortestMoves ps wd = let evalValue = centroid ps
                       in  if evalValue == 28 then 0 else bSearchS 0 wd [(sort ps, evalValue)] [] []
 
 -- for a list of board states, process each new state for each state 
 -- update the new positions based on the old ones
--- finally return the level index, meaning the moves requried to reach the goal state
+-- finally return the level index, meaning the moves required to reach the goal state
 bSearchS :: Int -> Int -> [([Pos], Int)] -> [([Pos], Int)] -> [([Pos], Int)] -> Int
 bSearchS i wd np1 np2 [] = let combinedSet = runST $ do n <- newSTRef np2
                                                         modifySTRef n (updateList np1 wd)
@@ -63,7 +61,7 @@ bSearchS i wd np1 np2 (b:bs) = let set1 = evalState (bSearch np1 wd) b -- bidire
 -- return the list containing the new found states and previously accumulated states
 bSearch :: [([Pos], Int)] -> Int -> State ([Pos], Int) [([Pos], Int)] -- maintaining the current board and its value
 bSearch ps wd = do (board, score) <- get
-                   let moves = dListForBoard board -- retrieve the avaliable moves
+                   let moves = dListForBoard board -- retrieve the available moves
                        ns = evalState (flipLists score moves) board -- result the expanded boards
                    return (runST $ do n <- newSTRef ps
                                       modifySTRef n (updateList ns wd)
@@ -85,10 +83,10 @@ updateList (n:ns) wb ps
 mySort :: [([Pos], Int)] -> [([Pos], Int)]
 mySort = sortBy (\(_, x) (_, y) -> compare x y)
 
---Board Handleing--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Board Handling--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- to tend the movement from right-top to left-bottom, the centroid of the position can be set as: y-x
 -- the centroid is used as the board evaluation for the shortest path search that the closer it is to the goal state, the larger reflect is given
--- such that the the closer to the homebase, the larger the centroid is
+-- such that the the closer to the home base, the larger the centroid is
 -- calculate the centroid for the whole occupied board
 centroid :: [Pos] -> Int
 centroid ps = sum (map centroidPos ps) -- the highest value will be 28 while the lowest is -28
@@ -113,7 +111,7 @@ flipLists _ [] = return []
 flipLists v (x:xs) = do let (p, ps) = x
                         resultingBoards <- mapM (flipBoardState v p) ps -- get the resulting boards and their values for the one position
                         otherResultingBoards <- flipLists v xs -- the rest of the resulting boards as well as the corresponding values
-                        return(resultingBoards `par` otherResultingBoards `pseq` (resultingBoards ++ otherResultingBoards)) -- eventually get all possible boards result from the current board
+                        return (resultingBoards `par` otherResultingBoards `pseq` (resultingBoards ++ otherResultingBoards)) -- eventually get all possible boards result from the current board
     where
         -- exchange two pieces' states on the occupied board by replacing the position with a new one as well as update the new evaluation value
         flipBoardState :: Int -> Pos -> Pos -> State [Pos] ([Pos], Int)
@@ -125,21 +123,21 @@ flipLists v (x:xs) = do let (p, ps) = x
                                                   return (newps `par` newv `pseq` (newps, newv))
 
 --Movement Operators-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- similar to the Board module but with different movement formats and the board is simpler
--- given a list of positions, find their corresponding avaliable movements
+-- similar to the Board module but with different formats (Pos) and the board is simpler since there is no need to consider the colour issues
+-- given a list of positions, find their corresponding available movements
 dListForBoard :: [Pos] -> [(Pos, [Pos])]
 dListForBoard ps = evalState (mapM destinationList' ps) ps -- zip the from and to destinations
 
 -- combine the two movement lists and discard the duplicate ones
 destinationList' :: Pos -> State [Pos] (Pos, [Pos])
 destinationList' p = do ps <- get
-                        if p `notElem` ps then return (p, []) -- invalud input position
+                        if p `notElem` ps then return (p, []) -- invalid input position
                         else do adjacentMoves <- findAvaliableNeighbors' p
                                 chainedMoves  <- recursiveSearch' [] p
                                 let movesList = adjacentMoves `par` chainedMoves `pseq` nubOrd (adjacentMoves ++ chainedMoves)
                                 return (p, movesList) -- return the pair of source positions and a list of target positions
 
--- discover the avaliable adjacent positions arround the entered one
+-- discover the available adjacent positions around the entered one
 findAvaliableNeighbors' :: Pos -> State [Pos] [Pos]
 findAvaliableNeighbors' p@(x, y) = do ps <- get
                                       let avaliableList = filter (`notElem` ps) neighborPosList
@@ -161,7 +159,7 @@ recursiveSearch' record pos = do chainJumpList <- jumpDirection' pos
                                  recursiveList <- concatMapM (recursiveSearch' newRecord) renewList
                                  return (recursiveList ++ renewList)
 
--- return the avaliable hopping destinations
+-- return the available hopping destinations
 jumpDirection' :: Pos -> State [Pos] [Pos]
 jumpDirection' pos = do reachableList <- mapM (determineValidJump' pos) [f (0, -1), f (-1, -1), f (-1, 0), f (0, 1), f (1, 1), f (1, 0)]
                         return $ filter (/= pos) reachableList -- remove the invalid moves
