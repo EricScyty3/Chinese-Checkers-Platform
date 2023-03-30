@@ -30,7 +30,7 @@ type PlayerIndex = Int
 type BoardIndex = Int
 
 -- the game tree contains two main types: leaf with not child and internal node with at least one child
--- each node should hold a tuple of size N = players number representing the scroe for each player
+-- each node should hold a tuple of size N = players number representing the score for each player
 -- besides, nodes other than root contains a movement showing how its board state is transformed from its parent 
 -- since the change delivered from the parent state is cause of the movement, therefore, it is sufficient to only storing position changes
 data GameTree = GRoot BoardIndex [GameTree] |
@@ -69,7 +69,7 @@ type GameTreeStatus = (-- the random number generator, which should be assigned 
                        PlayoutArgument) 
 
 --Encapsulation----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- since the game state is warpped in the state monad, several toolkits are applied to access and modify and game state 
+-- since the game state is wrapped in the state monad, several toolkits are applied to access and modify and game state 
 
 -- get the current player's index
 getPlayerIdx :: State GameTreeStatus PlayerIndex
@@ -105,7 +105,7 @@ getPlayerNum = do (_, _, _, _, _, pn, _, _, _) <- get; return pn
 getHistoryTrace :: State GameTreeStatus HistoryTrace
 getHistoryTrace = do (_, _, _, _, _, _, ht, _, _) <- get; return ht
 
--- return the two argurmant of selection strategy: UCT and PH
+-- return the two argument of selection strategy: UCT and PH
 getUCTCons :: State GameTreeStatus Double
 getUCTCons = do (_, _, _, _, _, _, _, (uct, _), _) <- get; return uct
 getPHCons :: State GameTreeStatus Double
@@ -148,7 +148,7 @@ modifyCurrentInternalBoard tf = do ps <- getCurrentInternalBoard
                                    let ptf = projectMove colour tf
                                    return $ ps `par` ptf `pseq` flipBoard ps ptf
 
--- update the list of internal board with new updated entitity
+-- update the list of internal board with new updated entity
 setCurrentInternalBoard :: [Pos] -> State GameTreeStatus ()
 setCurrentInternalBoard ps = do iboards <- getInternalBoards
                                 pi <- getPlayerIdx
@@ -216,7 +216,7 @@ getWins (GRoot _ ts) = if null ts then []
 getVisits :: GameTree -> Int
 getVisits t = sum (getWins t) -- the sum of the wins equals to the total visits of that node
 
--- return the psotion change of the node from its parent's state
+-- return the position change of the node from its parent's state
 getTransform :: GameTree -> Transform
 getTransform (GLeaf _ ft _) = ft
 getTransform (GNode _ ft _ _) = ft
@@ -229,7 +229,7 @@ repaintBoard :: Transform-> State GameTreeStatus Board
 repaintBoard tf = do board <- getBoard; 
                      return (repaintPath board tf)  -- recolour the start and end positions
 
--- return a list of avaliable movements for the current player
+-- return a list of available movements for the current player
 currentPlayerMovesList :: State GameTreeStatus [Transform]
 currentPlayerMovesList = do eboard <- getBoard
                             ps <- getCurrentInternalBoard
@@ -274,7 +274,7 @@ averageScore :: PlayerIndex -> Wins -> Int -> Double
 averageScore _ _ 0 = 0
 averageScore pi wins visits = fromIntegral (wins !! pi) / fromIntegral visits
 
--- determine a node's profits accroding to the UCT formula
+-- determine a node's profits according to the UCT formula
 -- consider the total visits of the parent node as well as the child node
 estimateNodeUCT :: Int -> Int -> State GameTreeStatus Double
 estimateNodeUCT pv 0 = return 0
@@ -297,11 +297,12 @@ estimateNode :: Int -> GameTree -> State GameTreeStatus Double
 estimateNode pv node = if isRoot node then return 0
                        else do pi <- getPlayerIdx
                                colour <- getPlayerColour
-                               ps <- modifyCurrentInternalBoard (getTransform node) -- first retrieve the new projected internal board from the trnasform
+                               ps <- modifyCurrentInternalBoard (getTransform node) -- first retrieve the new projected internal board from the transform
                                let wins = getWins node
                                    visits = sum wins
                                    mean = averageScore pi wins visits
                                uct <- estimateNodeUCT pv visits
                                ph  <- estimateNodePH (hash ps) wins visits -- then pass the hashed value of the internal board to the formula
                                return $ uct `par` ph `pseq` mean + uct + ph
+
 

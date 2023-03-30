@@ -14,7 +14,7 @@ import GameTree
       GameTree (GRoot),
       GameTreeStatus,
       HistoryTrace,
-      KillerMoves, setRandGen )
+      KillerMoves, setRandGen, getWins, getVisits, PlayerIndex, Wins )
 import Board ( projectMove, Board, Pos, repaintPath, eraseBoard, playerColourList, externalBoard, startBase )
 import Data.Time
     ( UTCTime, nominalDiffTimeToSeconds, diffUTCTime, getCurrentTime )
@@ -54,7 +54,7 @@ testRun eval depth control = do gen <- newStdGen
 -- given a search tree and game state, with the control of tree search, return the optimal result that is received by MCTS 
 -- currently, only the iteration counts and time limits are considered, the expansion threshold could be extended but not necessary in here
 finalSelection :: GameTree -> GameTreeStatus -> (Maybe Int, Maybe Pico) -> IO (Board, [Pos], HistoryTrace, [Int], [KillerMoves])
-finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control = 
+finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                    do -- pass the arguments to the decision function controlled by certain threshold 
                                                                       -- return the new search tree, the scores for the possible expansion of current game state
                                                                       -- the new movement history, and the counts of game simulations' turns
@@ -75,22 +75,28 @@ finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                               return $ newBoard `par` newInternalState `pseq` (newBoard, newInternalState, nht, playoutTurns, kms)
 -- compute the MCTS with certain threshold to control the progress
 getResultsUnderControl :: GameTree -> GameTreeStatus -> (Maybe Int, Maybe Pico) -> IO (GameTree, [Double], HistoryTrace, [Int], [KillerMoves])
-getResultsUnderControl tree status@(_, pi, _, _, _, _, _, _, _) (Just iters, Nothing) = 
+getResultsUnderControl tree status@(_, pi, _, _, _, _, _, _, _) (Just iters, Nothing) =
                                                            do -- retrieve the result from running MCTS with certain iterations
                                                               (ntree, _, nht, playoutTurns, kms) <- iterations tree status [] iters
                                                               -- list all win rates for the current player of all expanded moves
-                                                              let scores = map (averageScore pi) (getChildren ntree) 
+                                                              let scores = getWinRates pi (getChildren ntree)
                                                               return (ntree, scores, nht, playoutTurns, kms)
 
-getResultsUnderControl tree status@(_, pi, _, _, _, _, _, _, _) (Nothing, Just seconds) = 
+getResultsUnderControl tree status@(_, pi, _, _, _, _, _, _, _) (Nothing, Just seconds) =
                                                              do -- first get the current time for later check
                                                                 startTime <- getCurrentTime
                                                                 -- run the MCTS with certain time limits
                                                                 (ntree, _, nht, playoutTurns, kms) <- timeLimits tree status [] (startTime, seconds)
-                                                                let scores = map (averageScore pi) (getChildren ntree) -- list all win rate for a player
+                                                                let scores = getWinRates pi (getChildren ntree) -- list all win rate for a player
                                                                 return (ntree, scores, nht, playoutTurns, kms)
 getResultsUnderControl tree status _ = error "Invalid control"
 
+-- get the win rates for all children of a node
+getWinRates :: PlayerIndex -> [GameTree] -> [Double]
+getWinRates _ [] = []
+getWinRates pi (n:ns) = let wins = getWins n
+                            visits = sum wins
+                        in  averageScore pi wins visits : getWinRates pi ns
 
 -- repeat the MCTS until certain iterations are reached
 iterations :: GameTree -> GameTreeStatus -> [Int] -> Int -> IO (GameTree, BoardIndex, HistoryTrace, [Int], [KillerMoves])
@@ -98,9 +104,9 @@ iterations :: GameTree -> GameTreeStatus -> [Int] -> Int -> IO (GameTree, BoardI
 iterations tree s@(_, _, bi, _, _, _, ht, _, (_, _, kms)) playoutTurns 0 = return (tree, bi, ht, playoutTurns, kms)
 iterations tree s@(_, pi, bi, board, ps, pn, ht, cons, (eval, depth, _)) playoutTurns count =
     -- reset every status while maintaining the board index and move history
-    let n@(newGen, newTree, newIdx, newHistory, turns, kms) = evalState (mcts tree) s 
+    let n@(newGen, newTree, newIdx, newHistory, turns, kms) = evalState (mcts tree) s
     -- inherit the movement history, and record the playout turns, decrement the count
-    in  n `seq` iterations newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, kms)) (playoutTurns ++ [turns]) (count-1) 
+    in  n `seq` iterations newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, kms)) (playoutTurns ++ [turns]) (count-1)
 
 -- repeating the MCTS until certain time setting (in seconds) are reached
 timeLimits :: GameTree -> GameTreeStatus -> [Int] -> (UTCTime, Pico) -> IO (GameTree, BoardIndex, HistoryTrace, [Int], [KillerMoves])
@@ -110,5 +116,5 @@ timeLimits tree s@(_, pi, bi, board, ps, pn, ht, cons, (eval, depth, kms)) playo
        let interval = nominalDiffTimeToSeconds $ diffUTCTime currentTime start
        if interval >= duration then return (tree, bi, ht, playoutTurns, kms)
        -- otherwise, keep processing
-       else let n@(newGen, newTree, newIdx, newHistory, turns, nkms) = evalState (mcts tree) s 
+       else let n@(newGen, newTree, newIdx, newHistory, turns, nkms) = evalState (mcts tree) s
             in  n `seq` timeLimits newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, nkms)) (playoutTurns ++ [turns]) (start, duration)
