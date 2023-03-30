@@ -52,7 +52,7 @@ import Minimax
 
 
 -- during the selection a list of node that is chosen along with the selection, 
--- therefore, a list of chosen nodes (the board index as well as the internal board hash) shoud be maintained for later backpropagation
+-- therefore, a list of chosen nodes (the board index as well as the internal board hash) should be maintained for later backpropagation
 -- the selected node list is first-in-first-out style
 push :: a -> [a] -> [a]
 push x xs = xs ++ [x]
@@ -61,7 +61,7 @@ pop [] = error "Empty container"
 pop [x] = (x, [])
 pop (x:xs) = (x, xs)
 
--- given a change of positionb, create a leaf node 
+-- given a change of position, create a leaf node 
 makeLeaf :: Transform -> State GameTreeStatus GameTree
 makeLeaf transform = do bi <- getBoardIdx
                         pn <- getPlayerNum
@@ -83,7 +83,7 @@ randomPercentage :: Int -> State GameTreeStatus Bool
 randomPercentage n = do gen <- getRandGen
                         let (randomValue, newGen) = randomR (0, 100) gen
                         setRandGen (snd (split newGen))
-                        -- return the possibility of certain precentage
+                        -- return the possibility of certain percentage
                         return $ randomValue <= n
 
 -- return the maximum entity's index of a list, if there exist multiple maximum entities then select one of them randomly
@@ -127,7 +127,7 @@ selection node indexList hashList = let children = getChildren node
                                                 newindexList `par` newhashList `pseq` selection selectedNode newindexList newhashList
 
 -- here, the process expands a node based on the possible moves that could be made by the current player, and assign each resulting board with new index and make them leaves
--- the expansion could apply various policies such as retricting the generated new nodes, or avoid the backward moves to be produced
+-- the expansion could apply various policies such as restricting the generated new nodes, or avoid the backward moves to be produced
 -- in this function, it accepts a tree node and returns the same node but with children
 expansion :: GameTree -> State GameTreeStatus GameTree
 expansion node = let children = getChildren node
@@ -146,7 +146,7 @@ expandPolicy co xs
     | not $ null advance = advance  -- if exist advances, then apply them
     | otherwise = xs                -- otherwise, allow other moves to be accepted
     where
-        -- the avaliable movements are divided into two categories: advance and non-advance
+        -- the available movements are divided into two categories: advance and non-advance
         -- the one that provides an increment in distance is an advance, otherwise, non-advance
         advance = filter ((> 0) . distanceChange) xs
         -- project the movement from external board to the occupied board and return the change of distance
@@ -169,7 +169,7 @@ backpropagation winIdx itrace node expandedNode =
                                                     Just idx -> do let selectedNode = children !! idx
                                                                        -- update the win list by incrementing a player's wins by 1
                                                                        childWithNewWins = editNodeValue winIdx selectedNode
-                                                                   -- recusivly digging down on the that child until the trace is empty
+                                                                   -- recursively digging down on the that child until the trace is empty
                                                                    childWithNewChildren <- backpropagation winIdx rtrace childWithNewWins expandedNode
                                                                    -- finally update the new child of the current node
                                                                    let newChildren = replace idx childWithNewChildren children
@@ -198,7 +198,7 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 -- 2. mixed strategy of lookup table and centroid heuristic
 -- 3. mixed strategy minimax search equipped with centroid heuristic and lookup table
 
--- random greedy policy with certain precentage of choosing the optimal option while the maintaining certain randomness factor for avoiding cycling
+-- random greedy policy with certain percentage of choosing the optimal option while the maintaining certain randomness factor for avoiding cycling
 switchEvaluator :: PlayoutArgument -> [Transform] -> State GameTreeStatus Transform
 switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether random choice will be taken place here (5% of chance)
                                                          optimalChoice <- randomPercentage 95
@@ -261,7 +261,7 @@ playout moveCounts =
                                             winIdx <- randomMaxSelection scores
                                             return (winIdx, turns)
                    -- otherwise, process normally                                          
-                   else do -- first get all of the avaliable movements
+                   else do -- first get all of the available movements
                            tfs <- currentPlayerMovesList
                            pi <- getPlayerIdx
                            pa <- getPlayoutArgument
@@ -279,7 +279,7 @@ playout moveCounts =
                                    updatePlayerIdx
                                    -- update the new board state
                                    setBoard nboard
-                                   -- record the moves beeing made so far
+                                   -- record the moves being made so far
                                    playout (moveCounts + 1) 
 
 -- get the game turns based on the total movements made so far as well as the total players
@@ -343,13 +343,13 @@ mcts tree = do -- first start the selection with empty container, and will then 
                                gen <- getRandGen
                                return $ newTree3 `par` newHistory3 `pseq` (gen, newTree3, bi, newHistory3, turns, kms) -- get the new tree 
 
--- check the win state of all players, since the suicidal action is allowed hereh and it can be performed either randomly or on purpose
+-- check the win state of all players, since the suicidal action is allowed here and it can be performed either randomly or on purpose
 -- any value other than -1 means a win is reached
 checkPlayersWinState :: Int -> Board -> Int
 checkPlayersWinState pn board = let ws = map (`winStateDetermine` board) (playerColourList pn)
                                 in  case elemIndices True ws of
                                         [] -> -1
                                         [x] -> x
-                                        -- although suicidal movement is allowed because it won't affect the meachism of MCTS, 
+                                        -- although suicidal movement is allowed because it won't affect the mechanism of MCTS, 
                                         -- it is not allowed to more than one players win at the same time because the game is zero-sum
                                         _ -> error "Multiple players win at the same time"
