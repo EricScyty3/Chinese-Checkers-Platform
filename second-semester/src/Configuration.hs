@@ -76,7 +76,7 @@ tableElementsConstruct (RBNode _ ps t1 key t2) widths@(width1, width2) =
 --Board Generations------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- produced the configuration of sufficient states to build a reliable lookup table for evaluation
 {-
-The needed configurations will be shown as folllowing, ignoring the middle-game stage becuase the lookup table is quite weak for this,
+The needed configurations will be shown as following, ignoring the middle-game stage because the lookup table is quite weak for this,
 hence, the size of the table could also be reduced.
 Besides, according to the mirror states sharing the same shortest paths, these can be eliminated as well. 
 
@@ -125,12 +125,12 @@ idx2Pos idx
     | otherwise = (6, 5)
 
 -- treat the occupied board as a 1D list of length 21, and return all the possible position combinations of the pieces
--- in other words, this returns a list of possible opening states' positions through permutate operations
+-- in other words, this returns a list of possible opening states' positions through permute operations
 listAllPermutations :: Int -> ([Pos], Int) -> [[Pos]]
 listAllPermutations 0 (ls, _) = [ls]
 listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] -- settle the allowed index of element for permutation
                                                 nls = map idx2Pos idx -- convert the index to 2-dimension coordinate
-                                                pls = map (flipBoardState ls) nls -- concating the previously investigated positions
+                                                pls = map (flipBoardState ls) nls -- concatenating the previously investigated positions
                                                 next = map (+1) idx -- push forward the range as every element before this will already be manipulated 
                                             in  pls `par` next `pseq` concatMap (listAllPermutations (pieces - 1)) (zip pls next) -- expand the permutation
     where
@@ -140,7 +140,7 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
 --Board Evaluation------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- evaluating a board state based on the generated lookup table
 
--- compute a list of board configurations, with a mixed-strategy evalutor that combines both shortest path and centroid heurisitics
+-- compute a list of board configurations, with a mixed-strategy evaluator that combines both shortest path and centroid heuristics
 boardEvaluations :: [[Pos]] -> [Int]
 boardEvaluations ps = -- for consistent purpose, if found a midgame states existed in the list
                       -- the evaluation will only be taken place based on the centroid heuristic
@@ -180,7 +180,7 @@ boardEvaluations ps = -- for consistent purpose, if found a midgame states exist
 -- determine if a board configuration is at the opening, endgame or midgame state
 isOpening :: [Pos] -> Bool -- requires a symmetric operation to search in the lookup tree
 isOpening = all ((<= -1) . centroidPos)
-isEndgame :: [Pos] -> Bool -- requires two symmetric opertation to search in the lookup tree
+isEndgame :: [Pos] -> Bool -- requires two symmetric operation to search in the lookup tree
 isEndgame = all ((>= 1) . centroidPos)
 isMidgame :: [Pos] -> Bool -- cannot be found in the lookup tree, needs additional evaluation function
 isMidgame ps = not (isOpening ps) && not (isEndgame ps)
@@ -199,7 +199,7 @@ lookupTable = let elems = loadTableElements
                              readSTRef n
 
 -- construct the red-black tree based on the stored data with and hash of the board and 
--- the corresponding moves and sysmmetric endgame board's moves
+-- the corresponding moves and symmetric endgame board's moves
 constructTable :: [(Int, Int, Int)] -> LookupTable -> LookupTable
 constructTable [] tree = tree
 constructTable ((boardHash, opening, endgame):xs) tree = constructTable xs (rbInsert boardHash (opening, endgame) tree)

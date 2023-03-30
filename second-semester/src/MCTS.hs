@@ -279,13 +279,6 @@ checkPlayersWinState pn board = let ws = map (`winStateDetermine` board) (player
                                         [x] -> x
                                         _ -> error "Multiple players win at the same time"
 
--- repeating the MCTS until certain iterations are reached
-iterations :: GameTree -> GameTreeStatus -> [Int] -> Int -> IO (GameTree, BoardIndex, HistoryTrace, [Int], [KillerMoves])
-iterations tree s@(_, _, bi, _, _, _, ht, _, (_, _, kms)) playoutTurns 0 = return (tree, bi, ht, reverse playoutTurns, kms)
-iterations tree s@(_, pi, bi, board, ps, pn, ht, cons, (eval, depth, _)) playoutTurns count =
-    let (newGen, newTree, newIdx, newHistory, turns, kms) = evalState (mcts tree) s -- reset every status while maintaining the board index and move history
-    in  iterations newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, kms)) (turns:playoutTurns) (count-1) -- inherit the movement history, and record the playout turns
-
 
 
 

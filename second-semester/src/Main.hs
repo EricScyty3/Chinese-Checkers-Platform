@@ -153,7 +153,7 @@ data ComputerPlayerConfig = ComputerPlayerConfig {
   _ph :: Double,   -- the constant of Progressive History in MCTS selection
   _evaluator :: PlayoutEvaluator, -- the board evaluator used during the MCTS playouts
   _depth :: Int,   -- if the embedded minimax search is applied during the playouts, the related search depth is needed to be defined
-  _control :: Int, -- the choice of how the MCTS is processed, including iteration counts, time limits and tree expansions
+  _control :: Bool, -- the choice of how the MCTS is processed, including iteration counts, time limits and tree expansions
   _cvalue :: Int   -- as well as the exact control's value
 } deriving (Eq, Show)
 
@@ -350,9 +350,8 @@ buildUI wenv model = widgetTree where
             -- the choice of control the progress of MCTS, either iterations, time, and expansion
             vgrid_ [childSpacing_ 10] [
               label "MCTS Control" `styleBasic` [textSize 20],
-              labeledRadio_ "Iterations" 0 citem [textRight],
-              labeledRadio_ "Expansion (nodes)" 1 citem [textRight],
-              labeledRadio_ "Time (seconds)" 2 citem [textRight]
+              labeledRadio_ "Iterations" True citem [textRight],
+              labeledRadio_ "Time (seconds)" False citem [textRight]
             ]
         ],
 
@@ -482,6 +481,7 @@ handleEvent wenv node model evt = case evt of
   -- quit the game and return back to the menu page
   EndGameButtonClick -> [Model $ model & startGame .~ False -- flip the boolean flag
                                        & errorMessage .~ ""
+                                       
                                        ]
 
   -- update the page index with given increment or decrement
@@ -583,7 +583,7 @@ handleEvent wenv node model evt = case evt of
 
   -- called by other events to determine if needed to trigger AI decision function
   GenerateComputerAction
-   | not ifComputersTurn || model ^. ifWin -> [] -- ignore if already win or not the turn for computer players
+   | not ifComputersTurn || model ^. ifWin || not (model ^. startGame) -> [] -- ignore if already win or not the turn for computer players
    | otherwise -> [Task $ RenderComputerAction <$> aiDecision model] -- call the decision function with necessary IO actions
 
   -- only react when the during the game that is currently played by the computer player
@@ -632,9 +632,9 @@ handleEvent wenv node model evt = case evt of
         -- the control of the search progress
         mctsCon = model ^. playerConfigs ^?! configList . ix pi . control
         ctVal = model ^. playerConfigs ^?! configList . ix pi . cvalue
-        mctsControl 0 x = (Just x, Nothing, Nothing)
-        mctsControl 1 x = (Nothing, Just x, Nothing)
-        mctsControl _ x = (Nothing, Nothing, Just (fromIntegral x))
+        
+        mctsControl True x = (Just x, Nothing)
+        mctsControl False x = (Nothing, Just (fromIntegral x))
 
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
@@ -668,5 +668,5 @@ main = do lookupTable `seq` startApp model handleEvent buildUI config
       _gameHistory = RBLeaf,
       _killerMoves = [],
       _pageIndex = 0,
-      _playerConfigs = ConfigList $ replicate 6 (ComputerPlayerConfig False 3 1 MoveEvaluator 0 0 10)
+      _playerConfigs = ConfigList $ replicate 6 (ComputerPlayerConfig False 3 1 MoveEvaluator 0 True 10)
     }
