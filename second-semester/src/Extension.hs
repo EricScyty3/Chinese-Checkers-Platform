@@ -29,6 +29,7 @@ import System.Environment ( getArgs )
 import Configuration (lookupTable)
 
 -- ghc -main-is Extension Extension.hs -O2 -fllvm -outputdir dist
+{-
 main = do arg <- getArgs
           start <- lookupTable `seq` getCurrentTime
           let eval = read $ head arg
@@ -39,7 +40,6 @@ main = do arg <- getArgs
           end <- getCurrentTime
           print $ "Time cost: " ++ show (diffUTCTime end start)
 
-
 testRun eval depth control = do gen <- newStdGen
                                 (_, _, _, turns, _) <- finalSelection (GRoot 0 [])
                                                        (gen, 0, 1, eraseBoard (playerColourList pn) externalBoard, replicate pn startBase, pn, RBLeaf, (3, 1),
@@ -48,7 +48,7 @@ testRun eval depth control = do gen <- newStdGen
                                 return turns
     where
         pn = 3
-
+-}
 
 
 -- given a search tree and game state, with the control of tree search, return the optimal result that is received by MCTS 
@@ -101,12 +101,12 @@ getWinRates pi (n:ns) = let wins = getWins n
 -- repeat the MCTS until certain iterations are reached
 iterations :: GameTree -> GameTreeStatus -> [Int] -> Int -> IO (GameTree, BoardIndex, HistoryTrace, [Int], [KillerMoves])
 -- return when countdown to zero
-iterations tree s@(_, _, bi, _, _, _, ht, _, (_, _, kms)) playoutTurns 0 = return (tree, bi, ht, playoutTurns, kms)
+iterations tree s@(_, _, bi, _, _, _, ht, _, (_, _, kms)) playoutTurns 0 = return (tree, bi, ht, reverse playoutTurns, kms)
 iterations tree s@(_, pi, bi, board, ps, pn, ht, cons, (eval, depth, _)) playoutTurns count =
     -- reset every status while maintaining the board index and move history
     let n@(newGen, newTree, newIdx, newHistory, turns, kms) = evalState (mcts tree) s
     -- inherit the movement history, and record the playout turns, decrement the count
-    in  n `seq` iterations newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, kms)) (playoutTurns ++ [turns]) (count-1)
+    in  n `seq` iterations newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, kms)) (turns:playoutTurns) (count-1)
 
 -- repeating the MCTS until certain time setting (in seconds) are reached
 timeLimits :: GameTree -> GameTreeStatus -> [Int] -> (UTCTime, Pico) -> IO (GameTree, BoardIndex, HistoryTrace, [Int], [KillerMoves])
@@ -114,7 +114,7 @@ timeLimits tree s@(_, pi, bi, board, ps, pn, ht, cons, (eval, depth, kms)) playo
     do -- check if the time is exceeded
        currentTime <- getCurrentTime
        let interval = nominalDiffTimeToSeconds $ diffUTCTime currentTime start
-       if interval >= duration then return (tree, bi, ht, playoutTurns, kms)
+       if interval >= duration then return (tree, bi, ht, reverse playoutTurns, kms)
        -- otherwise, keep processing
        else let n@(newGen, newTree, newIdx, newHistory, turns, nkms) = evalState (mcts tree) s
-            in  n `seq` timeLimits newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, nkms)) (playoutTurns ++ [turns]) (start, duration)
+            in  n `seq` timeLimits newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, (eval, depth, nkms)) (turns:playoutTurns) (start, duration)

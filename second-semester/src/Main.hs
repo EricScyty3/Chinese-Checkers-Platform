@@ -4,54 +4,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-import Control.Lens
-    ( (&), (^?!), (^.), (+~), (.~), makeLenses, singular, Ixed(ix) )
+import Monomer
+import Control.Lens ( (&), (^?!), (^.), (+~), (.~), makeLenses, singular, Ixed(ix) )
 import Data.Maybe ( fromMaybe )
 import Data.Text (Text)
-import Monomer
-    ( nodeKey,
-      nodeVisible,
-      darkTheme,
-      blue,
-      green,
-      orange,
-      purple,
-      red,
-      white,
-      yellow,
-      startApp,
-      appFontDef,
-      appInitEvent,
-      appTheme,
-      appWindowIcon,
-      appWindowTitle,
-      styleIf,
-      box,
-      box_,
-      hgrid,
-      vgrid_,
-      vstack,
-      button,
-      button_,
-      label_,
-      labeledRadio,
-      filler,
-      spacer,
-      CmbAlignLeft(alignLeft),
-      CmbBgColor(bgColor),
-      CmbChildSpacing(childSpacing_),
-      CmbEllipsis(ellipsis),
-      CmbPadding(padding),
-      CmbRadius(radius),
-      CmbStyleBasic(styleBasic),
-      CmbTextColor(textColor),
-      CmbTextFont(textFont),
-      CmbTextSize(textSize),
-      WidgetEnv,
-      WidgetNode,
-      AppEventResponse,
-      EventResponse(Model), nodeInfoFromKey, label, CmbMultiline (multiline), CmbPaddingB (paddingB), CmbOnClick (onClick), CmbBorder (border), black, gray, lightTheme )
-import TextShow
+import TextShow ( TextShow(showt) )
 import Board
     ( Pos,
       compareColour,
@@ -72,66 +29,8 @@ import Board
       Board,
       BoardPos(U),
       Colour(Black, Red, Blue, Green, Purple, Orange), colourIndex, initialPos, ifInitialPiece )
-import Control.Monad.State
+import Control.Monad.State ( evalState )
 import qualified Data.Text as T
-import qualified Monomer.Lens as L
-import Monomer.Widgets
-    ( nodeEnabled,
-      nodeVisible,
-      box,
-      box_,
-      hgrid,
-      hgrid_,
-      vgrid_,
-      hstack,
-      vstack,
-      button,
-      label,
-      label_,
-      labeledCheckbox_,
-      labeledRadio_,
-      hslider,
-      hslider_,
-      filler,
-      spacer,
-      spacer_,
-      WidgetEnv,
-      WidgetNode,
-      EventResponse(Task, Model),
-      CmbCheckboxMark(checkboxSquare) )
-import Monomer.Main
-    ( startApp,
-      appFontDef,
-      appInitEvent,
-      appTheme,
-      appWindowIcon,
-      appWindowResizable,
-      appWindowState,
-      appWindowTitle,
-      styleIf,
-      AppEventResponse,
-      MainWindowState(MainWindowNormal) )
-import Monomer.Graphics.ColorTable
-    ( black, blue, darkOrange, green, orange, purple, red, white )
-import Monomer.Core.Combinators
-    ( CmbAlignLeft(alignLeft),
-      CmbAlignTop(alignTop),
-      CmbBgColor(bgColor),
-      CmbBorder(border),
-      CmbChildSpacing(childSpacing_),
-      CmbDragRate(dragRate),
-      CmbEllipsis(ellipsis),
-      CmbFgColor(fgColor),
-      CmbMaxWidth(maxWidth),
-      CmbOnChange(onChange),
-      CmbPadding(padding),
-      CmbRadius(radius),
-      CmbStyleBasic(styleBasic),
-      CmbTextColor(textColor),
-      CmbTextFont(textFont),
-      CmbTextRight(textRight),
-      CmbTextSize(textSize),
-      CmbWidth(width) )
 import Zobrist ( flipBoard, winStateDetect )
 import GameTree
     ( playerColour,
@@ -145,6 +44,7 @@ import Configuration (LookupTable, lookupTable)
 import Data.List (elemIndex)
 import Extension ( finalSelection )
 import System.Random ( newStdGen )
+
 
 -- the container for storing the parameters for a selected computer player
 data ComputerPlayerConfig = ComputerPlayerConfig {
@@ -206,8 +106,6 @@ data AppEvent
   | StartGameButtonClick
     -- if the movement passes the validity check, then display the change onto the board
   | RenderMove
-    -- allow the user to cancel the his move before the "Confirm" button is clicked
-  | CancelMove
     -- quit the current game and navigate back to the menu
   | EndGameButtonClick
     -- modify the checkbox's results when the total players is changed
@@ -263,6 +161,7 @@ buildUI wenv model = widgetTree where
                       -- and the clicked button's border will be repainted as well
                       styleIf (pos == sp) (border 2 (pieceColour sp))
                       ]
+          `styleHover` [styleIf (pos `elem` model ^. movesList) (border 2 yellow)] -- allow the button border to change when the mouse hovers
         where
           -- get the player index based on the clicked button's colour, could be used to determine if the clicked button fit the current turn
           -- the ones has no colour or is not in the current colour list due to the number of the players are assigned with (-1)
@@ -431,16 +330,8 @@ buildUI wenv model = widgetTree where
         spacer `nodeVisible` (model ^. startGame),
 
         vstack [
-          -- the buttons that allow user to quit the game, confirm a movement, or cancel the move just made
-          box $ hgrid[
-              filler,
-              button "Quit" EndGameButtonClick,
-              filler,
-              button "Confirm" TurnSwitch,
-              filler,
-              button "Cancel" CancelMove,
-              filler
-          ]`styleBasic`[textSize 20],
+          -- the buttons that allow user to quit the game
+          box $ button "End Game" EndGameButtonClick `styleBasic` [textSize 30],
           spacer,
           -- render the board row by row
           vgrid_ [childSpacing_ 5] (renderRowButtons <$> (model ^. displayBoard))
@@ -479,31 +370,15 @@ handleEvent wenv node model evt = case evt of
                           ]
 
   -- quit the game and return back to the menu page
-  EndGameButtonClick -> [Model $ model & startGame .~ False -- flip the boolean flag
+  EndGameButtonClick -> [Model $ model & startGame .~ False
                                        & errorMessage .~ ""
-                                       
                                        ]
 
   -- update the page index with given increment or decrement
   PageUpdate x -> [Model $ model & pageIndex +~ x]
 
-  -- cancel the last piece change made, and revert it to the previous board state   
-  -- movement cancel is not allowed to be made over a player, meaning that once the "Confirm" button is clicked, you can no longer cancel the movement                             
-  CancelMove
-    | model ^. ifWin || ifComputersTurn -> [] -- ignore if the game is ended or the current turn is played by the computer
-    | not (ifInitialPiece sp) && not (ifInitialPiece ep) -> [Model $ model & displayBoard .~ newBoard -- revert the board
-                                                                           & startPos .~ initialPos -- the clean the buffer of movement's choice
-                                                                           & endPos .~ initialPos
-                                                                           & errorMessage .~ ""]
-    | otherwise -> [Model $ model & errorMessage .~ "the comfirmed move cannot be cancelled"] -- display an error message to disable the cancel action
-    where
-      -- generate the reverted board representation
-      newBoard = repaintPath (model ^. displayBoard) (repaint currentColour ep, erase sp) -- revert the board state by recolouring the two board positions
-
   -- update the turn index when a movement is complete
-  TurnSwitch
-    | model ^. ifWin || ifComputersTurn -> [] -- ignore if the game is ended or the current turn is played by the computer
-    | otherwise -> [Model $ model & playerIndex .~ newTurn -- update the game turn and internal state, check the win state, as well as clean the buffer
+  TurnSwitch -> [Model $ model & playerIndex .~ newTurn -- update the game turn and internal state, check the win state, as well as clean the buffer
                                   & ifWin .~ newWinState
                                   & startPos .~ initialPos
                                   & endPos .~ initialPos
@@ -523,44 +398,42 @@ handleEvent wenv node model evt = case evt of
 
   -- after a movement is determined valid, it will be rendered onto the board
   RenderMove -> [Model $ model & displayBoard .~ newBoard
-                               & movesList .~ []
-                               ]
+                               & movesList .~ [],
+                 Task $ return TurnSwitch]
       where
         newBoard = repaintPath (model ^. displayBoard) (sp, ep) -- generate the new board state by recolouring the two board positions
 
   -- the movement check, how a movement is validated is done as follows:
   -- first check the validity of the start position, then the end position, if no error is made then process, otherwise, discard that and print the error message 
   MoveCheck pos ci
-    -- if win state is confirmed, or it is not the turn for human player, or the position buffer is not cleaned (waiting for confirm or cancel)
-    -- then ignore the event
-    | model ^. ifWin || ifComputersTurn || (not (ifInitialPiece sp) && not (ifInitialPiece ep)) -> []
+    -- if win state is confirmed, or it is not the turn for human player then ignore the event
+    | model ^. ifWin || ifComputersTurn -> []
     -- if entering the start position
-    | ifInitialPiece sp ->
-                          case () of
+    | ifInitialPiece sp -> case () of
                                -- check if the entered position is fitted for the current player
-                          () | pi == ci -> [Model $ model & startPos .~ pos
-                                                          & errorMessage .~ ""
-                                                          & movesList .~ newMovesList]
-                              -- if not, then discard this, and wait for another valid input
-                             | pi /= ci -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": invalid start"
-                                                          & startPos .~ initialPos]
-                              -- if a position is clicked twice, and is an invalid movement
-                             | sp == pos -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": no effective move made"
-                                                           & startPos .~ initialPos]
-                              -- if the end position is occupied, then invalid
-                             | isOccupied pos -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": destination occupied"
-                                                                & startPos .~ initialPos]
-                             | otherwise -> []
+                            () | pi == ci -> [Model $ model & startPos .~ pos
+                                                            & errorMessage .~ ""
+                                                            & movesList .~ newMovesList]
+                               -- if not, then discard this, and wait for another valid input
+                               | pi /= ci -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": invalid start"
+                                                            & startPos .~ initialPos]
+                               | otherwise -> []
     -- if entering the end position
-    | not (ifInitialPiece sp) -> (if pos `elem` availableMoves 
-                                  then [Model $ model & endPos .~ pos
-                                                      & errorMessage .~ "Please press comfirm to complete the move",
-                                       Task $ return RenderMove] -- if reachable, then this movement will then be rendered
-                                  else [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": destination unreacbable"
-                                                      & startPos .~ initialPos]) -- if the destination is not in the list, then invalid
-
-
-
+    | not (ifInitialPiece sp) -> case () of
+                                      -- if a position is clicked twice, and is an invalid movement
+                                  ()  | sp == pos -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": no effective move made"
+                                                                    & startPos .~ initialPos]
+                                      -- if the end position is occupied, then invalid
+                                      | isOccupied pos -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": destination occupied"
+                                                                         & startPos .~ initialPos]
+                                      -- if reachable, then this movement will then be rendered
+                                      | pos `elem` availableMoves -> [Model $ model & endPos .~ pos
+                                                                                    & errorMessage .~ "",
+                                                                      Task $ return RenderMove] 
+                                      -- if the destination is not in the list, then invalid
+                                      | pos `notElem` availableMoves -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": destination unreacbable"
+                                                                                       & startPos .~ initialPos]
+                                      | otherwise -> []
     | otherwise -> []
     where
       newMovesList = evalState (destinationList pos) (model ^. displayBoard)
@@ -583,18 +456,20 @@ handleEvent wenv node model evt = case evt of
 
   -- called by other events to determine if needed to trigger AI decision function
   GenerateComputerAction
-   | not ifComputersTurn || model ^. ifWin || not (model ^. startGame) -> [] -- ignore if already win or not the turn for computer players
+   | not ifComputersTurn || model ^. ifWin || not (model ^. startGame) -> [] -- ignore if already win or not the turn for computer players, or the game is ended
+
    | otherwise -> [Task $ RenderComputerAction <$> aiDecision model] -- call the decision function with necessary IO actions
 
   -- only react when the during the game that is currently played by the computer player
-  RenderComputerAction (newBoard, newInternalState, newHistory, newKillerMoves) 
-      -> [Model $ model & displayBoard .~ newBoard
-                        & internalStates .~ insertState
-                        & gameHistory .~ newHistory
-                        & killerMoves .~ newKillerMoves
-                        & playerIndex .~ newTurn
-                        & ifWin .~ newWinState,
-          Task $ return GenerateComputerAction]
+  RenderComputerAction (newBoard, newInternalState, newHistory, newKillerMoves)
+    | not (model ^. startGame) -> [] -- quiting the game will avoid the decision function's result being rendered
+    | otherwise -> [Model $ model & displayBoard .~ newBoard
+                                  & internalStates .~ insertState
+                                  & gameHistory .~ newHistory
+                                  & killerMoves .~ newKillerMoves
+                                  & playerIndex .~ newTurn
+                                  & ifWin .~ newWinState,
+                   Task $ return GenerateComputerAction]
     where
       -- update the internal state resulted from the decision function, as well as check the win state
       insertState = replace pi newInternalState iboards
@@ -619,7 +494,7 @@ handleEvent wenv node model evt = case evt of
     aiDecision :: AppModel -> IO (Board, [Pos], HistoryTrace, [KillerMoves])
     aiDecision model = do gen <- newStdGen -- first get the random number generator for the later usage
                           let root = GRoot 0 [] -- initialise the search tree
-                          (newBoard, newInternalState, newHistory, _, newKillerMoves) 
+                          (newBoard, newInternalState, newHistory, _, newKillerMoves)
                             <- finalSelection root (gen, pi, 1, eboard, iboards, pn, ht, (uctCons, phCons), (eval, dep, kms))
                                                    (mctsControl mctsCon ctVal)
                           return (newBoard, newInternalState, newHistory, newKillerMoves)
@@ -632,7 +507,7 @@ handleEvent wenv node model evt = case evt of
         -- the control of the search progress
         mctsCon = model ^. playerConfigs ^?! configList . ix pi . control
         ctVal = model ^. playerConfigs ^?! configList . ix pi . cvalue
-        
+
         mctsControl True x = (Just x, Nothing)
         mctsControl False x = (Nothing, Just (fromIntegral x))
 

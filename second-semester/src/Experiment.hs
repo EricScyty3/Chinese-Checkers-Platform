@@ -1,5 +1,6 @@
 module Experiment where
--- setup a draft experiment set for different AI players
+-- setup experimental trials for testing MCTS with different strategies
+
 import MCTS
 import GameTree
 import Board
