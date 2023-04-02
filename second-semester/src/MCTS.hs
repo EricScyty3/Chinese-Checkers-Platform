@@ -250,7 +250,7 @@ switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether 
                                                 else boardEvaluator tfs
 
 -- game simulation from a certain board state til the end of the game, and every move made in the simulation is generated based on certain policy
-playout :: Int -> State GameTreeStatus (PlayerIndex, Int)
+playout :: Int -> State GameTreeStatus PlayerIndex
 playout moveCounts =
                 do pn <- getPlayerNum
                    let turns = getTurns moveCounts pn
@@ -258,8 +258,7 @@ playout moveCounts =
                                             iboards <- getInternalBoards
                                             -- if exceeds the set threshold, stops the simulation and return the player with the maximum evaluated value as the winner
                                             let scores = boardEvaluations iboards
-                                            winIdx <- randomMaxSelection scores
-                                            return (winIdx, turns)
+                                            randomMaxSelection scores
                    -- otherwise, process normally                                          
                    else do -- first get all of the available movements
                            tfs <- currentPlayerMovesList
@@ -267,20 +266,20 @@ playout moveCounts =
                            pa <- getPlayoutArgument
                            colour <- getPlayerColour
                            -- choose one of the expanded boards as the performed movement based on certain strategy
-                           resultedMove <- switchEvaluator pa tfs  
+                           resultedMove <- switchEvaluator pa tfs
                            -- update internal board state
                            newps <- modifyCurrentInternalBoard resultedMove
                            setCurrentInternalBoard newps
                            -- reflect the change to the external board
                            nboard <- repaintBoard resultedMove
                            -- check the win state of current player after the movement is made, if wins then returns, else keeps iterating
-                           if winStateDetermine colour nboard then return (pi, turns)
+                           if winStateDetermine colour nboard then return pi
                            else do -- next player's turn
                                    updatePlayerIdx
                                    -- update the new board state
                                    setBoard nboard
                                    -- record the moves being made so far
-                                   playout (moveCounts + 1) 
+                                   playout (moveCounts + 1)
 
 -- get the game turns based on the total movements made so far as well as the total players
 getTurns :: Int -> Int -> Int
@@ -291,7 +290,7 @@ getTurns moves pn = ceiling (fromIntegral moves / fromIntegral pn)
 -- and play simulations on the selected node, and finally feedback the search tree
 
 -- the function connects the four phases as well as inserting win state check between each phase in order to end the search earlier and discover potential error
-mcts :: GameTree -> State GameTreeStatus (StdGen, GameTree, BoardIndex, HistoryTrace, Int, [KillerMoves])
+mcts :: GameTree -> State GameTreeStatus (StdGen, GameTree, BoardIndex, HistoryTrace, [KillerMoves])
 mcts tree = do -- first start the selection with empty container, and will then receive the container full of entities
                (idxList, hashList, lastnode) <- selection tree [] []
                -- then determine if the received board is already a won board
@@ -304,22 +303,22 @@ mcts tree = do -- first start the selection with empty container, and will then 
                let winIdx = pn `par` board `pseq` checkPlayersWinState pn board
                -- the reason why this check is necessary it that as the tree gradually grows, it will eventually reach the goal state, therefore, 
                -- need to distinguish them in advance, otherwise, playout could be misled 
-               
+
                -- directly jump to the backpropagation phase if win state is detected
-               if winIdx /= -1 then do newTree <- backpropagation winIdx idxList tree lastnode 
+               if winIdx /= -1 then do newTree <- backpropagation winIdx idxList tree lastnode
                                        ht <- getHistoryTrace
                                        newHistory <- editHT hashList winIdx ht
                                        bi <- getBoardIdx
                                        (_, _, kms) <- getPlayoutArgument
                                        -- the random number generator is necessary to be returned for the next iteration of four phases
                                        gen <- getRandGen
-                                       -- get the new tree and game history with simulation turns equals to 0 
-                                       return $ newTree `par` newHistory `pseq` (gen, newTree, bi, newHistory, 0, kms) 
-               
+                                       -- get the new tree and game history
+                                       return $ newTree `par` newHistory `pseq` (gen, newTree, bi, newHistory, kms)
+
                -- otherwise, the expansion is computed, the last node chosen is expanded with new children
                else do expandednode <- expansion lastnode
                        -- additional selection is done on the new children nodes, and the selected node will then be passed to the playout phase
-                       (idxList2, hashList2, _) <- selection expandednode idxList hashList 
+                       (idxList2, hashList2, _) <- selection expandednode idxList hashList
                        -- but before that, the check is necessary to be done in advance as well 
                        board2 <- getBoard
                        let winIdx = checkPlayersWinState pn board2
@@ -330,10 +329,10 @@ mcts tree = do -- first start the selection with empty container, and will then 
                                                newHistory2 <- editHT hashList2 winIdx ht
                                                (_, _, kms) <- getPlayoutArgument
                                                gen <- getRandGen
-                                               return $ newTree2 `par` newHistory2 `pseq` (gen, newTree2, bi, newHistory2, 0, kms) -- the turn is still 0
+                                               return $ newTree2 `par` newHistory2 `pseq` (gen, newTree2, bi, newHistory2, kms)
 
                        else -- then, the playout could be started 
-                            do (winIdx, turns) <- playout 1
+                            do winIdx <- playout 1
                                -- after the playout is completed, apply the backpropagation for renewing the search tree
                                newTree3 <- backpropagation winIdx idxList2 tree expandednode
                                bi <- getBoardIdx
@@ -341,7 +340,7 @@ mcts tree = do -- first start the selection with empty container, and will then 
                                newHistory3 <- editHT hashList2 winIdx ht
                                (_, _, kms) <- getPlayoutArgument
                                gen <- getRandGen
-                               return $ newTree3 `par` newHistory3 `pseq` (gen, newTree3, bi, newHistory3, turns, kms) -- get the new tree 
+                               return $ newTree3 `par` newHistory3 `pseq` (gen, newTree3, bi, newHistory3, kms)
 
 -- check the win state of all players, since the suicidal action is allowed here and it can be performed either randomly or on purpose
 -- any value other than -1 means a win is reached

@@ -557,7 +557,7 @@ handleEvent wenv node model evt = case evt of
     aiDecision :: AppModel -> IO (Board, [Pos], HistoryTrace, [KillerMoves])
     aiDecision model = do gen <- newStdGen -- first get the random number generator for the later usage
                           let root = GRoot 0 [] -- initialise the search tree
-                          (newBoard, newInternalState, newHistory, _, newKillerMoves)
+                          (newBoard, newInternalState, newHistory, newKillerMoves)
                             <- finalSelection root (gen, pi, 1, eboard, iboards, pn, ht, (uctCons, phCons), (eval, dep, kms))
                                                    (mctsControl mctsCon ctVal)
                           return (newBoard, newInternalState, newHistory, newKillerMoves)
