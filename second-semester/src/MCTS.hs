@@ -5,8 +5,7 @@ import GameTree
       HistoryTrace,
       PlayoutArgument,
       KillerMoves,
-      PlayoutEvaluator(MixedBRS, RandomEvaluator, MoveEvaluator,
-                       BoardEvaluator, MixedParanoid),
+      PlayoutEvaluator(MBRS, Random, Move, Board, MParanoid),
       GameTree(GLeaf),
       BoardIndex,
       PlayerIndex,
@@ -43,12 +42,12 @@ import Board
 import System.Random ( Random(randomR), RandomGen(split), StdGen )
 import Zobrist ( hash )
 import Data.List ( elemIndex, elemIndices )
-import Control.Monad.State ( runState, MonadState(get), State )
+import Control.Monad.State ( runState, MonadState(get), State)
 import Control.Parallel ( par, pseq )
 import RBTree ( rbInsert, rbSearch )
-import Configuration ( boardEvaluations, isMidgame )
+import Configuration ( boardEvaluations, isMidgame, isEndgame )
 import Minimax
-    ( TreeType(..), winStateDetermine, moveEvaluation, mEvaluation )
+    ( TreeType(..), winStateDetermine, moveEvaluation, mEvaluation, moveOrder )
 
 
 -- during the selection a list of node that is chosen along with the selection, 
@@ -134,23 +133,24 @@ expansion node = let children = getChildren node
                  in  if -- the node passed from the selection should only be leaf, otherwise, it an error
                         not (null children) then error "Can only expand not expanded node"
                   else do ms <- currentPlayerMovesList
-                          co <- getPlayerColour
+                          colour <- getPlayerColour
                           -- generate the leaves for movements that are accepted for expanding
-                          newChildren <- mapM makeLeaf (expandPolicy co ms)
+                          newChildren <- mapM makeLeaf (expandPolicy colour ms)
                           -- the new generated nodes will become the children of the input node 
                           return (editNodeChildren newChildren node)
 
 -- the policy of how a board could lead to different resulting boards
 expandPolicy :: Colour -> [Transform] -> [Transform]
-expandPolicy co xs
-    | not $ null advance = advance  -- if exist advances, then apply them
-    | otherwise = xs                -- otherwise, allow other moves to be accepted
+expandPolicy colour xs
+    | not (null advance) = advance  -- only consider frontward moves if too much available moves
+    | otherwise = xs                -- otherwise, allow all moves to be accepted
     where
         -- the available movements are divided into two categories: advance and non-advance
         -- the one that provides an increment in distance is an advance, otherwise, non-advance
         advance = filter ((> 0) . distanceChange) xs
         -- project the movement from external board to the occupied board and return the change of distance
-        distanceChange move = moveEvaluation (projectMove co move)
+        distanceChange move = moveEvaluation (projectMove colour move)
+
 
 -- after the playout, a win is known from the game simulation, and should be update back to the traversed nodes in the selection phase
 -- here, it will updates the node's stored wins, as well as appending children to the the chosen leaf
@@ -203,16 +203,16 @@ switchEvaluator :: PlayoutArgument -> [Transform] -> State GameTreeStatus Transf
 switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether random choice will be taken place here (5% of chance)
                                                          optimalChoice <- randomPercentage 95
                                                          -- or just the policy is set as random choice
-                                                         if not optimalChoice || evaluator == RandomEvaluator
+                                                         if not optimalChoice || evaluator == Random
                                                          then do idx <- randomIndex (length tfs)
                                                                  -- randomly choose a movement from the given list
                                                                  return (tfs !! idx)
                                                          else -- otherwise, each evaluator will lead to different estimation
                                                               case evaluator of
-                                                                MoveEvaluator -> moveEvaluator tfs
-                                                                BoardEvaluator -> boardEvaluator tfs
-                                                                MixedParanoid -> mixedSearch Paranoid depth killerMoves tfs
-                                                                MixedBRS -> mixedSearch BRS depth killerMoves tfs
+                                                                Move -> moveEvaluator tfs
+                                                                Board -> boardEvaluator tfs
+                                                                MParanoid -> mixedSearch Paranoid depth killerMoves tfs
+                                                                MBRS -> mixedSearch BRS depth killerMoves tfs
                                                                 _ -> error "Undefined Evaluator"
     where
         -- choose the move that could give the largest distance increment

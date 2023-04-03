@@ -280,30 +280,30 @@ buildUI wenv model = widgetTree where
           -- radio for controlling the playout evaluator
           box_ [alignTop] $ vgrid_ [childSpacing_ 5] [
             label "Simulation Evaluator" `styleBasic` [textSize 20],
-            labeledRadio_ "Random" RandomEvaluator eitem [textRight],
-            labeledRadio_ "Move" MoveEvaluator eitem [textRight],
-            labeledRadio_ "Board" BoardEvaluator eitem [textRight],
+            labeledRadio_ "Random" Random eitem [textRight],
+            labeledRadio_ "Move" Move eitem [textRight],
+            labeledRadio_ "Board" Board eitem [textRight],
             -- and the corresponding search depth if minimax search is chosen
             hstack [
-              labeledRadio_ "Embedded Paranoid" MixedParanoid eitem [textRight],
+              labeledRadio_ "Embedded Paranoid" MParanoid eitem [textRight],
               spacer,
               hgrid_ [childSpacing_ 5] [
                 label "(depth)",
                 labeledRadio_ "2" 2 ditem [textRight],
                 labeledRadio_ "3" 3 ditem [textRight],
                 labeledRadio_ "4" 4 ditem [textRight]
-              ] `nodeVisible` (vitem ^. evaluator == MixedParanoid)
+              ] `nodeVisible` (vitem ^. evaluator == MParanoid)
             ],
 
             hstack [
-              labeledRadio_ "Embedded BRS" MixedBRS eitem [textRight],
+              labeledRadio_ "Embedded BRS" MBRS eitem [textRight],
               spacer,
               hgrid_ [childSpacing_ 5] [
                 label "(depth)",
                 labeledRadio_ "2" 2 ditem [textRight],
                 labeledRadio_ "3" 3 ditem [textRight],
                 labeledRadio_ "4" 4 ditem [textRight]
-              ] `nodeVisible` (vitem ^. evaluator == MixedBRS)
+              ] `nodeVisible` (vitem ^. evaluator == MBRS)
             ]
           ],
 

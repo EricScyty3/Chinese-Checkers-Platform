@@ -39,9 +39,9 @@ data GameTree = GRoot BoardIndex [GameTree] |
                 deriving (Eq, Show)
 
 -- the options of playout evaluator, how the board is evaluated during the self-played simulation
-data PlayoutEvaluator = RandomEvaluator | MoveEvaluator | BoardEvaluator | MixedParanoid | MixedBRS deriving (Eq, Show, Read)
+data PlayoutEvaluator = Random | Move | Board | MParanoid | MBRS deriving (Eq, Show, Read)
 -- the two last moves that could cause a cutoff for certain layer, and might be helpful for the next search (applied when the evaluator is minimax-based)
-type KillerMoves = [Transform] 
+type KillerMoves = [Transform]
 -- the parameter pair of the evaluator, the search depth, and the record of cutoff moves
 type PlayoutArgument = (PlayoutEvaluator, Int, [KillerMoves])
 -- in addition to the game tree, a history trace of how a move performs in previous game is also maintained
@@ -50,23 +50,23 @@ type HistoryTrace = RBTree Wins
 
 -- the game status, all the sufficient information needed to represent a game state
 type GameTreeStatus = (-- the random number generator, which should be assigned by IO action first
-                       StdGen, 
+                       StdGen,
                        -- the player of the current turn
-                       PlayerIndex, 
+                       PlayerIndex,
                        -- the maximum board id for indicating the total nodes
-                       BoardIndex, 
+                       BoardIndex,
                        -- the board state inherited from the parent through certain Transform
-                       Board, 
+                       Board,
                        -- the list of projected positions for each player
-                       [[Pos]], 
+                       [[Pos]],
                        -- the total players, should be either 2, 3, 4, or 6
-                       Int, 
+                       Int,
                        -- the history performance of each move played in the past
-                       HistoryTrace, 
+                       HistoryTrace,
                        -- the constant pair for the selection policy
-                       (Double, Double), 
+                       (Double, Double),
                        -- the arguments for the playout strategy
-                       PlayoutArgument) 
+                       PlayoutArgument)
 
 --Encapsulation----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- since the game state is wrapped in the state monad, several toolkits are applied to access and modify and game state 
@@ -226,7 +226,7 @@ getTransform GRoot {} = defaultMove -- the root is not inherited from any node, 
 
 -- given pieces change, generate a new board 
 repaintBoard :: Transform-> State GameTreeStatus Board
-repaintBoard tf = do board <- getBoard; 
+repaintBoard tf = do board <- getBoard;
                      return (repaintPath board tf)  -- recolour the start and end positions
 
 -- return a list of available movements for the current player
@@ -236,9 +236,9 @@ currentPlayerMovesList = do eboard <- getBoard
                             colour <- getPlayerColour
                             let -- reverse the internal projected positions to the positions on the external board
                                 -- faster than search occupied positions on the external board, since only the mathematical computation is necessary here
-                                bs = ps `par` colour `pseq` map (appendColour colour . reversion colour) ps 
+                                bs = ps `par` colour `pseq` map (appendColour colour . reversion colour) ps
                                 -- the new positions could be reached from the above positions
-                                ds = eboard `par` bs `pseq` evalState (do mapM destinationList bs) eboard 
+                                ds = eboard `par` bs `pseq` evalState (do mapM destinationList bs) eboard
                             return (pairArrange bs ds) -- zip the resulting destinations with the start positions and generate a list of movement pairs
 
 -- combine a list of start positions and lists of corresponding destinations into a list of movements: [(start, end)]

@@ -14,8 +14,8 @@ import GameTree
       GameTree (GRoot),
       GameTreeStatus,
       HistoryTrace,
-      KillerMoves, setRandGen, getWins, getVisits, PlayerIndex, Wins )
-import Board ( projectMove, Board, Pos, repaintPath, eraseBoard, playerColourList, externalBoard, startBase )
+      KillerMoves, setRandGen, getWins, getVisits, PlayerIndex, Wins)
+import Board ( projectMove, Board, Pos, repaintPath, eraseBoard, playerColourList, externalBoard, startBase, printEoard )
 import Data.Time
     ( UTCTime, nominalDiffTimeToSeconds, diffUTCTime, getCurrentTime )
 import Control.Monad.State ( evalState, runState )
@@ -59,7 +59,9 @@ finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                       -- return the new search tree, the scores for the possible expansion of current game state
                                                                       -- the new movement history, and the counts of game simulations' turns
                                                                       (ntree, scores, nht, kms) <- getResultsUnderControl tree s control
-                                                                      if null scores then error "No effective result was retrieved"
+                                                                      if null scores then do printEoard eboard
+                                                                                             error "No effective result was retrieved"
+                                                                                             -- normally occurs when the softer win state is reached but not the actual win state
                                                                       else do gen <- newStdGen
                                                                               let (_, newState) = runState (setRandGen gen) s
                                                                                   -- get the maximum win rate move (child) as the next movement
