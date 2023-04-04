@@ -38,7 +38,7 @@ import Board
       Colour,
       playerColourList,
       replace,
-      projectMove )
+      projectMove, Pos )
 import System.Random ( Random(randomR), RandomGen(split), StdGen )
 import Zobrist ( hash )
 import Data.List ( elemIndex, elemIndices )
@@ -134,23 +134,25 @@ expansion node = let children = getChildren node
                         not (null children) then error "Can only expand not expanded node"
                   else do ms <- currentPlayerMovesList
                           colour <- getPlayerColour
+                          ps <- getCurrentInternalBoard
                           -- generate the leaves for movements that are accepted for expanding
-                          newChildren <- mapM makeLeaf (expandPolicy colour ms)
+                          newChildren <- mapM makeLeaf (expandPolicy colour ms ps)
                           -- the new generated nodes will become the children of the input node 
                           return (editNodeChildren newChildren node)
 
 -- the policy of how a board could lead to different resulting boards
-expandPolicy :: Colour -> [Transform] -> [Transform]
-expandPolicy colour xs
-    | not (null advance) = advance  -- only consider frontward moves if too much available moves
-    | otherwise = xs                -- otherwise, allow all moves to be accepted
+expandPolicy :: Colour -> [Transform] -> [Pos] -> [Transform]
+expandPolicy colour xs ps
+    | not $ null advance = advance  -- only consider advance moves if there are enough
+    | otherwise = xs                 -- otherwise, all moves are accepted
     where
         -- the available movements are divided into two categories: advance and non-advance
         -- the one that provides an increment in distance is an advance, otherwise, non-advance
         advance = filter ((> 0) . distanceChange) xs
         -- project the movement from external board to the occupied board and return the change of distance
         distanceChange move = moveEvaluation (projectMove colour move)
-
+        -- newxs v = take v $ moveOrder xs
+        -- eresult = head (boardEvaluations [ps])
 
 -- after the playout, a win is known from the game simulation, and should be update back to the traversed nodes in the selection phase
 -- here, it will updates the node's stored wins, as well as appending children to the the chosen leaf
