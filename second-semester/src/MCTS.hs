@@ -40,7 +40,7 @@ import Board
       replace,
       projectMove, Pos )
 import System.Random ( Random(randomR), RandomGen(split), StdGen )
-import Zobrist ( hash )
+import Zobrist ( hash, winStateDetect )
 import Data.List ( elemIndex, elemIndices )
 import Control.Monad.State ( runState, MonadState(get), State)
 import Control.Parallel ( par, pseq )
@@ -300,57 +300,61 @@ mcts tree = do -- first start the selection with empty container, and will then 
                -- this is not possible for normal win state determination
                -- but here, in order to prevent players leaving a piece in their home bases blocking other players, the win condition is looser
                -- therefore, the check should consider all players
-               pn <- getPlayerNum
-               board <- getBoard
-               let winIdx = pn `par` board `pseq` checkPlayersWinState pn board
+               iboards1 <- getInternalBoards
+               let winIdx1 = checkPlayersWinState iboards1
                -- the reason why this check is necessary it that as the tree gradually grows, it will eventually reach the goal state, therefore, 
                -- need to distinguish them in advance, otherwise, playout could be misled 
 
                -- directly jump to the backpropagation phase if win state is detected
-               if winIdx /= -1 then do newTree <- backpropagation winIdx idxList tree lastnode
-                                       ht <- getHistoryTrace
-                                       newHistory <- editHT hashList winIdx ht
-                                       bi <- getBoardIdx
-                                       (_, _, kms) <- getPlayoutArgument
-                                       -- the random number generator is necessary to be returned for the next iteration of four phases
-                                       gen <- getRandGen
-                                       -- get the new tree and game history
-                                       return $ newTree `par` newHistory `pseq` (gen, newTree, bi, newHistory, kms)
+               if winIdx1 /= -1 then do newTree <- backpropagation winIdx1 idxList tree lastnode
+                                        ht <- getHistoryTrace
+                                        newHistory <- editHT hashList winIdx1 ht
+                                        bi <- getBoardIdx
+                                        (_, _, kms) <- getPlayoutArgument
+                                        -- the random number generator is necessary to be returned for the next iteration of four phases
+                                        gen <- getRandGen
+                                        -- get the new tree and game history
+                                        return $ newTree `par` newHistory `pseq` (gen, newTree, bi, newHistory, kms)
 
                -- otherwise, the expansion is computed, the last node chosen is expanded with new children
                else do expandednode <- expansion lastnode
                        -- additional selection is done on the new children nodes, and the selected node will then be passed to the playout phase
                        (idxList2, hashList2, _) <- selection expandednode idxList hashList
                        -- but before that, the check is necessary to be done in advance as well 
-                       board2 <- getBoard
-                       let winIdx = checkPlayersWinState pn board2
-                       if winIdx /= -1 then do -- here, the playout phase will be skipped, and the backpropagation will take place earlier
-                                               newTree2 <- backpropagation winIdx idxList2 tree expandednode
-                                               bi <- getBoardIdx
-                                               ht <- getHistoryTrace
-                                               newHistory2 <- editHT hashList2 winIdx ht
-                                               (_, _, kms) <- getPlayoutArgument
-                                               gen <- getRandGen
-                                               return $ newTree2 `par` newHistory2 `pseq` (gen, newTree2, bi, newHistory2, kms)
+                       iboards2 <- getInternalBoards
+                       let winIdx2 = checkPlayersWinState iboards2
+                       if winIdx2 /= -1 then do -- here, the playout phase will be skipped, and the backpropagation will take place earlier
+                                                newTree2 <- backpropagation winIdx2 idxList2 tree expandednode
+                                                bi <- getBoardIdx
+                                                ht <- getHistoryTrace
+                                                newHistory2 <- editHT hashList2 winIdx2 ht
+                                                (_, _, kms) <- getPlayoutArgument
+                                                gen <- getRandGen
+                                                return $ newTree2 `par` newHistory2 `pseq` (gen, newTree2, bi, newHistory2, kms)
 
                        else -- then, the playout could be started 
-                            do winIdx <- playout 1
+                            do winIdx3 <- playout 0
                                -- after the playout is completed, apply the backpropagation for renewing the search tree
-                               newTree3 <- backpropagation winIdx idxList2 tree expandednode
+                               newTree3 <- backpropagation winIdx3 idxList2 tree expandednode
                                bi <- getBoardIdx
                                ht <- getHistoryTrace
-                               newHistory3 <- editHT hashList2 winIdx ht
+                               newHistory3 <- editHT hashList2 winIdx3 ht
                                (_, _, kms) <- getPlayoutArgument
                                gen <- getRandGen
                                return $ newTree3 `par` newHistory3 `pseq` (gen, newTree3, bi, newHistory3, kms)
 
+
+
 -- check the win state of all players, since the suicidal action is allowed here and it can be performed either randomly or on purpose
 -- any value other than -1 means a win is reached
-checkPlayersWinState :: Int -> Board -> Int
-checkPlayersWinState pn board = let ws = map (`winStateDetermine` board) (playerColourList pn)
-                                in  case elemIndices True ws of
-                                        [] -> -1
-                                        [x] -> x
-                                        -- although suicidal movement is allowed because it won't affect the mechanism of MCTS, 
-                                        -- it is not allowed to more than one players win at the same time because the game is zero-sum
-                                        _ -> error "Multiple players win at the same time"
+-- different from the soft win of the playout phase, here, the win is determined in the standard way, 
+-- this is because if only depend on the looser win determination, there could occur error when the softer win state is reached but not the actual win state
+-- in other words, a root without children will be returned because this root is defined as a win, therefore, no move should be made, which is not applicable in the experimental environment
+checkPlayersWinState :: [[Pos]] -> Int
+checkPlayersWinState iboards = let ws = map winStateDetect iboards
+                               in  case elemIndices True ws of
+                                    [] -> -1
+                                    [x] -> x
+                                    -- although suicidal movement is allowed because it won't affect the mechanism of MCTS, 
+                                    -- it is not allowed to more than one players win at the same time because the game is zero-sum
+                                    _ -> error "Multiple players win at the same time"

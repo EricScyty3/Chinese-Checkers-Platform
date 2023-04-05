@@ -303,6 +303,6 @@ estimateNode pv node = if isRoot node then return 0
                                    mean = averageScore pi wins visits
                                uct <- estimateNodeUCT pv visits
                                ph  <- estimateNodePH (hash ps) wins visits -- then pass the hashed value of the internal board to the formula
-                               return $ uct `par` ph `pseq` mean + uct + ph
+                               return $ mean `par` uct `par` ph `pseq` mean + uct + ph
 
 

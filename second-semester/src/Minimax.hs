@@ -323,7 +323,7 @@ nEvaluation st@(ri, eboard, iboard, pn, _, _) pi
     -- for other players, how a board is evaluated is based on how the root player could play on this board
     | otherwise = let ms = mplayerMovesList st ri    
                       rs = iboard !! ri
-                      nbs = ms `par` rs `pseq` map (flipBoard rs . projectMove rolour) ms
+                      nbs = rolour `par` ms `par` rs `pseq` map (flipBoard rs . projectMove rolour) ms
                       scores = map centroid nbs
                   in  if null scores then error (show eboard) else maximum scores
     where
