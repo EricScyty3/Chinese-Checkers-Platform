@@ -50,7 +50,7 @@ bSearchS i wd np1 np2 [b] = case evalState (bSearch np1 wd) b of
 
 bSearchS i wd np1 np2 (b:bs) = let set1 = evalState (bSearch np1 wd) b -- bidirectional solution, that solves the boards in two direction in parallel to save the time
                                    set2 = evalState (bSearch np2 wd) (last bs)
-                               in  if set1 `par` set2 `pseq` goalReached set1 || goalReached set2 then i
+                               in  if set1 `par` set2 `pseq` (goalReached set1 || goalReached set2) then i
                                    else bSearchS i wd set1 set2 (init bs)
     where
         goalReached :: [([Pos], Int)] -> Bool
@@ -76,7 +76,7 @@ updateList (n:ns) wb ps
   | length ps < wb = updateList ns wb (mySort (n:ps)) -- just add if still has space
   | otherwise = let minScore = (snd . head) ps -- the minimum item is the first item of the list
                     (_, score) = n
-                in  if score `par` minScore `pseq` score > minScore then updateList ns wb (mySort (n:tail ps)) -- replace the element with the current board state
+                in  if score `par` minScore `pseq` (score > minScore) then updateList ns wb (mySort (n:tail ps)) -- replace the element with the current board state
                     else updateList ns wb ps -- if the board state is not better then skip 
 
 -- sort the list based on score, such that every time the minimum value is at the front

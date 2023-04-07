@@ -32,12 +32,12 @@ import Control.Parallel (par, pseq)
 import Data.Fixed (Pico)
 import Data.List (elemIndices, sort, nub, permutations, elemIndex)
 import Minimax (MGameTreeStatus)
-import Control.Monad.State (evalState)
+import Control.Monad.State (evalState, replicateM)
 import Data.List.Extra (chunksOf)
 import System.IO ( hClose, openFile, hPutStr, IOMode(WriteMode) )
 import System.Process (system)
 import Text.Printf (printf)
-
+import Control.Concurrent.Async ( mapConcurrently )
 
 -- during the experimental trials, several outcomes are measured only under the contorl of time limits
 -- the first is the total win rate in the multiple players game, either only two player types are invovled or the same number of the total players
@@ -59,7 +59,6 @@ median xs = median' (sort xs)
         median' [x] = fromIntegral x
         median' [x, y] = fromIntegral (x + y) / 2
         median' (x:xs) = median' (init xs)
-
 
 -- generate the player arrangements for allowing multiple algorithms playing againts each other
 validPlayerList :: Int -> Int -> [[Int]]
@@ -93,7 +92,7 @@ generatePlayerList pn ps = let nps = nub ps
 
 -- given a certain status, and run a game with different players till one of the players wins, and return the data for evaluating the performance
 -- besides, one thing to point out is that the history trace and the killer moves are maintained by each player, in other words, they are not shared
-singleRun :: [[Int]] -> Pico -> PlayerIndex -> Board -> [[Pos]] -> Int -> [HistoryTrace] -> 
+singleRun :: [[Int]] -> Pico -> PlayerIndex -> Board -> [[Pos]] -> Int -> [HistoryTrace] ->
              (Double, Double) -> [[KillerMoves]] -> [Player] -> IO (PlayerIndex, [[Int]])
 singleRun record time pi eboard iboards pn hts cons kms pl =
                                     -- there might exist cycling where all players are trying to maintain a board state that is most benefical for them
@@ -115,7 +114,7 @@ singleRun record time pi eboard iboards pn hts cons kms pl =
     where
         sim = let (x, y) = pl !! pi
               in  (x, y, kms !! pi)
-        
+
         control = (Nothing, Just time)
 
 -- start the game from the initial board state
@@ -146,29 +145,23 @@ runFromInitialState time pl = do (winIdx, newRecord) <- singleRun record time 0 
 
 
 -- run a game with certain setting several times and return lists of winner players and the playouts taken from the game
+-- considering the game could take long, parallel computation is taken place here
 multipleRuns :: Int -> Pico -> [Player] -> IO ([Player], [[Int]])
-multipleRuns runs time pl = do ls <- multipleRuns' runs time pl
-                               let winners = map fst ls
-                                   playouts = transpose $ map snd ls
-                               return (winners, playouts)
-    where
-        multipleRuns' 0 _ _ = return []
-        multipleRuns' runs control pl = do item <- runFromInitialState control pl
-                                           items <- multipleRuns' (runs - 1) control pl
-                                           return $ item:items
+multipleRuns runs time pl = let pls = replicate runs pl
+                            in  do ls <- mapConcurrently (runFromInitialState time) pls
+                                   let winners = map fst ls
+                                       playouts = transpose $ map snd ls
+                                   return (winners, playouts)
 
 -- gather the lists of the lists based on index/order
 transpose :: [[[b]]] -> [[b]]
 transpose ([]:_) = []
 transpose x = concatMap head x : transpose (map tail x)
 
-
 -- run several sets with different player settings and each sets contain multiple runs
-multipleGames :: Int -> Pico -> [[Player]] -> IO [([Player], [[Int]])]
-multipleGames _ _ [] = return []
-multipleGames runs time (pl:pls) = do result <- multipleRuns runs time pl
-                                      rest <- multipleGames runs time pls
-                                      return $ result:rest
+multipleGames :: Int -> Pico -> [[Player]] -> IO ([Player], [[Int]])
+multipleGames runs time pls = do results <- mapConcurrently (multipleRuns runs time) pls
+                                 return $ merge results
 
 -- testList = [([(Move, 0)], [[1,2,3], [4,5,6], [7,8,9]]), ([(Board, 0)], [[1,2,3], [4,5,6], [7,8,9]])]
 merge :: [([a], [[b]])] -> ([a], [[b]])
@@ -176,22 +169,28 @@ merge [] = ([], [])
 merge xs = let winners = map fst xs
                iters = map snd xs
            in  (concat winners, transpose iters)
-
+{-
 -- write the input to a certain file of given filename
 experimentRecord :: (Show a, Show b) => ([a], [[b]]) -> FilePath -> IO ()
-experimentRecord (xs, ys) filePath = do filePath <- openFile filePath WriteMode
-                                        hPutStr filePath (convertToString xs)
-                                        hPutStr filePath (convertToStrings ys)
-                                        hClose filePath
+experimentRecord (xs, ys) fileName = do path1 <- openFile playoutsFile WriteMode
+                                        hPutStr path1 (convertToStrings ys)
+                                        hClose path1
+
+                                        path2 <- openFile winnersFile WriteMode
+                                        hPutStr path2 (convertToString xs)
+                                        hClose path2
+
                                         return ()
     where
-        convertToStrings [] = ""
-        convertToStrings (x:xs) = convertToString x ++ "\n" ++ convertToStrings xs
+    playoutsFile = fileName ++ "_playouts.txt"
+    winnersFile = fileName ++ "_winners.txt"
 
-        convertToString [] = ""
-        convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
-       
+    convertToStrings [] = ""
+    convertToStrings (x:xs) = (if null x then "[]\n" else convertToString x) ++ "\n" ++ convertToStrings xs
 
+    convertToString [] = ""
+    convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
+-}
 -- ghc -main-is Experiment Experiment.hs -O2 -outputdir dist
 -- this is just for testing purpose, run game several times with the fixed setting
 main :: IO ()
@@ -199,27 +198,34 @@ main = do arg <- getArgs
           start <- lookupTable `seq` getCurrentTime
           let time = read $ head arg :: Double
               run = read $ arg !! 1 :: Int
-              idx = read $ arg !! 2 :: Int
           -- test tiral 0
-          -- results <- multipleRuns run (realToFrac time) [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
+          results <- multipleGames run (realToFrac time) (testSet 0) -- [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
+          print results
+
           -- test trial 1.0, 1.1, 1.2
-          tempResults <- multipleGames run (realToFrac time) (testSet idx)
-          let results = merge tempResults
+          {-
+          tempResults0 <- multipleGames run (realToFrac time) (testSet 0)
+          tempResults1 <- multipleGames run (realToFrac time) (testSet 1)
+          tempResults2 <- multipleGames run (realToFrac time) (testSet 2)
+
+          let a@(winners0, playouts0) = merge tempResults0
+              b@(winners1, playouts1) = merge tempResults1
+              c@(winners2, playouts2) = merge tempResults2
+
+              winners = a `par` b `par` c `pseq` (winners0 ++ winners1 ++ winners2)
+              playouts = transpose [playouts0, playouts1, playouts2]
+          
               str = printf "%.2f" time
-              filePath = "./experiments/testTrial1_" ++ show idx ++ "_" ++ str ++ ".txt"
-          experimentRecord results filePath
+              -- fileName = "./experiments/testTrial0_" {-++ show idx ++ "_"-} ++ str
+              fileName = "./experiments/testTrial1_" ++ str
+          experimentRecord (winners, playouts) fileName-}
+
           end <- getCurrentTime
           putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
 
 
 -- there are totally fix evaluators, but here the random evaluator is ignored
 -- in a three players game there exist 48 combinations for four evaluator's players to be invovled
-{-
-p34 :: [PlayerList]
-p34 = generatePlayerList 3 [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
-p32 :: [PlayerList]
-p32 = generatePlayerList 3 [(MParanoid, 2), (MParanoid, 3), (MBRS, 2), (MBRS, 3)]
--}
 
 -- 18 combinations, could be divided into 3 groups with each 6 subsets
 -- here, three time limits are applied: 0.05s, 0.5s and 5s

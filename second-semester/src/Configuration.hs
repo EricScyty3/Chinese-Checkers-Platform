@@ -24,6 +24,7 @@ import RBTree ( rbInsert, rbSearch, RBTree(..) )
 import Data.Maybe ( isJust, isNothing )
 import GHC.IO ( unsafePerformIO )
 import System.Directory.Extra (doesFileExist)
+import Control.Parallel.Strategies (parMap, rseq)
 
 {-
 main :: IO ()
@@ -64,10 +65,9 @@ tableElementsRecord contents filePath = do filePath <- openFile filePath WriteMo
 -- as well as the mirror images to fill the dataset
 tableElementsConstruct :: RBTree [Pos] -> (Int, Int) -> [(Int, Int, Int)]
 tableElementsConstruct RBLeaf _ = []
-tableElementsConstruct (RBNode _ ps t1 key t2) widths@(width1, width2) = 
-                                                                  let leftsubTree  = tableElementsConstruct t1 widths
-                                                                      rightsubTree = tableElementsConstruct t2 widths
-                                                                  in  leftsubTree ++ [newElement] ++ rightsubTree
+tableElementsConstruct (RBNode _ ps t1 key t2) widths@(width1, width2) = let leftsubTree  = tableElementsConstruct t1 widths
+                                                                             rightsubTree = tableElementsConstruct t2 widths
+                                                                         in  leftsubTree ++ [newElement] ++ rightsubTree
     where
         x = shortestMoves ps width1 -- the farther it is from the goal state, the wider breadth it might need
         y = shortestMoves (symmetric2_pos ps) width2 -- the closer it is, the less wide breadth could be sufficient 
@@ -103,7 +103,7 @@ boardTree (p:ps) rb size = let -- to avoid opening mirror images, the hash of th
                                hash1 = hash p
                                hash2 = hash p2
                            in  -- add if not duplicated
-                               if isNothing (rbSearch hash2 rb) then boardTree ps (rbInsert hash1 p rb) (size+1) 
+                               if hash1 `par` hash2 `pseq` isNothing (rbSearch hash2 rb) then boardTree ps (rbInsert hash1 p rb) (size+1) 
                                else boardTree ps rb size -- otherwise, skip this one
 {-
     [0, 1, 1, 1, 1, 1, 1] [0 .. 5]  0 -> (1, 0)
@@ -144,9 +144,9 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
 boardEvaluations :: [[Pos]] -> [Int]
 boardEvaluations ps = -- for consistent purpose, if found a midgame states existed in the list
                       -- the evaluation will only be taken place based on the centroid heuristic
-                      if ifExistMidgame ps then map centroid ps 
+                      if ifExistMidgame ps then parMap rseq centroid ps
                       -- otherwise, the lookup table is allowed to be used as reference
-                      else map boardEvaluation ps
+                      else parMap rseq boardEvaluation ps
     where                      
         -- search for a shortest path for a certain board configuration based on the given dataset
         boardEvaluation :: [Pos] -> Int
@@ -165,7 +165,7 @@ boardEvaluations ps = -- for consistent purpose, if found a midgame states exist
         getShortestPath :: [Pos] -> Maybe (Int, Int)
         getShortestPath ps = let x1 = rbSearch (hash ps) lookupTable
                                  x2 = rbSearch (hash (symmetric1_pos ps)) lookupTable -- search for the mirror opening state as well
-                             in  if isJust x1 then x1
+                             in  if x1 `par` x2 `pseq` isJust x1 then x1
                                  else if isJust x2 then x2
                                       else Nothing
 

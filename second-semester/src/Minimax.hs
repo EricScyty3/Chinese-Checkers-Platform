@@ -30,6 +30,7 @@ import Zobrist ( flipBoard )
 import Data.List ( elemIndex, nub, sortBy )
 import Control.Monad.Extra ( concatMapM )
 import BFS (centroid)
+import Control.Parallel.Strategies (parMap, rseq)
 
 -- the search tree can be categorized into two groups, the paranoid and BRS forms
 -- the two forms of search tree arrange the Max and Min nodes differently
@@ -63,7 +64,7 @@ type AlphaBeta = (Int, Int)
 -- overall, this is a looser definition, and could allow suicidal action that make other players win, but it is faster, hence saving more time
 winStateDetermine :: Colour -> Board -> Bool
 winStateDetermine c b = let -- get the goal base positions on the external board of certain player 
-                            goalPos = map (reversion c) goalBase
+                            goalPos = parMap rseq (reversion c) goalBase
                             -- and get the corresponding occupied state
                             goalBoardPos = evalState (do mapM getElement goalPos) b
                             -- check if the two conditions are satisfied
@@ -73,6 +74,7 @@ winStateDetermine c b = let -- get the goal base positions on the external board
     where
         isFull :: [BoardPos] -> Bool
         isFull = foldr ((&&) . isOccupied) True
+        
         existColour :: Colour -> [BoardPos] -> Bool
         existColour c bs = Just c `elem` map Board.getColour bs
 
@@ -99,14 +101,28 @@ moveOrder ms = let -- calculate the distance change for each move
                    sorted = sortBy (\(a, _) (b, _) -> compare b a) result
                in  map snd sorted -- omit the distance values
     where
+        -- zip with the assoicated distance
         assignDistance :: [Transform] -> [(Double, Transform)]
-        assignDistance [] = []
-        assignDistance (m@(from, to):ms) = case getColour from of
-                                            Nothing -> error "Invalid generated movement"
-                                            Just co -> let internalPos = projectMove co m
-                                                           -- get the distance change of the internal positions
-                                                           dis = moveEvaluation internalPos
-                                                       in  (dis, m):assignDistance ms
+        assignDistance ms = parMap rseq getDistance ms
+        
+        -- get the distance change of the internal position          
+        getDistance :: Transform -> (Double, Transform)
+        getDistance m@(from, to) = case getColour from of
+                                    Nothing -> error "Invalid generated movement"
+                                    Just co -> let internalPos = projectMove co m
+                                                   dis = moveEvaluation internalPos
+                                               in  (dis, m)
+
+-- based on the colour of the movement, assign the corresponding player's index
+assignIndex :: [Transform] -> Int -> [PlayerIndex]
+assignIndex ms pn = parMap rseq (getPlayerIndex pn) ms
+    where
+        getPlayerIndex :: Int -> Transform -> PlayerIndex
+        getPlayerIndex pn (from, _) = case getColour from of
+                                        Nothing -> error "invalid movement"
+                                        Just colour -> case colourIndex colour pn of
+                                                            Nothing -> error "invalid colour"
+                                                            Just index -> index
 
 -- an enhancement that instead of investigating all nodes of a layer, only a certain number of nodes are allowed to be considered
 -- this saves a lot of time but could miss some decisive moves, therefore, should be applied together with the more ordering
@@ -151,7 +167,7 @@ reorderMovements ms pn pi = do kms <- getKillerPair pi
                                let (appliedKms, remainMoves) = killerMoveTest kms ms []
                                    orderedMoves = kbestpruning remainMoves
                                    -- combine the found killer moves and the reordered moves
-                                   reorderedMove = appliedKms `par` orderedMoves `pseq` appliedKms ++ orderedMoves
+                                   reorderedMove = appliedKms `par` orderedMoves `pseq` (appliedKms ++ orderedMoves)
                                    -- also assign the player index for each move, for later indexing the killer move
                                    indices = assignIndex reorderedMove pn
                                -- besides, the existing killer moves are also needed to be reordered based on the recent usage
@@ -181,20 +197,12 @@ reorderMovements2 mss pn pis = do ls <- reorderMovements2' mss pn pis
                                                     rest <- reorderMovements2' mss pn ps
                                                     return (pair:rest)
 
--- based on the colour of the movement, assign the corresponding player's index
-assignIndex :: [Transform] -> Int -> [PlayerIndex]
-assignIndex [] _ = []
-assignIndex ((from, _):ms) pn = case getColour from of
-                                    Nothing -> error "invalid movement"
-                                    Just colour -> case colourIndex colour pn of
-                                                    Nothing -> error "invalid colour"
-                                                    Just index -> index:assignIndex ms pn
-
 --Minimax tree search------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 
 -- when it comes to BRS, the search tree becomes different where the second layer's node is no longer one opponent, but all opponents
 otherPlayers :: Int -> PlayerIndex -> [PlayerIndex]
 otherPlayers pn ri = filter (/=ri) [0 .. pn - 1]
+
 -- therefore, it needs a different turn switch mechanism than the standard turn base
 turnBaseBRS :: Int -> PlayerIndex -> PlayerIndex -> [PlayerIndex]
 turnBaseBRS pn ri pi = if ri /= pi then [ri] else otherPlayers pn ri
@@ -206,7 +214,7 @@ mplayerMovesList (_, eboard, iboard, pn, _, _) pi = let -- the colour of the pla
                                                         -- the internal positions of a player
                                                         ps = (iboard !! pi) 
                                                         -- revert those position to the external board
-                                                        bs = colour `par` ps `pseq` map (appendColour colour . reversion colour) ps 
+                                                        bs = colour `par` ps `pseq` parMap rseq (appendColour colour . reversion colour) ps 
                                                         -- generate available movements based on the external board state
                                                         ds = evalState (do mapM destinationList bs) eboard 
                                                     in  -- zip the start and the end, ensuring that they are listed in pairs
@@ -245,7 +253,7 @@ mEvaluation height st@(ri, _, ps, pn, _, _) pi = do -- provide a list of possibl
 -- similar process, but with some difference
 -- the movements are not only just generated by the root player but also all other opponents at the same time
 mEvaluation2 :: Int -> MGameTreeStatus -> [PlayerIndex] -> State [KillerMoves] (Transform, Int)
-mEvaluation2 height st@(ri, _, ps, pn, _, _) pis = do (indices, rmoves) <- reorderMovements2 (map (mplayerMovesList st) pis) pn pis
+mEvaluation2 height st@(ri, _, ps, pn, _, _) pis = do (indices, rmoves) <- reorderMovements2 (parMap rseq (mplayerMovesList st) pis) pn pis
                                                       -- if only the root player's turn, then call them as Max nodes
                                                       if pis == [ri] then maxEvaluation (height - 1) st rmoves defaultMove indices
                                                       -- otherwise, are all Min layer's nodes
@@ -323,8 +331,8 @@ nEvaluation st@(ri, eboard, iboard, pn, _, _) pi
     -- for other players, how a board is evaluated is based on how the root player could play on this board
     | otherwise = let ms = mplayerMovesList st ri    
                       rs = iboard !! ri
-                      nbs = rolour `par` ms `par` rs `pseq` map (flipBoard rs . projectMove rolour) ms
-                      scores = map centroid nbs
+                      nbs = rolour `par` ms `par` rs `pseq` parMap rseq (flipBoard rs . projectMove rolour) ms
+                      scores = parMap rseq centroid nbs
                   in  if null scores then error (show eboard) else maximum scores
     where
         rolour = playerColour ri pn

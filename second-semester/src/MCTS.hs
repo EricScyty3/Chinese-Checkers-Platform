@@ -48,6 +48,7 @@ import RBTree ( rbInsert, rbSearch )
 import Configuration ( boardEvaluations, isMidgame, isEndgame )
 import Minimax
     ( TreeType(..), winStateDetermine, moveEvaluation, mEvaluation, moveOrder )
+import Control.Parallel.Strategies (parMap, rseq)
 
 
 -- during the selection a list of node that is chosen along with the selection, 
@@ -89,9 +90,10 @@ randomPercentage n = do gen <- getRandGen
 randomMaxSelection :: Ord a => [a] -> State GameTreeStatus Int
 randomMaxSelection []  = error "Selection: no node for selecting"
 randomMaxSelection xs  = let is = maximum xs `elemIndices` xs
-                         in  if length is == 1 then return (head is)
-                             else do ri <- randomIndex (length is)  -- random index of the maximum values' indices
-                                     return $ is !! ri -- return the maximum value's index
+                         in  case is of
+                                [idx] -> return idx
+                                _ -> do ri <- randomIndex (length is)  -- random index of the maximum values' indices
+                                        return $ is !! ri -- return the maximum value's index
 
 --Phase Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- normal MCTS is divided into four phases: selection, expansion, playout and backpropagation
@@ -136,7 +138,7 @@ expansion node = let children = getChildren node
                           colour <- getPlayerColour
                           ps <- getCurrentInternalBoard
                           -- generate the leaves for movements that are accepted for expanding
-                          newChildren <- mapM makeLeaf (expandPolicy colour ms ps)
+                          newChildren <- ms `par` colour `par` ps `pseq` mapM makeLeaf (expandPolicy colour ms ps)
                           -- the new generated nodes will become the children of the input node 
                           return (editNodeChildren newChildren node)
 
@@ -144,15 +146,13 @@ expansion node = let children = getChildren node
 expandPolicy :: Colour -> [Transform] -> [Pos] -> [Transform]
 expandPolicy colour xs ps
     | not $ null advance = advance  -- only consider advance moves if there are enough
-    | otherwise = xs                 -- otherwise, all moves are accepted
+    | otherwise = xs                -- otherwise, all moves are accepted
     where
         -- the available movements are divided into two categories: advance and non-advance
         -- the one that provides an increment in distance is an advance, otherwise, non-advance
         advance = filter ((> 0) . distanceChange) xs
         -- project the movement from external board to the occupied board and return the change of distance
         distanceChange move = moveEvaluation (projectMove colour move)
-        -- newxs v = take v $ moveOrder xs
-        -- eresult = head (boardEvaluations [ps])
 
 -- after the playout, a win is known from the game simulation, and should be update back to the traversed nodes in the selection phase
 -- here, it will updates the node's stored wins, as well as appending children to the the chosen leaf
@@ -166,7 +166,7 @@ backpropagation winIdx itrace node expandedNode =
                                                  -- this is for retrieving the children from the new expanded node and update them
                                                  children = getChildren tempNode
                                              in  -- find the node that is chosen during the selection
-                                                 case elemIndex bi (map getBoardIndex children) of
+                                                 case elemIndex bi (parMap rseq getBoardIndex children) of
                                                     Nothing -> error "Trace incorrect"
                                                     Just idx -> do let selectedNode = children !! idx
                                                                        -- update the win list by incrementing a player's wins by 1
@@ -222,7 +222,7 @@ switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether 
         moveEvaluator tfs = do colour <- getPlayerColour
                                -- get the distance change from the projected occupied board
                                let ptfs = map (projectMove colour) tfs
-                                   scores = map moveEvaluation ptfs
+                                   scores = parMap rseq moveEvaluation ptfs
                                idx <- randomMaxSelection scores
                                return (tfs !! idx)
 
@@ -268,14 +268,14 @@ playout moveCounts =
                            pa <- getPlayoutArgument
                            colour <- getPlayerColour
                            -- choose one of the expanded boards as the performed movement based on certain strategy
-                           resultedMove <- switchEvaluator pa tfs
+                           resultedMove <- pa `par` tfs `pseq` switchEvaluator pa tfs
                            -- update internal board state
                            newps <- modifyCurrentInternalBoard resultedMove
                            setCurrentInternalBoard newps
                            -- reflect the change to the external board
                            nboard <- repaintBoard resultedMove
-                           -- check the win state of current player after the movement is made, if wins then returns, else keeps iterating
-                           if winStateDetermine colour nboard then return pi
+                           -- check the soft win state of current player after the movement is made, if wins then returns, else keeps iterating
+                           if colour `par` nboard `pseq` winStateDetermine colour nboard then return pi
                            else do -- next player's turn
                                    updatePlayerIdx
                                    -- update the new board state
@@ -351,7 +351,7 @@ mcts tree = do -- first start the selection with empty container, and will then 
 -- this is because if only depend on the looser win determination, there could occur error when the softer win state is reached but not the actual win state
 -- in other words, a root without children will be returned because this root is defined as a win, therefore, no move should be made, which is not applicable in the experimental environment
 checkPlayersWinState :: [[Pos]] -> Int
-checkPlayersWinState iboards = let ws = map winStateDetect iboards
+checkPlayersWinState iboards = let ws = parMap rseq winStateDetect iboards
                                in  case elemIndices True ws of
                                     [] -> -1
                                     [x] -> x

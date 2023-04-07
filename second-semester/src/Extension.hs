@@ -1,7 +1,6 @@
 module Extension where
 -- a module that allows controls of conditions such as iterations and time limits to be applied to the MCTS
 
--- a module that allows controls of conditions such as iterations and time limits to be applied to the MCTS
 import MCTS ( mcts, randomMaxSelection )
 import GameTree
     ( averageScore,
@@ -27,6 +26,7 @@ import Data.List (elemIndices)
 import RBTree (RBTree(RBLeaf))
 import System.Environment ( getArgs )
 import Configuration (lookupTable)
+import Control.Parallel.Strategies (parMap, rseq)
 
 -- given a search tree and game state, with the control of tree search, return the optimal result that is received by MCTS 
 -- currently, only the iteration counts and time limits are considered, the expansion threshold could be extended but not necessary in here
@@ -35,15 +35,15 @@ finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                    do -- pass the arguments to the decision function controlled by certain threshold 
                                                                       -- return the new search tree, the scores for the possible expansion of current game state
                                                                       -- the new movement history, and the counts of game simulations' turns
-                                                                      (ntree, scores, nht, kms, trials) <- getResultsUnderControl tree s control
+                                                                      (ntree, scores, nht, kms, playouts) <- getResultsUnderControl tree s control
                                                                       if null scores then do printEoard eboard
                                                                                              error "No effective result was retrieved"
-                                                                                             
-                                                                      else do gen <- newStdGen
-                                                                              let (_, newState) = runState (setRandGen gen) s
+
+                                                                      else do gen <- newStdGen -- get a new random nunmber generator for selecting the returned move
+                                                                              let (_, newRandomState) = runState (setRandGen gen) s
                                                                                   -- get the maximum win rate move (child) as the next movement
                                                                                   -- if there exist multiple maximum scores, then randomly choose one of them
-                                                                                  randMaxIdx = evalState (randomMaxSelection scores) newState
+                                                                                  randMaxIdx = evalState (randomMaxSelection scores) newRandomState
                                                                                   chosenNode = getChildren ntree !! randMaxIdx
                                                                                   -- return the resulting decision
                                                                                   colour = playerColour pi pn
@@ -51,7 +51,7 @@ finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                                   newBoard = repaintPath eboard move
                                                                                   pmove = move `par` colour `pseq` projectMove colour move
                                                                                   newInternalState = flipBoard (iboards !! pi) pmove
-                                                                              return $ newBoard `par` newInternalState `pseq` (newBoard, newInternalState, nht, kms, trials)
+                                                                              return $ newBoard `par` newInternalState `pseq` (newBoard, newInternalState, nht, kms, playouts)
 -- compute the MCTS with certain threshold to control the progress
 getResultsUnderControl :: GameTree -> GameTreeStatus -> (Maybe Int, Maybe Pico) -> IO (GameTree, [Double], HistoryTrace, [KillerMoves], Int)
 getResultsUnderControl tree status@(_, pi, _, _, _, _, _, _, _) (Just iters, Nothing) =
@@ -73,9 +73,7 @@ getResultsUnderControl tree status _ = error "Invalid control"
 -- get the win rates for all children of a node
 getWinRates :: PlayerIndex -> [GameTree] -> [Double]
 getWinRates _ [] = []
-getWinRates pi (n:ns) = let wins = getWins n
-                            visits = sum wins
-                        in  averageScore pi wins visits : getWinRates pi ns
+getWinRates pi ns = parMap rseq (\n -> averageScore pi (getWins n) (getVisits n)) ns
 
 -- repeat the MCTS until certain iterations are reached
 iterations :: GameTree -> GameTreeStatus -> Int -> IO (GameTree, BoardIndex, HistoryTrace, [KillerMoves])

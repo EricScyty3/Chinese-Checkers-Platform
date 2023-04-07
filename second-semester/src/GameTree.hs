@@ -20,6 +20,7 @@ import Control.Monad.State
 import RBTree ( rbSearch, RBTree )
 import Control.Parallel ( par, pseq )
 import System.Random ( StdGen )
+import Control.Parallel.Strategies (parMap, rseq)
 
 -- several re-naming for better understanding
 -- a list of integers containing how many times all player can win at the end 
@@ -204,7 +205,7 @@ getWins (GLeaf _ _ ws) = ws
 
 -- root has not wins can be retrieved from its children
 getWins (GRoot _ ts) = if null ts then []
-                       else let ws = map getWins ts
+                       else let ws = parMap rseq getWins ts
                             in  sumWins ws
     where
         sumWins :: [Wins] -> Wins
@@ -236,7 +237,7 @@ currentPlayerMovesList = do eboard <- getBoard
                             colour <- getPlayerColour
                             let -- reverse the internal projected positions to the positions on the external board
                                 -- faster than search occupied positions on the external board, since only the mathematical computation is necessary here
-                                bs = ps `par` colour `pseq` map (appendColour colour . reversion colour) ps
+                                bs = ps `par` colour `pseq` parMap rseq (appendColour colour . reversion colour) ps
                                 -- the new positions could be reached from the above positions
                                 ds = eboard `par` bs `pseq` evalState (do mapM destinationList bs) eboard
                             return (pairArrange bs ds) -- zip the resulting destinations with the start positions and generate a list of movement pairs
@@ -285,12 +286,13 @@ estimateNodeUCT pv v = do c <- getUCTCons
 -- tree-only PH: only consider the moves selected in the selection stages
 estimateNodePH :: Int -> Wins -> Int -> State GameTreeStatus Double
 estimateNodePH ph gwins gvisits = do ht <- getHistoryTrace
-                                     pi <- getPlayerIdx
                                      case rbSearch ph ht of -- find if similar move has been made in the past
                                         Nothing -> return 0
                                         Just hwins -> do w <- getPHCons
-                                                         return $ fromIntegral (hwins !! pi) / fromIntegral (sum hwins)
-                                                                  * w / fromIntegral (gvisits - (gwins !! pi) + 1)
+                                                         pi <- getPlayerIdx
+                                                         return $ w `par` pi `pseq` 
+                                                                  (fromIntegral (hwins !! pi) / fromIntegral (sum hwins)
+                                                                   * w / fromIntegral (gvisits - (gwins !! pi) + 1))
 
 -- when estimating a node during the selection, apply the above formula: Win Rate + UCT + PH 
 estimateNode :: Int -> GameTree -> State GameTreeStatus Double
@@ -303,6 +305,6 @@ estimateNode pv node = if isRoot node then return 0
                                    mean = averageScore pi wins visits
                                uct <- estimateNodeUCT pv visits
                                ph  <- estimateNodePH (hash ps) wins visits -- then pass the hashed value of the internal board to the formula
-                               return $ mean `par` uct `par` ph `pseq` mean + uct + ph
+                               return $ mean `par` uct `par` ph `pseq` (mean + uct + ph)
 
 

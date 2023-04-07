@@ -7,6 +7,8 @@ import Data.STRef ( modifySTRef, newSTRef, readSTRef )
 import Control.Monad.State ( State, MonadState(get), evalState )
 import Control.Monad.Extra ( concatMapM )
 import Control.Parallel ( par, pseq )
+import Control.Parallel.Strategies
+
 
 -- the six colours being applied in the game
 data Colour = Green | Blue | Purple | Red | Orange | Black deriving (Eq, Show)
@@ -17,7 +19,7 @@ data BoardPos = G Pos | B Pos | P Pos | R Pos | O Pos | K Pos | E Pos | U Pos de
 -- the representation of the board, a 2D list with corresponding pieces' positions and colours
 type Board = [[BoardPos]]
 -- for occupied board, only occupied state is needed, and the positions are projected from the external star-shaped board to a square board
-type OccupiedBoard = [[Int]] 
+type OccupiedBoard = [[Int]]
 -- a movement is a transform from one position to another, therefore, should contain a start position and an end position
 type Transform = (BoardPos, BoardPos)
 
@@ -42,12 +44,12 @@ playerColourList _ = error "Invalid number of players"
 
 -- given a colour and the total number of players, return the corresponding player's index
 colourIndex :: Colour -> Int -> Maybe Int
-colourIndex colour pn = let cl = playerColourList pn
-                        in  colour `elemIndex` cl
+colourIndex colour pn = colour `elemIndex` playerColourList pn
 
 -- determine if a piece is modified from default form
 ifInitialPiece :: BoardPos -> Bool
 ifInitialPiece pos = pos == initialPos
+
 -- the default position, which just indicate nothing
 initialPos :: BoardPos
 initialPos = U (-1, -1)
@@ -69,8 +71,8 @@ getColour _ = Nothing -- type E and U do not contain any colour information
 -- see if a piece's colour is the same as a given colour
 compareColour :: BoardPos -> Colour -> Bool
 compareColour bPos colour = case getColour bPos of
-                                Just bcolour -> bcolour == colour
-                                Nothing -> False
+                             Just bcolour -> bcolour == colour
+                             Nothing -> False
 
 -- identify if a position on the board is empty
 isEmpty :: BoardPos -> Bool
@@ -143,7 +145,8 @@ externalBoard = [
 
 -- access an element in a 2D list, while wrapping the container as the state
 getElement :: Pos -> State [[a]] a
-getElement (x, y) = do n <- get; return ((n !! y) !! x)
+getElement (x, y) = do n <- get
+                       return ((n !! y) !! x)
 
 -- mutate an element in a 2D list
 replace2 :: Pos -> a -> [[a]] -> [[a]]
@@ -177,7 +180,7 @@ changeBoardElement f bPos board = let newbPos = f bPos
 -- this is to generate different board according to the different numbers of players
 eraseBoard :: [Colour] -> Board -> Board
 eraseBoard keptColours eboard = runST $ do n <- newSTRef eboard
-                                           modifySTRef n (map (eraseRow keptColours))
+                                           modifySTRef n (parMap rseq (eraseRow keptColours))
                                            readSTRef n
     where
         eraseRow :: [Colour] -> [BoardPos] -> [BoardPos]
@@ -210,19 +213,19 @@ destinationList :: BoardPos -> State Board [BoardPos]
 destinationList bPos = do case getColour bPos of
                             Nothing -> return [] -- invalid chosen pieces
                             Just c  -> do -- find the reachable destinations for steps
-                                          adjacentMoves <- findAvaliableNeighbors c bPos 
+                                          adjacentMoves <- findAvaliableNeighbors c bPos
                                           -- find the reachable destinations for hops
                                           chainedMoves  <- recursiveSearch [] c bPos
                                           -- combine the two lists and discard the repeated ones
-                                          return $ adjacentMoves `par` chainedMoves `pseq` nub (adjacentMoves ++ chainedMoves) 
+                                          return $ adjacentMoves `par` chainedMoves `pseq` nub (adjacentMoves ++ chainedMoves)
 
 -- detect the adjacent positions that are available to move to 
 findAvaliableNeighbors :: Colour -> BoardPos -> State Board [BoardPos]
 findAvaliableNeighbors c bPos = do -- generate the adjacent positions surrounding the entered position
                                    -- and retrieve them from the board
-                                   neighbourList <- mapM getElement (neighborPosList c (getPos bPos)) 
+                                   neighbourList <- mapM getElement (neighborPosList c (getPos bPos))
                                    -- discard the positions that are already occupied
-                                   return (filter isEmpty neighbourList) 
+                                   return (filter isEmpty neighbourList)
     where
         -- generate positions that is around a given position, and test the validity
         neighborPosList :: Colour -> Pos -> [Pos]
@@ -231,7 +234,10 @@ findAvaliableNeighbors c bPos = do -- generate the adjacent positions surroundin
         -- the generated neighbour's positions should be within the board size, as well as the fitting the occupied board once being projected
         -- also, need to follow the restriction of moving within the goal base
         validMoveCheck :: Colour -> Pos -> Pos -> Bool
-        validMoveCheck c f t = testValidPos boardWidth boardHeight t && testCorners c t && baseMoveAllow c f t
+        validMoveCheck c f t = let validPosition = testValidPos boardWidth boardHeight t
+                                   notAccessCorner = testCorners c t
+                                   withinBase = baseMoveAllow c f t
+                               in  validPosition `par` notAccessCorner `par` withinBase `pseq` (validPosition && notAccessCorner && withinBase)
 
 -- generate a list of one-over jump chained together to reach a larger jump range
 -- recursively search for the reachable destinations for chained jumps of different directions
@@ -241,11 +247,11 @@ recursiveSearch :: [BoardPos] -> Colour -> BoardPos -> State Board [BoardPos]
 recursiveSearch record c bPos = do -- generate a new list of positions found
                                    chainJumpList <- jumpDirection c bPos
                                    -- discard the positions that are already found
-                                   let renewList = filter (`notElem` record) chainJumpList 
+                                   let renewList = filter (`notElem` record) chainJumpList
                                        -- adding the new discovered positions to the record
-                                       newRecord = renewList ++ record 
+                                       newRecord = renewList ++ record
                                    -- continue the next "layer" of search based on the positions discovered at this "layer"
-                                   recursiveList <- concatMapM (recursiveSearch newRecord c) renewList 
+                                   recursiveList <- concatMapM (recursiveSearch newRecord c) renewList
                                    -- until not new positions are found, return the combined list of all found positions
                                    -- might exist duplicated positions, but will be omitted at the final integration
                                    return (recursiveList ++ renewList)
@@ -253,7 +259,7 @@ recursiveSearch record c bPos = do -- generate a new list of positions found
 -- given a board position, check the validity of all directions of hopping
 jumpDirection :: Colour -> BoardPos -> State Board [BoardPos]
 jumpDirection c bpos = do -- return the reachable destinations
-                          reachableList <- mapM (determineValidJump c bpos) [f (-1, -1), f (-2, 0), f (-1, 1), f (1, 1), f (2, 0), f (1, -1)] 
+                          reachableList <- mapM (determineValidJump c bpos) [f (-1, -1), f (-2, 0), f (-1, 1), f (1, 1), f (2, 0), f (1, -1)]
                           return $ filter (/= bpos) reachableList -- and remove the invalid moves
     where
         f (a, b) (x, y) = (a+x, b+y)
@@ -264,7 +270,7 @@ determineValidJump c bpos f = if not (validMoveCheck c) then return bpos -- if i
                               else do n1 <- getElement fp
                                       n2 <- getElement fp2
                                       -- check if the pre-condition of the chained jump is satisfied
-                                      if n1 `par` n2 `pseq` isOccupied n1 && isEmpty n2 then return n2 
+                                      if n1 `par` n2 `pseq` (isOccupied n1 && isEmpty n2) then return n2
                                       else return bpos -- if not then means it is not valid as well                                                   
     where
         pos = getPos bpos
@@ -272,7 +278,7 @@ determineValidJump c bpos f = if not (validMoveCheck c) then return bpos -- if i
         fp = f pos
         -- the position that is separated two positions away
         fp2 = (f . f) pos
-        
+
         -- a valid movement means both positions should within the board
         -- and should not stay at other's bases, as well as the satisfying the restriction of goal base
         validMoveCheck :: Colour -> Bool
@@ -455,7 +461,7 @@ printEoard b = do putStrLn ""
     where
         printEoard' :: [[Int]] -> IO ()
         printEoard' [] = putStrLn ""
-        printEoard' (x:xs) = do let str = map skipZero (show x)
+        printEoard' (x:xs) = do let str = parMap rseq skipZero (show x)
                                 putStrLn str
                                 printEoard' xs
 
@@ -466,7 +472,7 @@ printEoard b = do putStrLn ""
 
 -- transform the board positions into numerical values
 testDisplay :: Board -> [[Int]]
-testDisplay = map testDisplay'
+testDisplay = parMap rseq testDisplay'
     where
         testDisplay' :: [BoardPos] -> [Int]
         testDisplay' [] = []
