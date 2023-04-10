@@ -24,7 +24,6 @@ import RBTree ( rbInsert, rbSearch, RBTree(..) )
 import Data.Maybe ( isJust, isNothing )
 import GHC.IO ( unsafePerformIO )
 import System.Directory.Extra (doesFileExist)
-import Control.Parallel.Strategies (parMap, rseq)
 
 {-
 main :: IO ()
@@ -144,9 +143,9 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
 boardEvaluations :: [[Pos]] -> [Int]
 boardEvaluations ps = -- for consistent purpose, if found a midgame states existed in the list
                       -- the evaluation will only be taken place based on the centroid heuristic
-                      if ifExistMidgame ps then parMap rseq centroid ps
+                      if ifExistMidgame ps then map centroid ps
                       -- otherwise, the lookup table is allowed to be used as reference
-                      else parMap rseq boardEvaluation ps
+                      else map boardEvaluation ps
     where                      
         -- search for a shortest path for a certain board configuration based on the given dataset
         boardEvaluation :: [Pos] -> Int

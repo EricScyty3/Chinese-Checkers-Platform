@@ -7,7 +7,6 @@ import Data.STRef ( modifySTRef, newSTRef, readSTRef )
 import Control.Monad.State ( State, MonadState(get), evalState )
 import Control.Monad.Extra ( concatMapM )
 import Control.Parallel ( par, pseq )
-import Control.Parallel.Strategies
 
 
 -- the six colours being applied in the game
@@ -180,7 +179,7 @@ changeBoardElement f bPos board = let newbPos = f bPos
 -- this is to generate different board according to the different numbers of players
 eraseBoard :: [Colour] -> Board -> Board
 eraseBoard keptColours eboard = runST $ do n <- newSTRef eboard
-                                           modifySTRef n (parMap rseq (eraseRow keptColours))
+                                           modifySTRef n (map (eraseRow keptColours))
                                            readSTRef n
     where
         eraseRow :: [Colour] -> [BoardPos] -> [BoardPos]
@@ -461,7 +460,7 @@ printEoard b = do putStrLn ""
     where
         printEoard' :: [[Int]] -> IO ()
         printEoard' [] = putStrLn ""
-        printEoard' (x:xs) = do let str = parMap rseq skipZero (show x)
+        printEoard' (x:xs) = do let str = map skipZero (show x)
                                 putStrLn str
                                 printEoard' xs
 
@@ -472,7 +471,7 @@ printEoard b = do putStrLn ""
 
 -- transform the board positions into numerical values
 testDisplay :: Board -> [[Int]]
-testDisplay = parMap rseq testDisplay'
+testDisplay = map testDisplay'
     where
         testDisplay' :: [BoardPos] -> [Int]
         testDisplay' [] = []

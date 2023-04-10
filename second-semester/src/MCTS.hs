@@ -48,7 +48,6 @@ import RBTree ( rbInsert, rbSearch )
 import Configuration ( boardEvaluations, isMidgame, isEndgame )
 import Minimax
     ( TreeType(..), winStateDetermine, moveEvaluation, mEvaluation, moveOrder )
-import Control.Parallel.Strategies (parMap, rseq)
 
 
 -- during the selection a list of node that is chosen along with the selection, 
@@ -166,7 +165,7 @@ backpropagation winIdx itrace node expandedNode =
                                                  -- this is for retrieving the children from the new expanded node and update them
                                                  children = getChildren tempNode
                                              in  -- find the node that is chosen during the selection
-                                                 case elemIndex bi (parMap rseq getBoardIndex children) of
+                                                 case elemIndex bi (map getBoardIndex children) of
                                                     Nothing -> error "Trace incorrect"
                                                     Just idx -> do let selectedNode = children !! idx
                                                                        -- update the win list by incrementing a player's wins by 1
@@ -222,7 +221,7 @@ switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether 
         moveEvaluator tfs = do colour <- getPlayerColour
                                -- get the distance change from the projected occupied board
                                let ptfs = map (projectMove colour) tfs
-                                   scores = parMap rseq moveEvaluation ptfs
+                                   scores = map moveEvaluation ptfs
                                idx <- randomMaxSelection scores
                                return (tfs !! idx)
 
@@ -351,7 +350,7 @@ mcts tree = do -- first start the selection with empty container, and will then 
 -- this is because if only depend on the looser win determination, there could occur error when the softer win state is reached but not the actual win state
 -- in other words, a root without children will be returned because this root is defined as a win, therefore, no move should be made, which is not applicable in the experimental environment
 checkPlayersWinState :: [[Pos]] -> Int
-checkPlayersWinState iboards = let ws = parMap rseq winStateDetect iboards
+checkPlayersWinState iboards = let ws = map winStateDetect iboards
                                in  case elemIndices True ws of
                                     [] -> -1
                                     [x] -> x

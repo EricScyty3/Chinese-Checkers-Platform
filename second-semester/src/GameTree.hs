@@ -20,7 +20,6 @@ import Control.Monad.State
 import RBTree ( rbSearch, RBTree )
 import Control.Parallel ( par, pseq )
 import System.Random ( StdGen )
-import Control.Parallel.Strategies (parMap, rseq)
 
 -- several re-naming for better understanding
 -- a list of integers containing how many times all player can win at the end 
@@ -205,7 +204,7 @@ getWins (GLeaf _ _ ws) = ws
 
 -- root has not wins can be retrieved from its children
 getWins (GRoot _ ts) = if null ts then []
-                       else let ws = parMap rseq getWins ts
+                       else let ws = map getWins ts
                             in  sumWins ws
     where
         sumWins :: [Wins] -> Wins
@@ -237,7 +236,7 @@ currentPlayerMovesList = do eboard <- getBoard
                             colour <- getPlayerColour
                             let -- reverse the internal projected positions to the positions on the external board
                                 -- faster than search occupied positions on the external board, since only the mathematical computation is necessary here
-                                bs = ps `par` colour `pseq` parMap rseq (appendColour colour . reversion colour) ps
+                                bs = ps `par` colour `pseq` map (appendColour colour . reversion colour) ps
                                 -- the new positions could be reached from the above positions
                                 ds = eboard `par` bs `pseq` evalState (do mapM destinationList bs) eboard
                             return (pairArrange bs ds) -- zip the resulting destinations with the start positions and generate a list of movement pairs
