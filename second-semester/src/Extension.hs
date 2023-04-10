@@ -27,9 +27,12 @@ import RBTree (RBTree(RBLeaf))
 import System.Environment ( getArgs )
 import Configuration (lookupTable)
 
+-- the condition for stopping the search of MCTS
+type MCTSControl = (Maybe Int, Maybe Double)
+
 -- given a search tree and game state, with the control of tree search, return the optimal result that is received by MCTS 
 -- currently, only the iteration counts and time limits are considered, the expansion threshold could be extended but not necessary in here
-finalSelection :: GameTree -> GameTreeStatus -> (Maybe Int, Maybe Pico) -> IO (Board, [Pos], HistoryTrace, [KillerMoves], Int)
+finalSelection :: GameTree -> GameTreeStatus -> MCTSControl -> IO (Board, [Pos], HistoryTrace, [KillerMoves], Int)
 finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                    do -- pass the arguments to the decision function controlled by certain threshold 
                                                                       -- return the new search tree, the scores for the possible expansion of current game state
@@ -55,7 +58,7 @@ finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                                   newInternalState = flipBoard (iboards !! pi) pmove
                                                                               return $ newBoard `par` newInternalState `pseq` (newBoard, newInternalState, nht, kms, playouts)
 -- compute the MCTS with certain threshold to control the progress
-getResultsUnderControl :: GameTree -> GameTreeStatus -> (Maybe Int, Maybe Pico) -> IO (GameTree, HistoryTrace, [KillerMoves], Int)
+getResultsUnderControl :: GameTree -> GameTreeStatus -> MCTSControl -> IO (GameTree, HistoryTrace, [KillerMoves], Int)
 getResultsUnderControl tree status@(_, pi, _, _, _, _, _, _, _) (Just iters, Nothing) =
                                                            do -- retrieve the result from running MCTS with certain iterations
                                                               (ntree, nht, kms) <- iterations tree status iters
@@ -66,7 +69,7 @@ getResultsUnderControl tree status@(_, pi, _, _, _, _, _, _, _) (Nothing, Just s
                                                              do -- first get the current time for later check
                                                                 startTime <- getCurrentTime
                                                                 -- run the MCTS with certain time limits
-                                                                (ntree, nht, kms, iters) <- timeLimits tree status (startTime, seconds) 0
+                                                                (ntree, nht, kms, iters) <- timeLimits tree status (startTime, realToFrac seconds) 0
                                                                 return (ntree, nht, kms, iters)
 getResultsUnderControl tree status _ = error "Invalid control"
 

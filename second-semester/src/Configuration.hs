@@ -214,7 +214,6 @@ loadTableElements = let filename1 = "../dataset/lookup_table.txt"
                            contents <- hGetContents filePath
                            return $ convertToElement (lines contents)
     where
-        convertToElement :: [String] -> [(Int, Int, Int)]
         convertToElement s = concatMap read s
 
 
