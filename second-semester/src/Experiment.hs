@@ -107,6 +107,28 @@ generatePlayerList pn ps = let pt = length ps
 
 --Run Experimental Trials---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+-- given a player, run the playout phase from the initial board till the end of the game
+-- this is applied to see the search speed of each evaluator 
+runSimulation :: Player -> IO Double
+runSimulation (evaluator, depth) = do start <- getCurrentTime
+                                      newGen <- newStdGen
+                                      -- the position of the player is not important here, so it is fixed to 0
+                                      let winIdx = start `seq` evalState (playout 0) (newGen, 0, 1, eboard, iboards, pn, RBLeaf, (0.5, 5), (evaluator, depth, kms))
+                                      end <- winIdx `seq` getCurrentTime
+                                      return $ realToFrac $ end `seq` diffUTCTime end start
+
+    where
+        pn = 3
+        eboard = eraseBoard (playerColourList pn) externalBoard
+        iboards = replicate pn startBase
+        kms = replicate pn []
+
+-- run the simulation several times from the initial board state
+runMultipleSimulations :: Int -> Player -> IO Double
+runMultipleSimulations runs player = let pls = replicate runs player
+                                     in  do durations <- mapM runSimulation pls
+                                            return $ sum durations
+
 -- given a certain status, and run a game with different players till one of the players wins, and return the data for evaluating the performance
 -- besides, one thing to point out is that the history trace and the killer moves are maintained by each player, in other words, they are not shared
 singleRun :: [[Int]] -> MCTSControl -> PlayerIndex -> Board -> [[Pos]] -> Int -> [HistoryTrace] ->
@@ -206,9 +228,13 @@ experimentRecord (xs, ys) fileName ifRecordPlayouts =
 -- this is just for testing purpose, run game several times with the fixed setting
 main :: IO ()
 main = do arg <- getArgs
-          start <- lookupTable `seq` getCurrentTime
+          -- start <- lookupTable `seq` getCurrentTime
 
-          let -- control@(iterations, time) = read $ head arg :: MCTSControl -- time: from 0.05s to 0.5s, and finally 5s
+          let runs = read $ head arg :: Int
+              player = read $ arg !! 1 :: Player
+          result <- runMultipleSimulations runs player
+              {-
+              -- time: from 0.05s to 0.5s, and finally 5s
               time = read $ head arg :: Double 
               runs = read $ arg !! 1 :: Int                               
               idx  = read $ arg !! 2 :: Int
@@ -218,23 +244,14 @@ main = do arg <- getArgs
               fileName = "./experiments/test1/" ++ str ++ "_" ++ show idx
               testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)] -- 60 combinations, each assignment runs 30 times
               control = (Nothing, Just time)
+              -}
 
-          result <- multipleGames runs control (divide2Chunks 6 testSet idx)
-          experimentRecord result fileName True -- (isNothing iterations) -- if the iterations is set then no need to record it
-          end <- result `seq` getCurrentTime
-          putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
+          -- result <- multipleGames runs control (divide2Chunks 6 testSet idx)
+          -- experimentRecord result fileName True -- (isNothing iterations) -- if the iterations is set then no need to record it
+          -- end <- result `seq` getCurrentTime
+          -- putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
+          putStrLn $ "Time cost:" ++ show result
           putStrLn "Completed"
-          {-
-          winRate1 <- loadWinRates 1 (Nothing, Just 0.05) [0..5]
-          winRate2 <- loadWinRates 1 (Nothing, Just 0.5) [0..5]
-          averagePlayouts1 <- loadAveragePlayouts 1 (Nothing, Just 0.05) [0..5]
-          averagePlayouts2 <- loadAveragePlayouts 1 (Nothing, Just 0.5) [0..5]
-          
-          print ("0.05 win rates " ++ show winRate1)
-          print ("0.5 win rates " ++ show winRate2)
-          print ("0.05 average playouts " ++ show averagePlayouts1)
-          print ("0.5 average playouts " ++ show averagePlayouts2)
-          -}
 
 -- divide the player arrangements into several smaller sets and pick one of them
 divide2Chunks :: Int -> [a] -> Int -> [a]

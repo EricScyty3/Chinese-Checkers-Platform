@@ -249,6 +249,7 @@ switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether 
         mixedSearch treetype depth kms tfs = do iboard <- getCurrentInternalBoard
                                                 if isMidgame iboard then minimaxSearch depth kms treetype
                                                 else boardEvaluator tfs
+                                                -- here could be adjusted when doing experiments
 
 -- game simulation from a certain board state til the end of the game, and every move made in the simulation is generated based on certain policy
 playout :: Int -> State GameTreeStatus PlayerIndex
