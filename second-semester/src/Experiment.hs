@@ -39,6 +39,8 @@ import System.Process (system)
 import Text.Printf (printf)
 import Control.Concurrent.Async ( mapConcurrently )
 import Data.Maybe (fromMaybe, isNothing)
+
+-- import Data.List.Split
 -- import Control.Parallel.Strategies (using, parList, rseq, parListChunk, parMap)
 
 -- during the experimental trials, several outcomes are measured only under the contorl of time limits
@@ -51,6 +53,7 @@ type Player = (PlayoutEvaluator, Int)
 
 -- retrieve the average value of a list
 mean :: [Int] -> Double
+mean [] = 0
 mean xs = fromIntegral (sum xs) / fromIntegral (length xs)
 
 median :: [Int] -> Double
@@ -84,11 +87,12 @@ validPlayerList pn pt = filter (not . samePlayers) (playerArrangement pn pt)
 
 -- based on the valid assignments given, only select the ones with two players involved
 -- might be useful if wanting to dig deeper on the performance
-playerList2 :: Int -> Int -> [[Int]]
-playerList2 pn pt = filter ifOnlyTwoPlayers (validPlayerList pn pt)
+tournamentList :: Int -> Player -> Player -> [[Player]]
+tournamentList pn p1 p2 = let pl = validPlayerList pn 2
+                          in  map (`binaryMap` (p1, p2)) pl
     where
-        ifOnlyTwoPlayers :: [Int] -> Bool
-        ifOnlyTwoPlayers xs = length (nub xs) == 2
+        binaryMap [] _ = []
+        binaryMap (x:xs) (p1, p2) = (if x == 0 then p1 else p2):binaryMap xs (p1, p2)
 
 -- given a list of players, arrange them in several different orders
 -- True for multiple player types, and False for only two players involved
@@ -181,26 +185,22 @@ merge xs = let winners = map fst xs
            in  (concat winners, transpose iters)
 
 -- write the input to a certain file of given filename
-experimentRecord :: (Show a, Show b) => ([a], [[b]]) -> FilePath -> IO ()
-experimentRecord (xs, ys) fileName = do path1 <- openFile playoutsFile WriteMode
-                                        hPutStr path1 (convertToStrings ys)
-                                        hClose path1
-
+experimentRecord :: (Show a, Show b) => ([a], [[b]]) -> FilePath -> Bool -> IO ()
+experimentRecord (xs, ys) fileName ifRecordPlayouts =
+                                     do if ifRecordPlayouts then do path1 <- openFile playoutsFile WriteMode
+                                                                    hPutStr path1 (convertToStrings ys)
+                                                                    hClose path1
+                                        else pure ()
                                         path2 <- openFile winnersFile WriteMode
-                                        hPutStr path2 (convertToString xs)
+                                        hPutStr path2 (show xs)
                                         hClose path2
-
                                         return ()
     where
     playoutsFile = fileName ++ "_playouts.txt"
     winnersFile = fileName ++ "_winners.txt"
 
     convertToStrings [] = ""
-    convertToStrings (x:xs) = (if null x then "[]\n" else convertToString x) ++ "\n" ++ convertToStrings xs
-
-    convertToString [] = ""
-    convertToString ts = show (take 100 ts) ++ "\n" ++ convertToString (drop 100 ts)
-
+    convertToStrings (x:xs) = show x ++ "\n" ++ convertToStrings xs
 
 -- ghc -main-is Experiment Experiment.hs -O2 -threaded -outputdir dist
 -- this is just for testing purpose, run game several times with the fixed setting
@@ -208,58 +208,122 @@ main :: IO ()
 main = do arg <- getArgs
           start <- lookupTable `seq` getCurrentTime
 
-          let control@(iterations, time) = read $ head arg :: MCTSControl -- time: from 0.005s to 0.05s, and finally 0.5s, 
-                                                                          -- iteration: from 10 to 50 and finally to 100 (may not be considered)
-              idx  = read $ arg !! 1 :: Int
-              str = printf "%.3f" (fromMaybe 0 time)
+          let -- control@(iterations, time) = read $ head arg :: MCTSControl -- time: from 0.05s to 0.5s, and finally 5s
+              time = read $ head arg :: Double 
+              runs = read $ arg !! 1 :: Int                               
+              idx  = read $ arg !! 2 :: Int
+              str = {-if isNothing iterations then printf "%.3f" $ fromMaybe 0 time
+                    else show $ fromMaybe 0 iterations-}
+                    printf "%.3f" time
               fileName = "./experiments/test1/" ++ str ++ "_" ++ show idx
-              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)] -- 60 combinations
+              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)] -- 60 combinations, each assignment runs 30 times
+              control = (Nothing, Just time)
 
-          result <- multipleGames 100 control (divide2Chunks 10 testSet idx) 
-          experimentRecord result fileName
+          result <- multipleGames runs control (divide2Chunks 6 testSet idx)
+          experimentRecord result fileName True -- (isNothing iterations) -- if the iterations is set then no need to record it
           end <- result `seq` getCurrentTime
           putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
           putStrLn "Completed"
+          {-
+          winRate1 <- loadWinRates 1 (Nothing, Just 0.05) [0..5]
+          winRate2 <- loadWinRates 1 (Nothing, Just 0.5) [0..5]
+          averagePlayouts1 <- loadAveragePlayouts 1 (Nothing, Just 0.05) [0..5]
+          averagePlayouts2 <- loadAveragePlayouts 1 (Nothing, Just 0.5) [0..5]
+          
+          print ("0.05 win rates " ++ show winRate1)
+          print ("0.5 win rates " ++ show winRate2)
+          print ("0.05 average playouts " ++ show averagePlayouts1)
+          print ("0.5 average playouts " ++ show averagePlayouts2)
+          -}
 
 -- divide the player arrangements into several smaller sets and pick one of them
-divide2Chunks :: Int -> [[Player]] -> Int -> [[Player]]
+divide2Chunks :: Int -> [a] -> Int -> [a]
 divide2Chunks chunks ps idx = chunksOf chunkSize ps !! idx
     where
         chunkSize = length ps `div` chunks
 
+-- loadWinner :: Int -> MCTSControl -> [Int] -> IO [Player]
+-- loadWinRates folderIndex control indices = do winners <- loadWinners folderIndex control indices 
+--                                               return (concat winners)
+                                              -- return $ calculateWinRate standardOrder (concat winners)
+    -- where
+    --     calculateWinRate :: [Player] -> [Player] -> [Double]
+    --     calculateWinRate [] _ = []
+    --     calculateWinRate (p:ps) xs = fromIntegral (length (p `elemIndices` xs)) / fromIntegral (length xs) : calculateWinRate ps xs
+
 {-
-calculateWinRate :: Double -> [Int] -> Int -> IO [Double]
-calculateWinRate time indices fileIndex = do winners <- loadWinners time indices fileIndex 
-                                             return $ calculateWinRate' standardOrder (concat winners)
+loadAveragePlayouts :: Int -> MCTSControl -> [Int] -> IO [Double]
+loadAveragePlayouts folderIndex control indices = do playouts <- loadPlayouts folderIndex control indices
+                                                     let combinedList = transpose playouts
+                                                     return (map mean combinedList)
+
+loadPlayouts :: Int -> MCTSControl -> [Int] -> IO [[[Int]]]
+loadPlayouts _ _ [] = return []
+loadPlayouts folderIndex control@(iterations, time) (i:is) = 
+                                       do playouts <- loadExperimentData fileName :: IO [[Int]]
+                                          rest <- loadPlayouts folderIndex control is
+                                          return (playouts:rest)
     where
-        calculateWinRate' :: [Player] -> [Player] -> [Double]
-        calculateWinRate' [] _ = []
-        calculateWinRate' (p:ps) xs = fromIntegral (length (p `elemIndices` xs)) / fromIntegral (length xs) : calculateWinRate' ps xs
+        str = if isNothing iterations then printf "%.3f" $ fromMaybe 0 time
+              else show $ fromMaybe 0 iterations
+        
+        fileName = "./experiments/test" ++ show folderIndex ++ "/" ++ str ++ "_" ++ show i  ++ "_playouts.txt"
+-}
 
--- loadPlayouts :: Double -> [Int] -> Int -> IO [[Int]]
--- loadPlayouts _ [] _ = return []
--- loadPlayouts time (i:is) fileIndex = do playouts <- loadExperimentData fileName :: IO [[Int]]
---                                         rest <- loadPlayouts time is fileIndex
---                                         return (playouts ++ rest)
---     where
---         str = printf "%.3f" time
---         fileName = "./experiments/test" ++ show fileIndex ++ "/" ++ str ++ "_" ++ show i ++ "_playouts.txt"
+-- if wanting to calculate the win rates of across all assignments, the result might not be too detailed
+-- in order to discover with more depth, the assignments are evaluated in two groups, one is the tournament assignment where only two players are involved
+-- and another one is multi-player group where more than two players played the game, in a three-player game, this mean three different players
+-- in this way, it tests the performance of players against each other as well as the performance of completing againt different players at the same time
+getSubset1 :: Player -> Player -> Double -> IO ()
+getSubset1 p1 p2 t = do ws <- getWinners 1 (Nothing, Just t) [0..5]
+                        let sections = chunksOf 30 ws
+                            twoPlayers = tournamentList 3 p1 p2
+                            allPlayers = generatePlayerList 3 [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
+                            positions = getIndices twoPlayers allPlayers
+                            winners = concatMap (sections !!) positions
+                        print (show p1 ++ ": " ++ show (winRate p1 winners))
+                        print (show p2 ++ ": " ++ show (winRate p2 winners))
 
+getIndices :: Eq a => [a] -> [a] -> [Int]
+getIndices [] _ = []
+getIndices (x:xs) ps = case x `elemIndex` ps of
+                        Nothing -> error "Not exist item"
+                        Just idx -> idx:getIndices xs ps
 
-loadWinners :: Double -> [Int] -> Int -> IO [[Player]]
-loadWinners _ [] _ = return []
-loadWinners time (i:is) fileIndex = do winners <- loadExperimentData fileName :: IO [[Player]]
-                                       rest <- loadWinners time is fileIndex
-                                       return (winners ++ rest)
+winRate :: (Fractional a1, Eq a2) => a2 -> [a2] -> a1
+winRate x xs = fromIntegral (length (x `elemIndices` xs)) / fromIntegral (length xs)
+
+getSubset2 :: Player -> Double -> IO ()
+getSubset2 p t = do ws <- getWinners 1 (Nothing, Just t) [0..5]
+                    let sections = chunksOf 30 ws
+                        allPlayers = generatePlayerList 3 [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
+                        threePlayers = filter (p `elem`) (filter notSamePlayers allPlayers)
+                        positions = getIndices threePlayers allPlayers
+                        winners = concatMap (sections !!) positions
+                    print (show p ++ ": " ++ show (winRate p winners))
     where
-        str = printf "%.3f" time
-        fileName = "./experiments/test" ++ show fileIndex ++ "/" ++ str ++ "_" ++ show i ++ "_winners.txt"
+        notSamePlayers xs = length (nub xs) == length xs
+
+getWinners :: Int -> MCTSControl -> [Int] -> IO [Player]
+getWinners folderIndex control is = do winnerList <- loadWinners folderIndex control is
+                                       return $ concat winnerList
+    where
+        loadWinners :: Int -> MCTSControl -> [Int] -> IO [[Player]]
+        loadWinners _ _ [] = return []
+        loadWinners folderIndex control@(iterations, time) (i:is) = do winners <- loadExperimentData fileName :: IO [[Player]]
+                                                                       rest <- loadWinners folderIndex control is
+                                                                       return (winners ++ rest)
+            where
+                str = if isNothing iterations then printf "%.3f" $ fromMaybe 0 time else show $ fromMaybe 0 iterations
+                fileName = "./experiments/test" ++ show folderIndex ++ "/" ++ str ++ "_" ++ show i  ++ "_winners.txt"
 
 
 loadExperimentData :: Read b => FilePath -> IO [b]
 loadExperimentData fileName = do filePath <- openFile fileName ReadMode
                                  contents <- hGetContents filePath
-                                 return $ convertToElement (lines contents)
+                                 return $ convertToElement $ lines contents
     where
         convertToElement s = map read s
--}
+
+
+
