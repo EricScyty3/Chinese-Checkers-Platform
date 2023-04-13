@@ -127,24 +127,23 @@ runMultipleSimulations runs player = let pls = replicate runs player
 
 -- given a certain status, and run a game with different players till one of the players wins, and return the data for evaluating the performance
 -- besides, one thing to point out is that the history trace and the killer moves are maintained by each player, in other words, they are not shared
-singleRun :: [[Int]] -> MCTSControl -> PlayerIndex -> Board -> [[Pos]] -> Int -> [HistoryTrace] ->
-             (Double, Double) -> [[KillerMoves]] -> [Player] -> Int -> IO (Maybe (PlayerIndex, [[Int]]))
-singleRun record control pi eboard iboards pn hts cons kms pl counts =
+singleRun :: MCTSControl -> PlayerIndex -> Board -> [[Pos]] -> Int -> [HistoryTrace] ->
+             (Double, Double) -> [[KillerMoves]] -> [Player] -> Int -> IO (Maybe PlayerIndex)
+singleRun control pi eboard iboards pn hts cons kms pl counts =
                                     -- there might exist cycling where all players are trying to maintain a board state that is most benefical for them
                                     -- therefore, it is necessary to have a mechanism to break the loop 
                                     if getTurns counts pn >= 500 then return Nothing
                                     else do gen <- newStdGen
-                                            (neboard, niboard, nht, nkm, playouts) <- finalSelection (GRoot 0 []) (gen, pi, 1, eboard, iboards, pn, hts !! pi, cons, sim) control
-                                            let newRecord = replace pi (playouts:(record !! pi)) record
-                                                newHistory = replace pi nht hts
+                                            (neboard, niboard, nht, nkm) <- finalSelection (GRoot 0 []) (gen, pi, 1, eboard, iboards, pn, hts !! pi, cons, sim) control
+                                            let newHistory = replace pi nht hts
                                                 newKillerMoves = replace pi nkm kms
                                             -- system "cls"
                                             -- printEoard neboard
-                                            if winStateDetect niboard then return $ Just (pi, map reverse newRecord)
+                                            if winStateDetect niboard then return $ Just pi
                                             else let niboards = replace pi niboard iboards
                                                      nextTurn = turnBase pn pi
                                                  in  niboards `par` nextTurn `pseq`
-                                                     singleRun newRecord control nextTurn neboard niboards pn newHistory cons newKillerMoves pl (counts+1)
+                                                     singleRun control nextTurn neboard niboards pn newHistory cons newKillerMoves pl (counts+1)
     where
         sim = let (x, y) = pl !! pi
               in  (x, y, kms !! pi)
@@ -153,72 +152,37 @@ singleRun record control pi eboard iboards pn hts cons kms pl counts =
 -- start the game from the initial board state
 -- from here, one phenomenon could be found, that the performed playouts were increasing as the game progressing, this could be because that when the game is close to 
 -- the end state, there are no many effective move can be played, therefore, an iteration is stopped very fast and lead to an increasing number of playouts
-runFromInitialState :: MCTSControl -> [Player] -> IO (Player, [[Int]])
-runFromInitialState control pl = do result <- singleRun record control 0 eboard iboards pn hts (0.5, 5) kms pl 0
+runFromInitialState :: MCTSControl -> [Player] -> IO Player
+runFromInitialState control pl = do result <- singleRun control 0 eboard iboards pn hts (0.5, 5) kms pl 0
                                     case result of
                                         Nothing -> runFromInitialState control pl -- rerun the experiment if cycle exists
-                                        Just (winIdx, newRecord) -> return (pl !! winIdx, reOrder (replicate (length standardOrder) []) newRecord pl)
+                                        Just winIdx -> return (pl !! winIdx)
                                     -- an additional reorder action is taken place here, where the players are ordered as 
     where
         pn = length pl
-        record = replicate pn []
         eboard = eraseBoard (playerColourList pn) externalBoard
         iboards = replicate pn startBase
         hts = replicate pn RBLeaf
         kms = replicate pn (replicate pn [])
 
-        reOrder :: [[Int]] -> [[Int]] -> [Player] -> [[Int]]
-        reOrder ls [] _ = ls
-        reOrder ls _ [] = ls
-        reOrder ls (x:xs) (p:ps) = case p `elemIndex` standardOrder of
-                                    Nothing -> error "Invalid Player"
-                                    Just idx -> let item = ls !! idx
-                                                    nitem = item ++ x
-                                                in  reOrder (replace idx nitem ls) xs ps
-
 -- run a game with certain setting several times and return lists of winner players and the playouts taken from the game
-multipleRuns :: Int -> MCTSControl -> [Player] -> IO ([Player], [[Int]])
+multipleRuns :: Int -> MCTSControl -> [Player] -> IO [Player]
 multipleRuns runs control pl = let pls = replicate runs pl
-                               in  do ls <- mapM (runFromInitialState control) pls
-                                      let winners = map fst ls
-                                          playouts = transpose $ map snd ls
-                                      return (winners, playouts)
-
--- gather the lists of the lists based on index/order
-transpose :: [[[b]]] -> [[b]]
-transpose ([]:_) = []
-transpose x = concatMap head x : transpose (map tail x)
+                               in  do mapM (runFromInitialState control) pls
 
 -- run several sets with different player settings and each sets contain multiple runs
-multipleGames :: Int -> MCTSControl -> [[Player]] -> IO ([Player], [[Int]])
+multipleGames :: Int -> MCTSControl -> [[Player]] -> IO [Player]
 multipleGames runs control pls = do results <- mapConcurrently (multipleRuns runs control) pls
-                                    return $ merge results
-
-
--- testList = [([(Move, 0)], [[1,2,3], [4,5,6], [7,8,9]]), ([(Board, 0)], [[1,2,3], [4,5,6], [7,8,9]])]
-merge :: [([a], [[b]])] -> ([a], [[b]])
-merge [] = ([], [])
-merge xs = let winners = map fst xs
-               iters = map snd xs
-           in  (concat winners, transpose iters)
+                                    return $ concat results
 
 -- write the input to a certain file of given filename
-experimentRecord :: (Show a, Show b) => ([a], [[b]]) -> FilePath -> IO ()
-experimentRecord (xs, ys) fileName = do path1 <- openFile playoutsFile WriteMode
-                                        hPutStr path1 (convertToStrings ys)
-                                        hClose path1
-                                        
-                                        path2 <- openFile winnersFile WriteMode
-                                        hPutStr path2 (show xs)
-                                        hClose path2
-
-                                        return ()
+experimentRecord :: [Player] -> FilePath -> IO ()
+experimentRecord ws fileName = do path2 <- openFile winnersFile WriteMode
+                                  hPutStr path2 (show ws)
+                                  hClose path2
+                                  return ()
     where
-    playoutsFile = fileName ++ "_playouts.txt"
-    winnersFile = fileName ++ "_winners.txt"
-
-    convertToStrings [] = ""
-    convertToStrings (x:xs) = show x ++ "\n" ++ convertToStrings xs
+        winnersFile = fileName ++ "_winners.txt"
 
 -- ghc -main-is Experiment Experiment.hs -O2 -threaded -outputdir dist
 -- this is just for testing purpose, run game several times with the fixed setting
@@ -235,14 +199,15 @@ main = do arg <- getArgs
               runs = read $ arg !! 1 :: Int                               
               idx  = read $ arg !! 2 :: Int
               str = printf "%.3f" time
-              fileName = "./experiments/test3/" ++ str ++ "_" ++ show idx
-              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)] -- 60 combinations, each assignment runs 30 times
+              fileName = "./experiments/test5/" ++ str ++ "_" ++ show idx
+              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)] -- 60 combinations, each assignment runs 30 times
               control = (Nothing, Just time)
               
         -- test0 stores the time cost for 1000 playouts
         -- test1 stores the (three-player) experimtal trials of [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
         -- test2 stores the set of [(Move, 0), (Board, 0), (OParanoid, 2), (OBRS, 2)]
         -- test3 stores the set of [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
+        -- test4 and test5 stores the percentage-based minimax search as well but with search depth of 3 and 4
 
           result <- multipleGames runs control (divide2Chunks 6 testSet idx)
           experimentRecord result fileName
@@ -253,8 +218,8 @@ main = do arg <- getArgs
 
 -- a list of tested player settings
 -- need to be adjusted when running experiments
-standardOrder :: [Player]
-standardOrder = [(Random, 0), (Move, 0), (Board, 0), (PParanoid, 2), (PParanoid, 3), (PBRS, 2), (PBRS, 3)]
+-- standardOrder :: [Player]
+-- standardOrder = [(Random, 0), (Move, 0), (Board, 0), (PParanoid, 3), (PBRS, 3)]
 
 -- divide the player arrangements into several smaller sets and pick one of them
 divide2Chunks :: Int -> [a] -> Int -> [a]
@@ -294,6 +259,7 @@ loadPlayouts folderIndex control@(iterations, time) (i:is) =
 -- in order to discover with more depth, the assignments are evaluated in two groups, one is the tournament assignment where only two players are involved
 -- and another one is multi-player group where more than two players played the game, in a three-player game, this mean three different players
 -- in this way, it tests the performance of players against each other as well as the performance of completing againt different players at the same time
+{-
 getSubset1 :: Player -> Player -> Double -> IO ()
 getSubset1 p1 p2 t = do ws <- getWinners 1 (Nothing, Just t) [0..5]
                         let sections = chunksOf 30 ws
@@ -344,6 +310,6 @@ loadExperimentData fileName = do filePath <- openFile fileName ReadMode
                                  return $ convertToElement $ lines contents
     where
         convertToElement s = map read s
-
+-}
 
 
