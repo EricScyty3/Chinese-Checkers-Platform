@@ -65,10 +65,6 @@ median xs = median' (sort xs)
         median' [x, y] = fromIntegral (x + y) / 2
         median' (x:xs) = median' (init xs)
 
--- a list of tested player settings
-standardOrder :: [Player]
-standardOrder = [(Random, 0), (Move, 0), (Board, 0), (MParanoid, 2), (MParanoid, 3), (MBRS, 2), (MBRS, 3)]
-
 -- generate the player arrangements for allowing multiple algorithms playing againts each other
 validPlayerList :: Int -> Int -> [[Int]]
 validPlayerList pn pt = filter (not . samePlayers) (playerArrangement pn pt)
@@ -207,15 +203,15 @@ merge xs = let winners = map fst xs
            in  (concat winners, transpose iters)
 
 -- write the input to a certain file of given filename
-experimentRecord :: (Show a, Show b) => ([a], [[b]]) -> FilePath -> Bool -> IO ()
-experimentRecord (xs, ys) fileName ifRecordPlayouts =
-                                     do if ifRecordPlayouts then do path1 <- openFile playoutsFile WriteMode
-                                                                    hPutStr path1 (convertToStrings ys)
-                                                                    hClose path1
-                                        else pure ()
+experimentRecord :: (Show a, Show b) => ([a], [[b]]) -> FilePath -> IO ()
+experimentRecord (xs, ys) fileName = do path1 <- openFile playoutsFile WriteMode
+                                        hPutStr path1 (convertToStrings ys)
+                                        hClose path1
+                                        
                                         path2 <- openFile winnersFile WriteMode
                                         hPutStr path2 (show xs)
                                         hClose path2
+
                                         return ()
     where
     playoutsFile = fileName ++ "_playouts.txt"
@@ -228,30 +224,37 @@ experimentRecord (xs, ys) fileName ifRecordPlayouts =
 -- this is just for testing purpose, run game several times with the fixed setting
 main :: IO ()
 main = do arg <- getArgs
-          -- start <- lookupTable `seq` getCurrentTime
+          start <- lookupTable `seq` getCurrentTime
 
-          let runs = read $ head arg :: Int
+          {-let runs = read $ head arg :: Int
               player = read $ arg !! 1 :: Player
-          result <- runMultipleSimulations runs player
-              {-
+          result <- runMultipleSimulations runs player-}
+          let
               -- time: from 0.05s to 0.5s, and finally 5s
               time = read $ head arg :: Double 
               runs = read $ arg !! 1 :: Int                               
               idx  = read $ arg !! 2 :: Int
-              str = {-if isNothing iterations then printf "%.3f" $ fromMaybe 0 time
-                    else show $ fromMaybe 0 iterations-}
-                    printf "%.3f" time
-              fileName = "./experiments/test1/" ++ str ++ "_" ++ show idx
-              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)] -- 60 combinations, each assignment runs 30 times
+              str = printf "%.3f" time
+              fileName = "./experiments/test3/" ++ str ++ "_" ++ show idx
+              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)] -- 60 combinations, each assignment runs 30 times
               control = (Nothing, Just time)
-              -}
+              
+        -- test0 stores the time cost for 1000 playouts
+        -- test1 stores the (three-player) experimtal trials of [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
+        -- test2 stores the set of [(Move, 0), (Board, 0), (OParanoid, 2), (OBRS, 2)]
+        -- test3 stores the set of [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
 
-          -- result <- multipleGames runs control (divide2Chunks 6 testSet idx)
-          -- experimentRecord result fileName True -- (isNothing iterations) -- if the iterations is set then no need to record it
-          -- end <- result `seq` getCurrentTime
-          -- putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
-          putStrLn $ "Time cost:" ++ show result
+          result <- multipleGames runs control (divide2Chunks 6 testSet idx)
+          experimentRecord result fileName
+          end <- result `seq` getCurrentTime
+          putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
+          -- putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
           putStrLn "Completed"
+
+-- a list of tested player settings
+-- need to be adjusted when running experiments
+standardOrder :: [Player]
+standardOrder = [(Random, 0), (Move, 0), (Board, 0), (PParanoid, 2), (PParanoid, 3), (PBRS, 2), (PBRS, 3)]
 
 -- divide the player arrangements into several smaller sets and pick one of them
 divide2Chunks :: Int -> [a] -> Int -> [a]

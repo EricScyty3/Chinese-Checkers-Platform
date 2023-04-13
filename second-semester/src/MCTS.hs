@@ -1,11 +1,12 @@
 module MCTS where
 -- the four phases of the Monte-Carlo Tree Search: selection, expansion, playout, backpropagation, and their policies
+-- the four phases of the Monte-Carlo Tree Search: selection, expansion, playout, backpropagation, and their policies
 import GameTree
     ( GameTreeStatus,
       HistoryTrace,
       PlayoutArgument,
       KillerMoves,
-      PlayoutEvaluator(MBRS, Random, Move, Board, MParanoid),
+      PlayoutEvaluator(..),
       GameTree(GLeaf),
       BoardIndex,
       PlayerIndex,
@@ -45,7 +46,7 @@ import Data.List ( elemIndex, elemIndices )
 import Control.Monad.State ( runState, MonadState(get), State)
 import Control.Parallel ( par, pseq )
 import RBTree ( rbInsert, rbSearch )
-import Configuration ( boardEvaluations, isMidgame, isEndgame )
+import Configuration ( boardEvaluations, isMidgame, isEndgame, isOpening )
 import Minimax
     ( TreeType(..), winStateDetermine, moveEvaluation, mEvaluation, moveOrder )
 
@@ -203,17 +204,34 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 switchEvaluator :: PlayoutArgument -> [Transform] -> State GameTreeStatus Transform
 switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether random choice will be taken place here (5% of chance)
                                                          optimalChoice <- randomPercentage 95
+                                                         isMinimaxApplied <- randomPercentage 5
                                                          -- or just the policy is set as random choice
-                                                         if not optimalChoice || evaluator == Random
+                                                         if optimalChoice `seq` not optimalChoice || evaluator == Random
                                                          then do idx <- randomIndex (length tfs)
                                                                  -- randomly choose a movement from the given list
                                                                  return (tfs !! idx)
                                                          else -- otherwise, each evaluator will lead to different estimation
                                                               case evaluator of
+                                                                -- pure distance-based heuristic
                                                                 Move -> moveEvaluator tfs
+                                                                -- lookup table mixed with global board state heuristic
                                                                 Board -> boardEvaluator tfs
-                                                                MParanoid -> mixedSearch Paranoid depth killerMoves tfs
-                                                                MBRS -> mixedSearch BRS depth killerMoves tfs
+                                                                -- the midgame-only minimax search
+                                                                MParanoid -> mixedSearch isMidgame Paranoid depth killerMoves tfs
+                                                                MBRS -> mixedSearch isMidgame BRS depth killerMoves tfs
+                                                                -- the opening-only minimax search
+                                                                OParanoid -> mixedSearch isOpening Paranoid depth killerMoves tfs
+                                                                OBRS -> mixedSearch isOpening BRS depth killerMoves tfs
+                                                                -- the endgame-only minimax search
+                                                                EParanoid -> mixedSearch isEndgame Paranoid depth killerMoves tfs
+                                                                EBRS -> mixedSearch isEndgame BRS depth killerMoves tfs
+                                                                -- the fully evaluated minimax search
+                                                                FParanoid -> mixedSearch (const True) Paranoid depth killerMoves tfs
+                                                                FBRS -> mixedSearch (const True) BRS depth killerMoves tfs
+                                                                -- the precentage-based minimax search 
+                                                                -- in this case, the minimax search is no longer the main evaluation but enhancement
+                                                                PParanoid -> isMinimaxApplied `seq` mixedSearch (const isMinimaxApplied) Paranoid depth killerMoves tfs
+                                                                PBRS -> isMinimaxApplied `seq` mixedSearch (const isMinimaxApplied) BRS depth killerMoves tfs
                                                                 _ -> error "Undefined Evaluator"
     where
         -- choose the move that could give the largest distance increment
@@ -243,13 +261,11 @@ switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether 
                                               return move
 
         -- since applying the minimax search throughout the whole simulation is too costly, it will only be applied in certain condition
-        -- here, considering that the lookup table is powerful during the opening and endgame states, the minimax search will be treated 
-        -- as an alternative for the miss of midgame state
-        mixedSearch :: TreeType -> Int -> [KillerMoves] -> [Transform] -> State GameTreeStatus Transform
-        mixedSearch treetype depth kms tfs = do iboard <- getCurrentInternalBoard
-                                                if isMidgame iboard then minimaxSearch depth kms treetype
-                                                else boardEvaluator tfs
-                                                -- here could be adjusted when doing experiments
+        -- in order to test the performance of different strategies of applying Minimax search, the condition is adjusted by switching the function f
+        mixedSearch :: ([Pos] -> Bool) -> TreeType -> Int -> [KillerMoves] -> [Transform] -> State GameTreeStatus Transform
+        mixedSearch f treetype depth kms tfs = do iboard <- getCurrentInternalBoard
+                                                  if f iboard then minimaxSearch depth kms treetype
+                                                  else boardEvaluator tfs
 
 -- game simulation from a certain board state til the end of the game, and every move made in the simulation is generated based on certain policy
 playout :: Int -> State GameTreeStatus PlayerIndex

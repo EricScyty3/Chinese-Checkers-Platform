@@ -39,7 +39,13 @@ data GameTree = GRoot BoardIndex [GameTree] |
                 deriving (Eq, Show)
 
 -- the options of playout evaluator, how the board is evaluated during the self-played simulation
-data PlayoutEvaluator = Random | Move | Board | MParanoid | MBRS deriving (Eq, Show, Read)
+data PlayoutEvaluator = Random | Move | Board | 
+                        MParanoid | MBRS |
+                        OParanoid | OBRS |
+                        EParanoid | EBRS |
+                        FParanoid | FBRS |
+                        PParanoid | PBRS
+                        deriving (Eq, Show, Read)
 -- the two last moves that could cause a cutoff for certain layer, and might be helpful for the next search (applied when the evaluator is minimax-based)
 type KillerMoves = [Transform]
 -- the parameter pair of the evaluator, the search depth, and the record of cutoff moves
