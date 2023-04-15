@@ -149,7 +149,7 @@ singleRun control pi eboard iboards pn hts cons kms pl record =
               in  (x, y, kms !! pi)
         
         -- if the current game turn exceeds 150 as well as existing several repeating board states, then this is defined as a loop/cycle
-        checkLoop input boardList= getTurns (length record) pn >= 150 && length (input `elemIndices` boardList) >= 5
+        checkLoop input boardList = getTurns (length record) pn >= 150 && length (input `elemIndices` boardList) >= 5
 
 
 -- start the game from the initial board state
