@@ -259,12 +259,13 @@ loadPlayouts folderIndex control@(iterations, time) (i:is) =
 -- in order to discover with more depth, the assignments are evaluated in two groups, one is the tournament assignment where only two players are involved
 -- and another one is multi-player group where more than two players played the game, in a three-player game, this mean three different players
 -- in this way, it tests the performance of players against each other as well as the performance of completing againt different players at the same time
-{-
-getSubset1 :: Player -> Player -> Double -> IO ()
-getSubset1 p1 p2 t = do ws <- getWinners 1 (Nothing, Just t) [0..5]
+
+getSubset1 :: Player -> Player -> Double -> [Player] -> Int -> IO ()
+getSubset1 p1 p2 time ps folderIndex = 
+                     do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
                         let sections = chunksOf 30 ws
                             twoPlayers = tournamentList 3 p1 p2
-                            allPlayers = generatePlayerList 3 [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
+                            allPlayers = generatePlayerList 3 ps
                             positions = getIndices twoPlayers allPlayers
                             winners = concatMap (sections !!) positions
                         print (show p1 ++ ": " ++ show (winRate p1 winners))
@@ -279,10 +280,11 @@ getIndices (x:xs) ps = case x `elemIndex` ps of
 winRate :: (Fractional a1, Eq a2) => a2 -> [a2] -> a1
 winRate x xs = fromIntegral (length (x `elemIndices` xs)) / fromIntegral (length xs)
 
-getSubset2 :: Player -> Double -> IO ()
-getSubset2 p t = do ws <- getWinners 1 (Nothing, Just t) [0..5]
+getSubset2 :: Player -> Double -> [Player] -> Int -> IO ()
+getSubset2 p time ps folderIndex= 
+                 do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
                     let sections = chunksOf 30 ws
-                        allPlayers = generatePlayerList 3 [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
+                        allPlayers = generatePlayerList 3 ps
                         threePlayers = filter (p `elem`) (filter notSamePlayers allPlayers)
                         positions = getIndices threePlayers allPlayers
                         winners = concatMap (sections !!) positions
@@ -310,6 +312,6 @@ loadExperimentData fileName = do filePath <- openFile fileName ReadMode
                                  return $ convertToElement $ lines contents
     where
         convertToElement s = map read s
--}
+
 
 
