@@ -128,11 +128,11 @@ runMultipleSimulations runs player = let pls = replicate runs player
 -- given a certain status, and run a game with different players till one of the players wins, and return the data for evaluating the performance
 -- besides, one thing to point out is that the history trace and the killer moves are maintained by each player, in other words, they are not shared
 singleRun :: MCTSControl -> PlayerIndex -> Board -> [[Pos]] -> Int -> [HistoryTrace] ->
-             (Double, Double) -> [[KillerMoves]] -> [Player] -> Int -> IO (Maybe PlayerIndex)
-singleRun control pi eboard iboards pn hts cons kms pl counts =
+             (Double, Double) -> [[KillerMoves]] -> [Player] -> [Board] -> IO (Maybe PlayerIndex)
+singleRun control pi eboard iboards pn hts cons kms pl record =
                                     -- there might exist cycling where all players are trying to maintain a board state that is most benefical for them
                                     -- therefore, it is necessary to have a mechanism to break the loop 
-                                    if getTurns counts pn >= 500 then return Nothing
+                                    if checkLoop eboard record then return Nothing
                                     else do gen <- newStdGen
                                             (neboard, niboard, nht, nkm) <- finalSelection (GRoot 0 []) (gen, pi, 1, eboard, iboards, pn, hts !! pi, cons, sim) control
                                             let newHistory = replace pi nht hts
@@ -143,17 +143,20 @@ singleRun control pi eboard iboards pn hts cons kms pl counts =
                                             else let niboards = replace pi niboard iboards
                                                      nextTurn = turnBase pn pi
                                                  in  niboards `par` nextTurn `pseq`
-                                                     singleRun control nextTurn neboard niboards pn newHistory cons newKillerMoves pl (counts+1)
+                                                     singleRun control nextTurn neboard niboards pn newHistory cons newKillerMoves pl (neboard:record)
     where
         sim = let (x, y) = pl !! pi
               in  (x, y, kms !! pi)
+        
+        -- if the current game turn exceeds 150 as well as existing several repeating board states, then this is defined as a loop/cycle
+        checkLoop input boardList= getTurns (length record) pn >= 150 && length (input `elemIndices` boardList) >= 5
 
 
 -- start the game from the initial board state
 -- from here, one phenomenon could be found, that the performed playouts were increasing as the game progressing, this could be because that when the game is close to 
 -- the end state, there are no many effective move can be played, therefore, an iteration is stopped very fast and lead to an increasing number of playouts
 runFromInitialState :: MCTSControl -> [Player] -> IO Player
-runFromInitialState control pl = do result <- singleRun control 0 eboard iboards pn hts (0.5, 5) kms pl 0
+runFromInitialState control pl = do result <- singleRun control 0 eboard iboards pn hts (0.5, 5) kms pl []
                                     case result of
                                         Nothing -> runFromInitialState control pl -- rerun the experiment if cycle exists
                                         Just winIdx -> return (pl !! winIdx)
@@ -195,14 +198,14 @@ main = do arg <- getArgs
           result <- runMultipleSimulations runs player-}
           let
               -- time: from 0.05s to 0.5s, and finally 5s
-              time = read $ head arg :: Double 
-              runs = read $ arg !! 1 :: Int                               
+              time = read $ head arg :: Double
+              runs = read $ arg !! 1 :: Int
               idx  = read $ arg !! 2 :: Int
               str = printf "%.3f" time
-              fileName = "./experiments/test5/" ++ str ++ "_" ++ show idx
-              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)] -- 60 combinations, each assignment runs 30 times
+              fileName = "./experiments/test4/" ++ str ++ "_" ++ show idx
+              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (PParanoid, 3), (PBRS, 3)] -- 60 combinations, each assignment runs 30 times
               control = (Nothing, Just time)
-              
+
         -- test0 stores the time cost for 1000 playouts
         -- test1 stores the (three-player) experimtal trials of [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
         -- test2 stores the set of [(Move, 0), (Board, 0), (OParanoid, 2), (OBRS, 2)]
@@ -261,7 +264,7 @@ loadPlayouts folderIndex control@(iterations, time) (i:is) =
 -- in this way, it tests the performance of players against each other as well as the performance of completing againt different players at the same time
 
 getSubset1 :: Player -> Player -> Double -> [Player] -> Int -> IO ()
-getSubset1 p1 p2 time ps folderIndex = 
+getSubset1 p1 p2 time ps folderIndex =
                      do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
                         let sections = chunksOf 30 ws
                             twoPlayers = tournamentList 3 p1 p2
@@ -281,7 +284,7 @@ winRate :: (Fractional a1, Eq a2) => a2 -> [a2] -> a1
 winRate x xs = fromIntegral (length (x `elemIndices` xs)) / fromIntegral (length xs)
 
 getSubset2 :: Player -> Double -> [Player] -> Int -> IO ()
-getSubset2 p time ps folderIndex= 
+getSubset2 p time ps folderIndex=
                  do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
                     let sections = chunksOf 30 ws
                         allPlayers = generatePlayerList 3 ps
