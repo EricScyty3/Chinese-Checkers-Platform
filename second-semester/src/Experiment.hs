@@ -197,13 +197,13 @@ main = do arg <- getArgs
               player = read $ arg !! 1 :: Player
           result <- runMultipleSimulations runs player-}
           let
-              -- time: from 0.05s to 0.5s, and finally 5s
+              -- time: from 0.005s (5ms) to 0.05s (50ms) to 0.5s (500ms), might try 1s later (1000ms)
               time = read $ head arg :: Double
               runs = read $ arg !! 1 :: Int
               idx  = read $ arg !! 2 :: Int
               str = printf "%.3f" time
-              fileName = "./experiments/test4/" ++ str ++ "_" ++ show idx
-              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (PParanoid, 3), (PBRS, 3)] -- 60 combinations, each assignment runs 30 times
+              fileName = "./experiments/test5/" ++ str ++ "_" ++ show idx
+              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)] -- 60 combinations, each assignment runs 30 times
               control = (Nothing, Just time)
 
         -- test0 stores the time cost for 1000 playouts
