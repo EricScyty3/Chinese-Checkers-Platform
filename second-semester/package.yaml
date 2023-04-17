@@ -27,7 +27,6 @@ dependencies:
   - parallel
   - containers
   - time
-  - async
 
 executables:
   app:
@@ -37,4 +36,3 @@ executables:
     - -fwarn-incomplete-patterns
     - -threaded
     - -O2
-    - -fllvm 

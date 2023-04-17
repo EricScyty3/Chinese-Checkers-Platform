@@ -202,15 +202,15 @@ main = do arg <- getArgs
               runs = read $ arg !! 1 :: Int
               idx  = read $ arg !! 2 :: Int
               str = printf "%.3f" time
-              fileName = "./experiments/test6/" ++ str ++ "_" ++ show idx
-              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (OParanoid, 3), (OBRS, 3)] -- 60 combinations, each assignment runs 30 times
+              fileName = "./experiments/test7/" ++ str ++ "_" ++ show idx
+              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)] -- 60 combinations, each assignment runs 25 times
               control = (Nothing, Just time)
 
         -- test0 stores the time cost for 1000 playouts
-        -- test1 stores the (three-player) experimtal trials of [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
+        -- test1 stores the (three-player) experimtal trials of [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)] (5%)
         -- test2 and test3 for depth of 3 and 4
         -- test4 stores Midgame-only Minimax with depth of 2 
-        -- test5 and test6 is Opening-only Minimax with depth of 2 and 3
+        -- test5, test6, and test7 store the same settings of percentage-base minimax but with different percentage value (10%)
 
           result <- multipleGames runs control (divide2Chunks 6 testSet idx)
           experimentRecord result fileName
@@ -219,45 +219,12 @@ main = do arg <- getArgs
           -- putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
           putStrLn "Completed"
 
--- a list of tested player settings
--- need to be adjusted when running experiments
--- standardOrder :: [Player]
--- standardOrder = [(Random, 0), (Move, 0), (Board, 0), (PParanoid, 3), (PBRS, 3)]
-
 -- divide the player arrangements into several smaller sets and pick one of them
 divide2Chunks :: Int -> [a] -> Int -> [a]
 divide2Chunks chunks ps idx = chunksOf chunkSize ps !! idx
     where
         chunkSize = length ps `div` chunks
-
--- loadWinner :: Int -> MCTSControl -> [Int] -> IO [Player]
--- loadWinRates folderIndex control indices = do winners <- loadWinners folderIndex control indices 
---                                               return (concat winners)
-                                              -- return $ calculateWinRate standardOrder (concat winners)
-    -- where
-    --     calculateWinRate :: [Player] -> [Player] -> [Double]
-    --     calculateWinRate [] _ = []
-    --     calculateWinRate (p:ps) xs = fromIntegral (length (p `elemIndices` xs)) / fromIntegral (length xs) : calculateWinRate ps xs
-
-{-
-loadAveragePlayouts :: Int -> MCTSControl -> [Int] -> IO [Double]
-loadAveragePlayouts folderIndex control indices = do playouts <- loadPlayouts folderIndex control indices
-                                                     let combinedList = transpose playouts
-                                                     return (map mean combinedList)
-
-loadPlayouts :: Int -> MCTSControl -> [Int] -> IO [[[Int]]]
-loadPlayouts _ _ [] = return []
-loadPlayouts folderIndex control@(iterations, time) (i:is) = 
-                                       do playouts <- loadExperimentData fileName :: IO [[Int]]
-                                          rest <- loadPlayouts folderIndex control is
-                                          return (playouts:rest)
-    where
-        str = if isNothing iterations then printf "%.3f" $ fromMaybe 0 time
-              else show $ fromMaybe 0 iterations
         
-        fileName = "./experiments/test" ++ show folderIndex ++ "/" ++ str ++ "_" ++ show i  ++ "_playouts.txt"
--}
-
 -- if wanting to calculate the win rates of across all assignments, the result might not be too detailed
 -- in order to discover with more depth, the assignments are evaluated in two groups, one is the tournament assignment where only two players are involved
 -- and another one is multi-player group where more than two players played the game, in a three-player game, this mean three different players
@@ -287,8 +254,9 @@ getPlayersByIndex x = case x of
                         2 -> [(Move, 0), (Board, 0), (PParanoid, 3), (PBRS, 3)]
                         3 -> [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)]
                         4 -> [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
-                        5 -> [(Move, 0), (Board, 0), (OParanoid, 2), (OBRS, 2)]
-                        6 -> [(Move, 0), (Board, 0), (OParanoid, 3), (OBRS, 3)]
+                        5 -> [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
+                        6 -> [(Move, 0), (Board, 0), (PParanoid, 3), (PBRS, 3)]
+                        7 -> [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)]
                         _ -> error "Invalid folder index"
 
 winRate :: Player -> [Player] -> String
