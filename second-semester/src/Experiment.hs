@@ -147,7 +147,7 @@ singleRun control pi eboard iboards pn hts cons kms pl record =
     where
         sim = let (x, y) = pl !! pi
               in  (x, y, kms !! pi)
-        
+
         -- if the current game turn exceeds 150 as well as existing several repeating board states, then this is defined as a loop/cycle
         checkLoop input boardList = getTurns (length record) pn >= 150 && length (input `elemIndices` boardList) >= 5
 
@@ -197,20 +197,20 @@ main = do arg <- getArgs
               player = read $ arg !! 1 :: Player
           result <- runMultipleSimulations runs player-}
           let
-              -- time: from 0.005s (5ms) to 0.05s (50ms) to 0.5s (500ms), might try 1s later (1000ms)
+              -- time: from 0.05s (50ms) to 0.5s (500ms), might try 1s later (1000ms)
               time = read $ head arg :: Double
               runs = read $ arg !! 1 :: Int
               idx  = read $ arg !! 2 :: Int
               str = printf "%.3f" time
-              fileName = "./experiments/test5/" ++ str ++ "_" ++ show idx
-              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)] -- 60 combinations, each assignment runs 30 times
+              fileName = "./experiments/test6/" ++ str ++ "_" ++ show idx
+              testSet  = generatePlayerList 3 [(Move, 0), (Board, 0), (OParanoid, 3), (OBRS, 3)] -- 60 combinations, each assignment runs 30 times
               control = (Nothing, Just time)
 
         -- test0 stores the time cost for 1000 playouts
-        -- test1 stores the (three-player) experimtal trials of [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
-        -- test2 stores the set of [(Move, 0), (Board, 0), (OParanoid, 2), (OBRS, 2)]
-        -- test3 stores the set of [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
-        -- test4 and test5 stores the percentage-based minimax search as well but with search depth of 3 and 4
+        -- test1 stores the (three-player) experimtal trials of [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
+        -- test2 and test3 for depth of 3 and 4
+        -- test4 stores Midgame-only Minimax with depth of 2 
+        -- test5 and test6 is Opening-only Minimax with depth of 2 and 3
 
           result <- multipleGames runs control (divide2Chunks 6 testSet idx)
           experimentRecord result fileName
@@ -263,16 +263,17 @@ loadPlayouts folderIndex control@(iterations, time) (i:is) =
 -- and another one is multi-player group where more than two players played the game, in a three-player game, this mean three different players
 -- in this way, it tests the performance of players against each other as well as the performance of completing againt different players at the same time
 
-getSubset1 :: Player -> Player -> Double -> [Player] -> Int -> IO ()
-getSubset1 p1 p2 time ps folderIndex =
+-- calculate the win rate between two players
+getSubset1 :: Player -> Player -> Double -> Int -> IO ()
+getSubset1 p1 p2 time folderIndex =
                      do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
-                        let sections = chunksOf 30 ws
+                        let sections = chunksOf 25 ws
                             twoPlayers = tournamentList 3 p1 p2
-                            allPlayers = generatePlayerList 3 ps
+                            allPlayers = generatePlayerList 3 (getPlayersByIndex folderIndex)
                             positions = getIndices twoPlayers allPlayers
                             winners = concatMap (sections !!) positions
-                        print (show p1 ++ ": " ++ show (winRate p1 winners))
-                        print (show p2 ++ ": " ++ show (winRate p2 winners))
+                        putStrLn (show p1 ++ ": " ++ winRate p1 winners)
+                        putStrLn (show p2 ++ ": " ++ winRate p2 winners)
 
 getIndices :: Eq a => [a] -> [a] -> [Int]
 getIndices [] _ = []
@@ -280,20 +281,42 @@ getIndices (x:xs) ps = case x `elemIndex` ps of
                         Nothing -> error "Not exist item"
                         Just idx -> idx:getIndices xs ps
 
-winRate :: (Fractional a1, Eq a2) => a2 -> [a2] -> a1
-winRate x xs = fromIntegral (length (x `elemIndices` xs)) / fromIntegral (length xs)
+getPlayersByIndex :: Int -> [Player]
+getPlayersByIndex x = case x of
+                        1 -> [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
+                        2 -> [(Move, 0), (Board, 0), (PParanoid, 3), (PBRS, 3)]
+                        3 -> [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)]
+                        4 -> [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
+                        5 -> [(Move, 0), (Board, 0), (OParanoid, 2), (OBRS, 2)]
+                        6 -> [(Move, 0), (Board, 0), (OParanoid, 3), (OBRS, 3)]
+                        _ -> error "Invalid folder index"
 
-getSubset2 :: Player -> Double -> [Player] -> Int -> IO ()
-getSubset2 p time ps folderIndex=
+winRate :: Player -> [Player] -> String
+winRate x xs = let wr = fromIntegral (length (x `elemIndices` xs)) / fromIntegral (length xs)
+               in  printf "%.3f" (wr :: Double)
+
+-- calculate the win rate of a player play against multiple players
+getSubset2 :: Player -> Double -> Int -> IO ()
+getSubset2 p time folderIndex=
                  do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
-                    let sections = chunksOf 30 ws
-                        allPlayers = generatePlayerList 3 ps
+                    let sections = chunksOf 25 ws
+                        allPlayers = generatePlayerList 3 (getPlayersByIndex folderIndex)
                         threePlayers = filter (p `elem`) (filter notSamePlayers allPlayers)
                         positions = getIndices threePlayers allPlayers
                         winners = concatMap (sections !!) positions
-                    print (show p ++ ": " ++ show (winRate p winners))
+                    putStrLn (show p ++ ": " ++ winRate p winners)
     where
         notSamePlayers xs = length (nub xs) == length xs
+
+-- the total win rate of a player
+getSubset3 :: Player -> Double -> Int -> IO ()
+getSubset3 p time folderIndex = do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
+                                   let sections = chunksOf 25 ws
+                                       allPlayers = generatePlayerList 3 (getPlayersByIndex folderIndex)
+                                       existGivenPlayer = filter (p `elem`) allPlayers
+                                       positions = getIndices existGivenPlayer allPlayers
+                                       winners = concatMap (sections !!) positions
+                                   putStrLn (show p ++ ": " ++ winRate p winners)
 
 getWinners :: Int -> MCTSControl -> [Int] -> IO [Player]
 getWinners folderIndex control is = do winnerList <- loadWinners folderIndex control is
