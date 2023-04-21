@@ -204,6 +204,7 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 switchEvaluator :: PlayoutArgument -> [Transform] -> State GameTreeStatus Transform
 switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether random choice will be taken place here (5% of chance)
                                                          optimalChoice <- randomPercentage 95
+                                                         -- besides, the possibility of taking the minimax search during the midgame is also generated here
                                                          isMinimaxApplied <- randomPercentage 5
                                                          -- or just the policy is set as random choice
                                                          if optimalChoice `seq` not optimalChoice || evaluator == Random
@@ -211,27 +212,18 @@ switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether 
                                                                  -- randomly choose a movement from the given list
                                                                  return (tfs !! idx)
                                                          else -- otherwise, each evaluator will lead to different estimation
+                                                              isMinimaxApplied `seq` 
                                                               case evaluator of
                                                                 -- pure distance-based heuristic
                                                                 Move -> moveEvaluator tfs
                                                                 -- lookup table mixed with global board state heuristic
                                                                 Board -> boardEvaluator tfs
-                                                                -- the midgame-only minimax search
-                                                                MParanoid -> mixedSearch isMidgame Paranoid depth killerMoves tfs
-                                                                MBRS -> mixedSearch isMidgame BRS depth killerMoves tfs
-                                                                -- the opening-only minimax search
-                                                                OParanoid -> mixedSearch isOpening Paranoid depth killerMoves tfs
-                                                                OBRS -> mixedSearch isOpening BRS depth killerMoves tfs
-                                                                -- the endgame-only minimax search
-                                                                EParanoid -> mixedSearch isEndgame Paranoid depth killerMoves tfs
-                                                                EBRS -> mixedSearch isEndgame BRS depth killerMoves tfs
-                                                                -- the fully evaluated minimax search
-                                                                FParanoid -> mixedSearch (const True) Paranoid depth killerMoves tfs
-                                                                FBRS -> mixedSearch (const True) BRS depth killerMoves tfs
                                                                 -- the precentage-based minimax search 
-                                                                -- in this case, the minimax search is no longer the main evaluation but enhancement
-                                                                PParanoid -> isMinimaxApplied `seq` mixedSearch (const isMinimaxApplied) Paranoid depth killerMoves tfs
-                                                                PBRS -> isMinimaxApplied `seq` mixedSearch (const isMinimaxApplied) BRS depth killerMoves tfs
+                                                                -- in this case, the minimax search is no longer the main evaluation but enhancement could be triggered
+                                                                -- by cetain possibility
+                                                                -- the midgame-only variant of the percentage-based minimax search is implemented here
+                                                                MParanoid -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) Paranoid depth killerMoves tfs
+                                                                MBRS -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) BRS depth killerMoves tfs
                                                                 _ -> error "Undefined Evaluator"
     where
         -- choose the move that could give the largest distance increment
