@@ -222,10 +222,10 @@ experimentRecord ws fileName = do path2 <- openFile fileName WriteMode
 -- this is just for testing purpose, run game several times with the fixed setting
 main :: IO ()
 main = do arg <- getArgs
-          start <- lookupTable `seq` getCurrentTime
-          let timeSlots = [0.25, 0.5, 1]
-              -- pairs = [((Move,0),(MParanoid,2)), ((Move,0),(MBRS,2)), ((Board,0),(MParanoid,2)), ((Board,0),(MBRS,2)), ((MParanoid,2),(MBRS,2))]
-              assignments = multiPlayerList 3 [(Move,0),(Board,0),(MBRS,3)]
+          -- start <- lookupTable `seq` getCurrentTime
+          let inputTime = read $ head arg :: Double
+              -- pairs = [((Move,0),(MParanoid,2)),((Move,0),(MBRS,2)),((Board,0),(MParanoid,2)),((Board,0),(MBRS,2)),((MParanoid,2),(MBRS,2))]
+              assignments = multiPlayerList 3 [(Move,0),(Board,0),(MBRS,2)]
           {-let runs = read $ head arg :: Int
               player = read $ arg !! 1 :: Player
           result <- runMultipleSimulations runs player-}
@@ -243,12 +243,13 @@ main = do arg <- getArgs
               -- in addition, the game is also held to test the performance when multiple types of players are added
               -- in this case, there are 6 positions possible for three players to invovle, and therefore, 167 runs for reach allocation
 
-          -- result <- mapM_ (autoRunExperiments pairs) timeSlots
-          result <- autoRunExperiments2 assignments timeSlots
-          end <- result `seq` getCurrentTime
-          putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
+          -- result <- autoRunExperiments pairs inputTime
+          result <- autoRunExperiments2 assignments inputTime
+          -- end <- result `seq` getCurrentTime
+          -- putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
           -- putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
-          putStrLn "Completed"
+          result `seq` putStrLn "All Completed!"
+
 {-
 autoRunExperiments :: [(Player, Player)] -> Double -> IO ()
 autoRunExperiments [] time = return ()
@@ -259,18 +260,17 @@ autoRunExperiments ((p1,p2):ps) time = let runs = 167
                                            control = (Nothing, Just time)
                                        in  do result <- multipleGames runs control testSet
                                               experimentRecord result fileName
+                                              putStrLn $ "Complete: " ++ show (p1,p2) ++ ", time: " ++ show time 
                                               autoRunExperiments ps time
 -}
 
-autoRunExperiments2 :: [[Player]] -> [Double] -> IO ()
-autoRunExperiments2 ps [] = return ()
-autoRunExperiments2 ps (t:ts) = let runs = 167
-                                    str = printf "%.3f" t
-                                    fileName = "./experiments3/mixedPlayersMB3_" ++ str ++ ".txt"
-                                    control = (Nothing, Just t)
-                                in  do result <- multipleGames runs control ps
-                                       experimentRecord result fileName
-                                       autoRunExperiments2 ps ts
+autoRunExperiments2 :: [[Player]] -> Double -> IO ()
+autoRunExperiments2 ps time = let runs = 167
+                                  str = printf "%.3f" time
+                                  fileName = "./experiments3/mixedPlayersMB2_" ++ str ++ ".txt"
+                                  control = (Nothing, Just time)
+                              in  do result <- multipleGames runs control ps
+                                     experimentRecord result fileName
 
 -- divide the player arrangements into several smaller sets and pick one of them
 divide2Chunks :: Int -> [a] -> Int -> [a]
@@ -348,7 +348,7 @@ getWinRate1 pair@(p1, p2) time = do winners <- loadExperimentData fileName :: IO
                                     putStrLn (show p2 ++ ": " ++ winRate p2 winners)
     where
         str = printf "%.3f" time
-        fileName = "./experiments3/test2/" ++ show pair ++ "_" ++ str ++ ".txt"
+        fileName = "./experiments3/" ++ show pair ++ "_" ++ str ++ ".txt"
 
 loadExperimentData :: Read b => FilePath -> IO [b]
 loadExperimentData fileName = do filePath <- openFile fileName ReadMode
