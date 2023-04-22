@@ -222,10 +222,9 @@ experimentRecord ws fileName = do path2 <- openFile fileName WriteMode
 -- this is just for testing purpose, run game several times with the fixed setting
 main :: IO ()
 main = do arg <- getArgs
-          -- start <- lookupTable `seq` getCurrentTime
           let inputTime = read $ head arg :: Double
-              -- pairs = [((Move,0),(MParanoid,2)),((Move,0),(MBRS,2)),((Board,0),(MParanoid,2)),((Board,0),(MBRS,2)),((MParanoid,2),(MBRS,2))]
-              assignments = multiPlayerList 3 [(Move,0),(Board,0),(MBRS,2)]
+              pairs = [((Move,0),(MParanoid,2)),((Move,0),(MBRS,2)),((Board,0),(MParanoid,2)),((Board,0),(MBRS,2)),((MParanoid,2),(MBRS,2))]
+              -- assignments = multiPlayerList 3 [(Move,0),(Board,0),(MBRS,2)]
           {-let runs = read $ head arg :: Int
               player = read $ arg !! 1 :: Player
           result <- runMultipleSimulations runs player-}
@@ -243,100 +242,43 @@ main = do arg <- getArgs
               -- in addition, the game is also held to test the performance when multiple types of players are added
               -- in this case, there are 6 positions possible for three players to invovle, and therefore, 167 runs for reach allocation
 
-          -- result <- autoRunExperiments pairs inputTime
-          result <- autoRunExperiments2 assignments inputTime
+          result <- autoRunExperiments pairs inputTime
+          -- result <- autoRunExperiments2 assignments inputTime
           -- end <- result `seq` getCurrentTime
-          -- putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
           -- putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
           result `seq` putStrLn "All Completed!"
 
-{-
 autoRunExperiments :: [(Player, Player)] -> Double -> IO ()
 autoRunExperiments [] time = return ()
 autoRunExperiments ((p1,p2):ps) time = let runs = 167
                                            str = printf "%.3f" time
-                                           fileName = "./experiments3/" ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
+                                           fileName = "./experiments3/" ++ show (p1, p2) ++ "_" ++ str ++ "_10.txt"
                                            testSet  = twoPlayerList 3 p1 p2
                                            control = (Nothing, Just time)
-                                       in  do result <- multipleGames runs control testSet
+                                       in  do start <- getCurrentTime
+                                              result <- multipleGames runs control testSet
                                               experimentRecord result fileName
+                                              end <- getCurrentTime
+                                              putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
                                               putStrLn $ "Complete: " ++ show (p1,p2) ++ ", time: " ++ show time 
                                               autoRunExperiments ps time
--}
 
 autoRunExperiments2 :: [[Player]] -> Double -> IO ()
 autoRunExperiments2 ps time = let runs = 167
                                   str = printf "%.3f" time
-                                  fileName = "./experiments3/mixedPlayersMB2_" ++ str ++ ".txt"
+                                  fileName = "./experiments3/mixedPlayersMB2_" ++ str ++ "_10.txt"
                                   control = (Nothing, Just time)
-                              in  do result <- multipleGames runs control ps
+                              in  do start <- getCurrentTime
+                                     result <- multipleGames runs control ps
                                      experimentRecord result fileName
+                                     end <- getCurrentTime
+                                     putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
 
 -- divide the player arrangements into several smaller sets and pick one of them
 divide2Chunks :: Int -> [a] -> Int -> [a]
 divide2Chunks chunks ps idx = chunksOf chunkSize ps !! idx
     where
         chunkSize = length ps `div` chunks
-
--- if wanting to calculate the win rates of across all assignments, the result might not be too detailed
--- in order to discover with more depth, the assignments are evaluated in two groups, one is the tournament assignment where only two players are involved
--- and another one is multi-player group where more than two players played the game, in a three-player game, this mean three different players
--- in this way, it tests the performance of players against each other as well as the performance of completing againt different players at the same time
-{-
--- calculate the win rate between two players
-getSubset1 :: Player -> Player -> Double -> Int -> IO ()
-getSubset1 p1 p2 time folderIndex =
-                     do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
-                        let sections = chunksOf 50 ws
-                            twoPlayers = tournamentList 3 p1 p2
-                            allPlayers = generatePlayerList 3 (getPlayersByIndex folderIndex)
-                            positions = getIndices twoPlayers allPlayers
-                            winners = concatMap (sections !!) positions
-                        putStrLn (show p1 ++ ": " ++ winRate p1 winners)
-                        putStrLn (show p2 ++ ": " ++ winRate p2 winners)
-
-getIndices :: Eq a => [a] -> [a] -> [Int]
-getIndices [] _ = []
-getIndices (x:xs) ps = case x `elemIndex` ps of
-                        Nothing -> error "Not exist item"
-                        Just idx -> idx:getIndices xs ps
-
-getPlayersByIndex :: Int -> [Player]
-getPlayersByIndex x = case x of
-                        {-1 -> [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
-                        2 -> [(Move, 0), (Board, 0), (PParanoid, 3), (PBRS, 3)]
-                        3 -> [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)]
-                        4 -> [(Move, 0), (Board, 0), (MParanoid, 2), (MBRS, 2)]
-                        5 -> [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
-                        6 -> [(Move, 0), (Board, 0), (PParanoid, 3), (PBRS, 3)]
-                        7 -> [(Move, 0), (Board, 0), (PParanoid, 4), (PBRS, 4)]-}
-                        8 -> [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
-                        9 -> [(Move, 0), (Board, 0), (PParanoid, 2), (PBRS, 2)]
-                        _ -> error "Invalid folder index"
-
--- calculate the win rate of a player play against multiple players
-getSubset2 :: Player -> Double -> Int -> IO ()
-getSubset2 p time folderIndex=
-                 do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
-                    let sections = chunksOf 50 ws
-                        allPlayers = generatePlayerList 3 (getPlayersByIndex folderIndex)
-                        threePlayers = filter (p `elem`) (filter notSamePlayers allPlayers)
-                        positions = getIndices threePlayers allPlayers
-                        winners = concatMap (sections !!) positions
-                    putStrLn (show p ++ ": " ++ winRate p winners)
-    where
-        notSamePlayers xs = length (nub xs) == length xs
-
--- the total win rate of a player
-getSubset3 :: Player -> Double -> Int -> IO ()
-getSubset3 p time folderIndex = do ws <- getWinners folderIndex (Nothing, Just time) [0..5]
-                                   let sections = chunksOf 50 ws
-                                       allPlayers = generatePlayerList 3 (getPlayersByIndex folderIndex)
-                                       existGivenPlayer = filter (p `elem`) allPlayers
-                                       positions = getIndices existGivenPlayer allPlayers
-                                       winners = concatMap (sections !!) positions
-                                   putStrLn (show p ++ ": " ++ winRate p winners)
--}
 
 winRate :: Player -> [Player] -> String
 winRate x xs = let wr = fromIntegral (length (x `elemIndices` xs)) / fromIntegral (length xs)
@@ -349,6 +291,13 @@ getWinRate1 pair@(p1, p2) time = do winners <- loadExperimentData fileName :: IO
     where
         str = printf "%.3f" time
         fileName = "./experiments3/" ++ show pair ++ "_" ++ str ++ ".txt"
+
+getWinRate2 :: String -> Player -> Double -> IO ()
+getWinRate2 name player time = do winners <- loadExperimentData fileName :: IO [Player]
+                                  putStrLn (show player ++ ": " ++ winRate player winners)
+    where
+        str = printf "%.3f" time
+        fileName = "./experiments3/mixedPlayers" ++ name ++ "_" ++ str ++ ".txt"
 
 loadExperimentData :: Read b => FilePath -> IO [b]
 loadExperimentData fileName = do filePath <- openFile fileName ReadMode
