@@ -208,6 +208,7 @@ main :: IO ()
 main = do arg <- getArgs
           
           let inputTime = read $ head arg :: Double
+              {-
               depth = read $ arg !! 1 :: Int
               percentage = read $ arg !! 2 :: Int
               pairs = [((Move,0,0),(MParanoid,depth,percentage)),
@@ -216,9 +217,10 @@ main = do arg <- getArgs
                        ((Board,0,0),(MBRS,depth,percentage)),
                        ((MParanoid,depth,percentage),(MBRS,depth,percentage))]
           result <- autoRunExperiments pairs inputTime
-            
-            -- players = read $ arg !! 1 :: [PlayoutArgument]
-          -- result <- autoRunExperiments2 players inputTime
+          -}
+              players = read $ arg !! 1 :: [PlayoutArgument]
+              evalName = read $ arg !! 2 :: String
+          result <- autoRunExperiments2 players inputTime evalName
 
           {-
           let runs = read $ head arg :: Int
@@ -252,8 +254,7 @@ autoRunExperiments2 ps time evalName =
                                   testSet = multiPlayerList 3 ps
                               in  do start <- getCurrentTime
                                      result <- multipleGames runs control testSet
-                                     -- experimentRecord result fileName
-                                     print result
+                                     experimentRecord result fileName
                                      end <- getCurrentTime
                                      putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
 {-
