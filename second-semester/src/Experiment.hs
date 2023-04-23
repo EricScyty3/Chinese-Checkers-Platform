@@ -208,20 +208,20 @@ main :: IO ()
 main = do arg <- getArgs
           
           let inputTime = read $ head arg :: Double
+              runs = read $ arg !! 1 :: Int
               {-
-              depth = read $ arg !! 1 :: Int
-              percentage = read $ arg !! 2 :: Int
+              depth = read $ arg !! 2 :: Int
+              percentage = read $ arg !! 3 :: Int
               pairs = [((Move,0,0),(MParanoid,depth,percentage)),
                        ((Move,0,0),(MBRS,depth,percentage)),
                        ((Board,0,0),(MParanoid,depth,percentage)),
                        ((Board,0,0),(MBRS,depth,percentage)),
                        ((MParanoid,depth,percentage),(MBRS,depth,percentage))]
-          result <- autoRunExperiments pairs inputTime
+          result <- autoRunExperiments runs pairs inputTime
           -}
-              players = read $ arg !! 1 :: [PlayoutArgument]
-              evalName = read $ arg !! 2 :: String
-          result <- autoRunExperiments2 players inputTime evalName
-
+              player = read $ arg !! 2 :: PlayoutArgument
+          result <- autoRunExperiments2 runs player inputTime
+          
           {-
           let runs = read $ head arg :: Int
               player = read $ arg !! 1 :: PlayoutArgument
@@ -230,10 +230,10 @@ main = do arg <- getArgs
           -}
           result `seq` putStrLn "All Completed!"
 
-autoRunExperiments :: [(PlayoutArgument, PlayoutArgument)] -> Double -> IO ()
-autoRunExperiments [] time = return ()
-autoRunExperiments ((p1,p2):ps) time = let runs = 167
-                                           str = printf "%.3f" time
+autoRunExperiments :: Int -> [(PlayoutArgument, PlayoutArgument)] -> Double -> IO ()
+autoRunExperiments _ [] time = return ()
+autoRunExperiments runs ((p1,p2):ps) time = 
+                                       let str = printf "%.3f" time
                                            fileName = "./experiments/" ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
                                            testSet  = twoPlayerList 3 p1 p2
                                            control = (Nothing, Just time)
@@ -243,15 +243,14 @@ autoRunExperiments ((p1,p2):ps) time = let runs = 167
                                               end <- getCurrentTime
                                               putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
                                               putStrLn $ "Complete: " ++ show (p1,p2) ++ ", time: " ++ show time 
-                                              autoRunExperiments ps time
+                                              autoRunExperiments runs ps time
 
-autoRunExperiments2 :: [PlayoutArgument] -> Double -> String -> IO ()
-autoRunExperiments2 ps time evalName = 
-                              let runs = 1
-                                  str = printf "%.3f" time
-                                  fileName = "./experiments/mixedPlayer_" ++ evalName ++ "_" ++ str ++ ".txt"
+autoRunExperiments2 :: Int -> PlayoutArgument -> Double -> IO ()
+autoRunExperiments2 runs player time = 
+                              let str = printf "%.3f" time
+                                  fileName = "./experiments/mixedPlayer_" ++ show player ++ "_" ++ str ++ ".txt"
                                   control = (Nothing, Just time)
-                                  testSet = multiPlayerList 3 ps
+                                  testSet = multiPlayerList 3 [(Move,0,0),(Board,0,0), player]
                               in  do start <- getCurrentTime
                                      result <- multipleGames runs control testSet
                                      experimentRecord result fileName
