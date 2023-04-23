@@ -22,7 +22,6 @@ import GameTree
       updateBoardIdx,
       setBoard,
       modifyCurrentInternalBoard,
-      setPlayoutKillerMoves,
       getRandGen,
       setRandGen,
       getBoardIndex,
@@ -202,10 +201,10 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 
 -- random greedy policy with certain percentage of choosing the optimal option while the maintaining certain randomness factor for avoiding cycling
 switchEvaluator :: PlayoutArgument -> [Transform] -> State GameTreeStatus Transform
-switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether random choice will be taken place here (5% of chance)
+switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether random choice will be taken place here (5% of chance)
                                                          optimalChoice <- randomPercentage 95
                                                          -- besides, the possibility of taking the minimax search during the midgame is also generated here
-                                                         isMinimaxApplied <- randomPercentage 5
+                                                         isMinimaxApplied <- randomPercentage percentage
                                                          -- or just the policy is set as random choice
                                                          if optimalChoice `seq` not optimalChoice || evaluator == Random
                                                          then do idx <- randomIndex (length tfs)
@@ -222,8 +221,8 @@ switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether 
                                                                 -- in this case, the minimax search is no longer the main evaluation but enhancement could be triggered
                                                                 -- by cetain possibility
                                                                 -- the midgame-only variant of the percentage-based minimax search is implemented here
-                                                                MParanoid -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) Paranoid depth killerMoves tfs
-                                                                MBRS -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) BRS depth killerMoves tfs
+                                                                MParanoid -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) Paranoid depth tfs
+                                                                MBRS -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) BRS depth tfs
                                                                 _ -> error "Undefined Evaluator"
     where
         -- choose the move that could give the largest distance increment
@@ -244,20 +243,19 @@ switchEvaluator (evaluator, depth, killerMoves) tfs = do -- first check whether 
                                 return (tfs !! idx)
 
         -- apply the depth-limited minimax-based search and return the optimal move considered by it
-        minimaxSearch :: Int -> [KillerMoves] -> TreeType -> State GameTreeStatus Transform
-        minimaxSearch 0 _ _ = error "the depth should be larger than zero"
-        minimaxSearch depth kms treetype = do (_, ri, _, eboard, iboards, pn, _, _, _) <- get
-                                              let ((move, _), nkms) = runState (mEvaluation depth (ri, eboard, iboards, pn, (-999, 999), treetype) ri) kms
-                                              -- update the killer moves after completing the embedded search
-                                              setPlayoutKillerMoves nkms
-                                              return move
+        minimaxSearch :: Int -> TreeType -> State GameTreeStatus Transform
+        minimaxSearch 0 _ = error "the depth should be larger than zero"
+        minimaxSearch depth treetype = do (_, ri, _, eboard, iboards, pn, _, _, _) <- get
+                                          let (move, _) = mEvaluation depth (ri, eboard, iboards, pn, (-999, 999), treetype) [ri]
+                                          -- update the killer moves after completing the embedded search
+                                          return move
 
         -- since applying the minimax search throughout the whole simulation is too costly, it will only be applied in certain condition
         -- in order to test the performance of different strategies of applying Minimax search, the condition is adjusted by switching the function f
-        mixedSearch :: ([Pos] -> Bool) -> TreeType -> Int -> [KillerMoves] -> [Transform] -> State GameTreeStatus Transform
-        mixedSearch f treetype depth kms tfs = do iboard <- getCurrentInternalBoard
-                                                  if f iboard then minimaxSearch depth kms treetype
-                                                  else boardEvaluator tfs
+        mixedSearch :: ([Pos] -> Bool) -> TreeType -> Int -> [Transform] -> State GameTreeStatus Transform
+        mixedSearch f treetype depth tfs = do iboard <- getCurrentInternalBoard
+                                              if f iboard then minimaxSearch depth treetype
+                                              else boardEvaluator tfs
 
 -- game simulation from a certain board state til the end of the game, and every move made in the simulation is generated based on certain policy
 playout :: Int -> State GameTreeStatus PlayerIndex
@@ -300,7 +298,7 @@ getTurns moves pn = ceiling (fromIntegral moves / fromIntegral pn)
 -- and play simulations on the selected node, and finally feedback the search tree
 
 -- the function connects the four phases as well as inserting win state check between each phase in order to end the search earlier and discover potential error
-mcts :: GameTree -> State GameTreeStatus (StdGen, GameTree, BoardIndex, HistoryTrace, [KillerMoves])
+mcts :: GameTree -> State GameTreeStatus (StdGen, GameTree, BoardIndex, HistoryTrace)
 mcts tree = do -- first start the selection with empty container, and will then receive the container full of entities
                (idxList, hashList, lastnode) <- selection tree [] []
                -- then determine if the received board is already a won board
@@ -318,11 +316,10 @@ mcts tree = do -- first start the selection with empty container, and will then 
                                         ht <- getHistoryTrace
                                         newHistory <- editHT hashList winIdx1 ht
                                         bi <- getBoardIdx
-                                        (_, _, kms) <- getPlayoutArgument
                                         -- the random number generator is necessary to be returned for the next iteration of four phases
                                         gen <- getRandGen
                                         -- get the new tree and game history
-                                        return $ newTree `par` newHistory `pseq` (gen, newTree, bi, newHistory, kms)
+                                        return $ newTree `par` newHistory `pseq` (gen, newTree, bi, newHistory)
 
                -- otherwise, the expansion is computed, the last node chosen is expanded with new children
                else do expandednode <- expansion lastnode
@@ -336,9 +333,8 @@ mcts tree = do -- first start the selection with empty container, and will then 
                                                 bi <- getBoardIdx
                                                 ht <- getHistoryTrace
                                                 newHistory2 <- editHT hashList2 winIdx2 ht
-                                                (_, _, kms) <- getPlayoutArgument
                                                 gen <- getRandGen
-                                                return $ newTree2 `par` newHistory2 `pseq` (gen, newTree2, bi, newHistory2, kms)
+                                                return $ newTree2 `par` newHistory2 `pseq` (gen, newTree2, bi, newHistory2)
 
                        else -- then, the playout could be started 
                             do winIdx3 <- playout 0
@@ -347,9 +343,8 @@ mcts tree = do -- first start the selection with empty container, and will then 
                                bi <- getBoardIdx
                                ht <- getHistoryTrace
                                newHistory3 <- editHT hashList2 winIdx3 ht
-                               (_, _, kms) <- getPlayoutArgument
                                gen <- getRandGen
-                               return $ newTree3 `par` newHistory3 `pseq` (gen, newTree3, bi, newHistory3, kms)
+                               return $ newTree3 `par` newHistory3 `pseq` (gen, newTree3, bi, newHistory3)
 
 
 

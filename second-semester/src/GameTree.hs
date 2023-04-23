@@ -44,8 +44,8 @@ data PlayoutEvaluator = Random | Move | Board |
                         deriving (Eq, Show, Read)
 -- the two last moves that could cause a cutoff for certain layer, and might be helpful for the next search (applied when the evaluator is minimax-based)
 type KillerMoves = [Transform]
--- the parameter pair of the evaluator, the search depth, and the record of cutoff moves
-type PlayoutArgument = (PlayoutEvaluator, Int, [KillerMoves])
+-- the parameter pair of the evaluator, the search depth, and the percentage of minimax search being called
+type PlayoutArgument = (PlayoutEvaluator, Int, Int)
 -- in addition to the game tree, a history trace of how a move performs in previous game is also maintained
 -- which could be useful at the early stage of the algorithm where no much moves are experienced and often compromise to random selection
 type HistoryTrace = RBTree Wins
@@ -164,11 +164,6 @@ setHistoryTrace ht = do (gen, pi, bi, b, ps, pn, _, cons, pa) <- get; put (gen, 
 -- reset the playout argument with new one
 setPlayoutArgument :: PlayoutArgument -> State GameTreeStatus ()
 setPlayoutArgument pa = do (gen, pi, bi, b, ps, pn, ht, cons, _) <- get; put (gen, pi, bi, b, ps, pn, ht, cons, pa)
-
--- reset the killer moves
-setPlayoutKillerMoves :: [[Transform]] -> State GameTreeStatus ()
-setPlayoutKillerMoves killerMoves = do (eval, depth, _) <- getPlayoutArgument
-                                       setPlayoutArgument (eval, depth, killerMoves)
 
 -- return the random number generator
 getRandGen :: State GameTreeStatus StdGen
