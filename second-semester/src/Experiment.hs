@@ -142,7 +142,7 @@ main = do arg <- getArgs
           
           let inputTime = read $ head arg :: Double
               runs = read $ arg !! 1 :: Int
-              {-
+              
               -- two players test
               depth = read $ arg !! 2 :: Int
               percentage = read $ arg !! 3 :: Int
@@ -152,10 +152,12 @@ main = do arg <- getArgs
                        ((Board,0,0),(MBRS,depth,percentage)),
                        ((MParanoid,depth,percentage),(MBRS,depth,percentage))]
           result <- autoRunExperiments runs pairs inputTime
-          -}
+          
+          {-
               -- three players test
               player = read $ arg !! 2 :: PlayoutArgument
           result <- autoRunExperiments2 runs player inputTime
+          -}
           {-
           -- computation speed test
           let runs = read $ head arg :: Int
