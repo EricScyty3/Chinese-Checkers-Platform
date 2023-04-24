@@ -256,34 +256,27 @@ autoRunExperiments2 runs player time =
                                      experimentRecord result fileName
                                      end <- getCurrentTime
                                      putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
-{-
--- divide the player arrangements into several smaller sets and pick one of them
-divide2Chunks :: Int -> [a] -> Int -> [a]
-divide2Chunks chunks ps idx = chunksOf chunkSize ps !! idx
-    where
-        chunkSize = length ps `div` chunks
 
-winRate :: Player -> [Player] -> String
+winRate :: PlayoutArgument -> [PlayoutArgument] -> String
 winRate x xs = let wr = fromIntegral (length (x `elemIndices` xs)) / fromIntegral (length xs)
                in  printf "%.3f" (wr :: Double)
 
-getWinRate1 :: (Player, Player) -> Double -> IO ()
-getWinRate1 pair@(p1, p2) time = do winners <- loadExperimentData fileName :: IO [Player]
-                                    putStrLn (show p1 ++ ": " ++ winRate p1 winners)
-                                    putStrLn (show p2 ++ ": " ++ winRate p2 winners)
+getWinRate1 :: PlayoutArgument -> PlayoutArgument -> Double -> IO ()
+getWinRate1 p1 p2 time = do winners <- loadExperimentData fileName :: IO [PlayoutArgument]
+                            putStrLn (show p1 ++ ": " ++ winRate p1 winners)
+                            putStrLn (show p2 ++ ": " ++ winRate p2 winners)
     where
         str = printf "%.3f" time
-        fileName = "./experiments3/" ++ show pair ++ "_" ++ str ++ "_10.txt"
+        fileName = "./experiments/" ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
 
-getWinRate2 :: String -> Player -> Double -> IO ()
-getWinRate2 name player time = do winners <- loadExperimentData fileName :: IO [Player]
-                                  putStrLn (show player ++ ": " ++ winRate player winners)
+getWinRate2 :: PlayoutArgument -> Double -> IO ()
+getWinRate2 player time = do winners <- loadExperimentData fileName :: IO [PlayoutArgument]
+                             putStrLn (show player ++ ": " ++ winRate player winners)
     where
         str = printf "%.3f" time
-        fileName = "./experiments3/mixedPlayers" ++ name ++ "_" ++ str ++ "_10.txt"
+        fileName = "./experiments/mixedPlayer_" ++ show player ++ "_" ++ str ++ ".txt"
 
 loadExperimentData :: Read b => FilePath -> IO [b]
 loadExperimentData fileName = do filePath <- openFile fileName ReadMode
                                  contents <- hGetContents filePath
                                  return $ read contents
--}

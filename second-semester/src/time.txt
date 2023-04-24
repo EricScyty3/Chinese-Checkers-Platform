@@ -1,0 +1,22 @@
+three-player game, 1000 playouts:
+    
+    (Move, 0): 5.464s
+    (Board, 0): 15.949s
+    
+    -- midgame-only minimax search playouts
+    (MParanoid, 2): 196.907s
+    (MBRS, 2): 232.950s
+
+    -- full minimax-based playout
+    (Paranoid, 2): 2659.787s
+    (BRS, 2): 3126.458s
+
+    -- percentage-based midgame-only minimax search
+    (MParanoid, 2, 5): 19.444s
+    (MParanoid, 3, 5): 28.293s
+    (MParanoid, 2, 10): 22.894s
+    (MParanoid, 3, 10): 38.135s
+    (MBRS, 2, 5): 20.515s
+    (MBRS, 3, 5): 31.140s
+    (MBRS, 2, 10): 25.078s
+    (MBRS, 3, 10): 42.972s
