@@ -58,9 +58,7 @@ type MGameTreeStatus = (-- the root layer player's index, should be static
 type AlphaBeta = (Int, Int)
 
 -- the win state detection here is not just checking the internal state, it considers not only the normal winning condition, 
--- but also the potential blocking, therefore, a board state is defined as winning for a player if the corresponding goal base 
--- is filled and at least one of the pieces belongs to him/her
--- overall, this is a looser definition, and could allow suicidal action that make other players win, but it is faster, hence saving more time
+-- but also the potential blocking, therefore, a board state is defined as winning for a player if the corresponding goal base is filled and at least one of the pieces belongs to him/her
 winStateDetermine :: Colour -> Board -> Bool
 winStateDetermine c b = let -- get the goal base positions on the external board of certain player 
                             goalPos = map (reversion c) goalBase
@@ -177,10 +175,9 @@ mplayerMovesList (_, eboard, iboard, pn, _, _) pi = let -- the colour of the pla
 
 -- given a depth and tree status, and the player index to start with, 
 -- generates the potential movements based on current board and send part of them to the next layer, either Max or Min, until reaching the bottom
--- where the board is eventually evaluated based on certain heuristic
--- after that, return the optimal move with its profit
+-- where the board is eventually evaluated based on certain heuristic, after that, return the optimal move with its profit
 mEvaluation :: Int -> MGameTreeStatus -> [PlayerIndex] -> (Transform, Int)
--- pass to the evaluation function when reach the bottom of the set tree
+-- pass to the evaluation when reach the bottom of the fixed-depth tree
 mEvaluation 0 st _ = (defaultMove, nEvaluation st)
 mEvaluation height st@(ri, _, ps, pn, _, _) is = let (indices, rmoves) = reorderMovements (concatMap (mplayerMovesList st) is) pn
                                                      -- determine the layer to put the resulting movements
@@ -190,8 +187,6 @@ mEvaluation height st@(ri, _, ps, pn, _, _) is = let (indices, rmoves) = reorder
 -- the difference between two minimax search: the Paranoid search follows the regular order base, 
 -- while the BRS considers all players other than the root as a layer, so it actually evaluates a list of boards from different players 
 treeSearch :: Int -> MGameTreeStatus -> PlayerIndex -> Int
--- since it is not necessary to know about the best movement from other layers, except for the root's, 
--- here they are ignored, only the corresponding score is returned
 treeSearch 0 st pi = snd $ mEvaluation 0 st [pi]
 treeSearch h st@(ri, _, _, pn, _, Paranoid) pi = snd $ mEvaluation h st [turnBase pn pi]
 treeSearch h st@(ri, _, _, pn, _, BRS) pi = snd $ mEvaluation h st (turnBaseBRS pn ri pi)
@@ -227,18 +222,17 @@ minEvaluation :: Int -> MGameTreeStatus -> [Transform] -> Transform -> [PlayerIn
 minEvaluation _ (_, _, _, _, (_, beta), _) [] bestMove _ = (bestMove, beta) 
 minEvaluation _ (_, _, _, _, (_, beta), _) _ bestMove [] = (bestMove, beta)
 minEvaluation height st@(ri, eboard, iboards, pn, ab@(alpha, beta), tt) (m:ms) bestMove (pi:pis) =
-
                                                         let currentColour = playerColour pi pn
                                                             newiboard = flipBoard (iboards !! pi) (projectMove currentColour m)
                                                             newiboards = replace pi newiboard iboards
                                                             neweboard = repaintPath eboard m
                                                             nextTurnState = neweboard `par` newiboards `pseq` (ri, neweboard, newiboards, pn, ab, tt)
                                                             score = treeSearch height nextTurnState pi
-                                                            (newBestMove, newBeta) = if score <= beta then (m, score) else (bestMove, beta) -- update the beta value
+                                                            (newBestMove, newBeta) = if score <= beta then (m, score) else (bestMove, beta)
                                                         in  if newBeta <= alpha then (bestMove, alpha)
                                                             else minEvaluation height (ri, eboard, iboards, pn, (alpha, newBeta), tt) ms newBestMove pis
 
--- evaluate the bottom node (where the depth is equal to 0) of the search tree
+-- evaluate the bottom node of the search tree
 -- since the evaluation should be made based on the root's perspective, the evaluation of the other layer player is done by evaluating how the root player could benefit
 nEvaluation :: MGameTreeStatus -> Int 
 nEvaluation st@(ri, eboard, iboard, pn, _, _)

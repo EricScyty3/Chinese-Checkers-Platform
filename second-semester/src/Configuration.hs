@@ -25,18 +25,6 @@ import Data.Maybe ( isJust, isNothing )
 import GHC.IO ( unsafePerformIO )
 import System.Directory.Extra (doesFileExist)
 
-{-
-main :: IO ()
-main = do arg <- getArgs
-          let (tree, size) = sufficientBoards
-              treeNum = read (head arg) -- the amount of program being separated 
-              treeIdx = read (arg !! 1) -- which section to be computed
-              width = read (arg !! 2)   -- the width for search the shortest moves, normally '(800,200)' 
-              ts = splitTree tree treeNum
-              items = tableElementsConstruct (ts !! treeIdx) width
-          tableElementsRecord items ("../dataset/lookup_table_" ++ show treeIdx ++ ".txt")   
--}
-
 --Database Construct-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- record and calculate the board value for each board state
 
@@ -215,16 +203,3 @@ loadTableElements = let filename1 = "../dataset/lookup_table.txt"
                            return $ convertToElement (lines contents)
     where
         convertToElement s = concatMap read s
-
-
-{-
--- `lp 49 6 = 13983816`
-lp u d = lm u (u-d+1) `div` lc d
-
-lc 1 = 1
-lc x = x * lc (x-1)
-
-lm x m
-    | x == m = m
-    | otherwise = x * lm (x-1) m
--}

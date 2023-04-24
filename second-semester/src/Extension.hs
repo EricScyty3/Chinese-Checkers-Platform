@@ -35,8 +35,7 @@ type MCTSControl = (Maybe Int, Maybe Double)
 finalSelection :: GameTree -> GameTreeStatus -> MCTSControl -> IO (Board, [Pos], HistoryTrace)
 finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                    do -- pass the arguments to the decision function controlled by certain threshold 
-                                                                      -- return the new search tree, the scores for the possible expansion of current game state
-                                                                      -- the new movement history, and the counts of game simulations' turns
+                                                                      -- get the new search tree and the new movement history
                                                                       (ntree, nht) <- getResultsUnderControl tree s control
                                                                       let children = getChildren ntree
                                                                       if null children then do printEoard eboard
@@ -56,24 +55,19 @@ finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                                   newBoard = repaintPath eboard move
                                                                                   pmove = move `par` colour `pseq` projectMove colour move
                                                                                   newInternalState = flipBoard (iboards !! pi) pmove
+                                                                              -- return the new external and internal boards, as well as the movement history  
                                                                               return $ newBoard `par` newInternalState `pseq` (newBoard, newInternalState, nht)
+                                                                              
 -- compute the MCTS with certain threshold to control the progress
 getResultsUnderControl :: GameTree -> GameTreeStatus -> MCTSControl -> IO (GameTree, HistoryTrace)
-getResultsUnderControl tree status@(_, pi, _, _, _, _, _, _, _) (Just iters, Nothing) =
-                                                           do -- retrieve the result from running MCTS with certain iterations
-                                                              (ntree, nht) <- iterations tree status iters
-                                                              -- list all win rates for the current player of all expanded moves
-                                                              return (ntree, nht)
-
-getResultsUnderControl tree status@(_, pi, _, _, _, _, _, _, _) (Nothing, Just seconds) =
-                                                             do -- first get the current time for later check
+getResultsUnderControl tree status (Just iters, Nothing) = do iterations tree status iters -- run MCTS with certain iterations
+getResultsUnderControl tree status (Nothing, Just seconds) = do -- first get the current time for later check
                                                                 startTime <- getCurrentTime
                                                                 -- run the MCTS with certain time limits
-                                                                (ntree, nht) <- timeLimits tree status (startTime, realToFrac seconds)
-                                                                return (ntree, nht)
+                                                                timeLimits tree status (startTime, realToFrac seconds)
 getResultsUnderControl tree status _ = error "Invalid control"
 
--- repeat the MCTS until certain iterations are reached
+-- repeat the four MCTS phases until certain iterations are reached
 iterations :: GameTree -> GameTreeStatus -> Int -> IO (GameTree, HistoryTrace)
 -- return when countdown to zero
 iterations tree s@(_, _, _, _, _, _, ht, _, _) 0 = return (tree, ht)

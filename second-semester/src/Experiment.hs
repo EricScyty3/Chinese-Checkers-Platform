@@ -1,7 +1,6 @@
 module Experiment where
--- setup experimental trials for testing MCTS with different strategies
+-- setup experimental trials for testing MCTS
 
--- setup experimental trials for testing MCTS with different strategies
 import MCTS ( getTurns, playout )
 import GameTree
     ( turnBase,
@@ -40,89 +39,31 @@ import Text.Printf (printf)
 import Control.Concurrent.Async ( mapConcurrently )
 import Data.Maybe (fromMaybe, isNothing)
 
--- import Data.List.Split
--- import Control.Parallel.Strategies (using, parList, rseq, parListChunk, parMap)
-
--- during the experimental trials, several outcomes are measured only under the contorl of time limits
--- the first is the total win rate in the multiple players game, either only two player types are invovled or the same number of the total players
--- the second is the (median) playouts, or more specific, the iterations that could be performed under the set time
-
--- retrieve the average value of a list
-mean :: [Int] -> Double
-mean [] = 0
-mean xs = fromIntegral (sum xs) / fromIntegral (length xs)
-
-median :: [Int] -> Double
-median xs = median' (sort xs)
-    where
-        median' :: [Int] -> Double
-        median' [] = 0
-        median' [x] = fromIntegral x
-        median' [x, y] = fromIntegral (x + y) / 2
-        median' (x:xs) = median' (init xs)
-
--- check if all player types are the same in the generated arrangements
-samePlayers :: Eq a => [a] -> Bool
-samePlayers [] = True
-samePlayers [_] = True
-samePlayers (x:y:zs) = x == y && samePlayers (y:zs)
-
-{-
--- generate the player arrangements for allowing multiple algorithms playing againts each other
-validPlayerList :: Int -> Int -> [[Int]]
-validPlayerList pn pt = filter (not . samePlayers) (playerArrangement pn pt)
-    where
-        -- check if all player types are the same in the generated arrangements
-        samePlayers :: [Int] -> Bool
-        samePlayers [] = True
-        samePlayers [_] = True
-        samePlayers (x:y:zs) = x == y && samePlayers (y:zs)
-
-        -- arrangements of players in several types of certain length
-        -- could exist entities missing certain types
-        playerArrangement :: Int -> Int -> [[Int]]
-        playerArrangement 0 _ = [[]]
-        playerArrangement players playerTypes = [x:xs | x <- [0 .. (playerTypes - 1)], xs <- playerArrangement (players - 1) playerTypes]
--}
 
 -- based on the valid assignments given, only select the ones with two players involved
 -- might be useful if wanting to dig deeper on the performance
 twoPlayerList :: Int -> PlayoutArgument -> PlayoutArgument -> [[PlayoutArgument]]
 twoPlayerList pn p1 p2 = filter (not . samePlayers) (binaryPlayerArrangement pn)
     where
+        -- a list of combinations of two players
         binaryPlayerArrangement 0 = [[]]
-        binaryPlayerArrangement players = [x:xs | x <- [p1, p2], xs <- binaryPlayerArrangement (players - 1)]
+        binaryPlayerArrangement pn = [x:xs | x <- [p1, p2], xs <- binaryPlayerArrangement (pn - 1)]
+
+        -- check if all players are the same in the generated arrangements
+        samePlayers [] = True
+        samePlayers [_] = True
+        samePlayers (x:y:zs) = x == y && samePlayers (y:zs)
 
 multiPlayerList :: Int -> [PlayoutArgument] -> [[PlayoutArgument]]
-multiPlayerList pn ps = let pl = multiPlayerArrangement pn [0 .. length ps - 1]
-                        in  map (findItemByIdx ps) pl
+multiPlayerList pn ps = multiPlayerArrangement pn ps
     where
-        multiPlayerArrangement :: Int -> [Int] -> [[Int]]
+        -- a list of combinations of several players with no duplications
         multiPlayerArrangement 0 _ = [[]]
         multiPlayerArrangement pn ps = [x:xs | x <- ps, xs <- multiPlayerArrangement (pn-1) (removeItem x ps)]
 
-        removeItem :: Int -> [Int] -> [Int]
+        -- remove certian item from a list
         removeItem _ [] = []
         removeItem y (x:xs) = if y == x then xs else x:removeItem y xs
-
-        findItemByIdx :: [a] -> [Int] -> [a]
-        findItemByIdx _ [] = []
-        findItemByIdx ps (i:is) = ps !! i:findItemByIdx ps is
-
-
-{-
--- given a list of players, arrange them in several different orders
--- True for multiple player types, and False for only two players involved
-generatePlayerList :: Int -> [Player] ->[[Player]]
-generatePlayerList pn ps = let pt = length ps
-                               pl = validPlayerList pn pt
-                           in  map (findItemByIdx ps) pl
-    where
-        findItemByIdx :: [a] -> [Int] -> [a]
-        findItemByIdx _ [] = []
-        findItemByIdx ps (i:is) = ps !! i:findItemByIdx ps is
--}
-
 
 --Run Experimental Trials---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -147,11 +88,9 @@ runMultipleSimulations runs player = let pls = replicate runs player
                                      in  do durations <- mapM runSimulation pls
                                             return $ sum durations
 
-
 -- given a certain status, and run a game with different players till one of the players wins, and return the data for evaluating the performance
--- besides, one thing to point out is that the history trace and the killer moves are maintained by each player, in other words, they are not shared
-singleRun :: MCTSControl -> PlayerIndex -> Board -> [[Pos]] -> Int -> [HistoryTrace] ->
-             (Double, Double) -> [PlayoutArgument] -> [Board] -> IO (Maybe PlayerIndex)
+-- besides, one thing to point out is that the history trace is maintained by each player specifically
+singleRun :: MCTSControl -> PlayerIndex -> Board -> [[Pos]] -> Int -> [HistoryTrace] -> (Double, Double) -> [PlayoutArgument] -> [Board] -> IO (Maybe PlayerIndex)
 singleRun control pi eboard iboards pn hts cons pl record =
                                     -- there might exist cycling where all players are trying to maintain a board state that is most benefical for them
                                     -- therefore, it is necessary to have a mechanism to break the loop 
@@ -159,8 +98,6 @@ singleRun control pi eboard iboards pn hts cons pl record =
                                     else do gen <- newStdGen
                                             (neboard, niboard, nht) <- finalSelection (GRoot 0 []) (gen, pi, 1, eboard, iboards, pn, hts !! pi, cons, pl !! pi) control
                                             let newHistory = replace pi nht hts
-                                            -- system "cls"
-                                            -- printEoard neboard
                                             if winStateDetect niboard then return $ Just pi
                                             else let niboards = replace pi niboard iboards
                                                      nextTurn = turnBase pn pi
@@ -171,21 +108,18 @@ singleRun control pi eboard iboards pn hts cons pl record =
         checkLoop input boardList = getTurns (length record) pn >= 150 && length (input `elemIndices` boardList) >= 5
 
 -- start the game from the initial board state
--- from here, one phenomenon could be found, that the performed playouts were increasing as the game progressing, this could be because that when the game is close to 
--- the end state, there are no many effective move can be played, therefore, an iteration is stopped very fast and lead to an increasing number of playouts
 runFromInitialState :: MCTSControl -> [PlayoutArgument] -> IO PlayoutArgument
 runFromInitialState control pl = do result <- singleRun control 0 eboard iboards pn hts (0.5, 5) pl []
                                     case result of
-                                        Nothing -> runFromInitialState control pl -- rerun the experiment if cycle exists
+                                        Nothing -> runFromInitialState control pl -- rerun the game if cycle exists
                                         Just winIdx -> return (pl !! winIdx)
-                                        -- an additional reorder action is taken place here, where the players are ordered as 
     where
         pn = length pl
         eboard = eraseBoard (playerColourList pn) externalBoard
         iboards = replicate pn startBase
         hts = replicate pn RBLeaf
 
--- run a game with certain setting several times and return lists of winner players and the playouts taken from the game
+-- run a game with certain setting several times and return lists of winner players
 multipleRuns :: Int -> MCTSControl -> [PlayoutArgument] -> IO [PlayoutArgument]
 multipleRuns runs control pl = let pls = replicate runs pl
                                in  do mapConcurrently (runFromInitialState control) pls
@@ -197,19 +131,19 @@ multipleGames runs control pls = do results <- mapM (multipleRuns runs control) 
 
 -- write the input to a certain file of given filename
 experimentRecord :: [PlayoutArgument] -> FilePath -> IO ()
-experimentRecord ws fileName = do path2 <- openFile fileName WriteMode
-                                  hPutStr path2 (show ws)
-                                  hClose path2
+experimentRecord ws fileName = do path <- openFile fileName WriteMode
+                                  hPutStr path (show ws)
+                                  hClose path
                                   return ()
 
 -- ghc -main-is Experiment Experiment.hs -O2 -threaded -outputdir dist
--- this is just for testing purpose, run game several times with the fixed setting
 main :: IO ()
 main = do arg <- getArgs
           
           let inputTime = read $ head arg :: Double
               runs = read $ arg !! 1 :: Int
               {-
+              -- two players test
               depth = read $ arg !! 2 :: Int
               percentage = read $ arg !! 3 :: Int
               pairs = [((Move,0,0),(MParanoid,depth,percentage)),
@@ -219,48 +153,60 @@ main = do arg <- getArgs
                        ((MParanoid,depth,percentage),(MBRS,depth,percentage))]
           result <- autoRunExperiments runs pairs inputTime
           -}
+              -- three players test
               player = read $ arg !! 2 :: PlayoutArgument
           result <- autoRunExperiments2 runs player inputTime
-          
           {-
+          -- computation speed test
           let runs = read $ head arg :: Int
               player = read $ arg !! 1 :: PlayoutArgument
           result <- runMultipleSimulations runs player
           putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
           -}
+
           result `seq` putStrLn "All Completed!"
 
+--Arrange Test Sets---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- the test set of several players playing against each other
 autoRunExperiments :: Int -> [(PlayoutArgument, PlayoutArgument)] -> Double -> IO ()
 autoRunExperiments _ [] time = return ()
 autoRunExperiments runs ((p1,p2):ps) time = 
                                        let str = printf "%.3f" time
                                            fileName = "./experiments/" ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
+                                           -- create the three-player game of two player types
                                            testSet  = twoPlayerList 3 p1 p2
                                            control = (Nothing, Just time)
                                        in  do start <- getCurrentTime
                                               result <- multipleGames runs control testSet
+                                              -- record the winners
                                               experimentRecord result fileName
                                               end <- getCurrentTime
                                               putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
                                               putStrLn $ "Complete: " ++ show (p1,p2) ++ ", time: " ++ show time 
+                                              -- keep running until all pairs are done
                                               autoRunExperiments runs ps time
 
+-- the test set of three different types of players playing in a three-player game
 autoRunExperiments2 :: Int -> PlayoutArgument -> Double -> IO ()
 autoRunExperiments2 runs player time = 
                               let str = printf "%.3f" time
                                   fileName = "./experiments/mixedPlayer_" ++ show player ++ "_" ++ str ++ ".txt"
                                   control = (Nothing, Just time)
+                                  -- create the test set with fixed benchmark players
                                   testSet = multiPlayerList 3 [(Move,0,0),(Board,0,0), player]
                               in  do start <- getCurrentTime
                                      result <- multipleGames runs control testSet
+                                     -- record the winners
                                      experimentRecord result fileName
                                      end <- getCurrentTime
                                      putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
 
+-- calculate the win rate of certain player in a list of winners
 winRate :: PlayoutArgument -> [PlayoutArgument] -> String
 winRate x xs = let wr = fromIntegral (length (x `elemIndices` xs)) / fromIntegral (length xs)
                in  printf "%.3f" (wr :: Double)
 
+-- get the win rate of between two players in a three-player game
 getWinRate1 :: PlayoutArgument -> PlayoutArgument -> Double -> IO ()
 getWinRate1 p1 p2 time = do winners <- loadExperimentData fileName :: IO [PlayoutArgument]
                             putStrLn (show p1 ++ ": " ++ winRate p1 winners)
@@ -269,6 +215,7 @@ getWinRate1 p1 p2 time = do winners <- loadExperimentData fileName :: IO [Playou
         str = printf "%.3f" time
         fileName = "./experiments/" ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
 
+-- get the win rate of a certain players in games containing more than two types of players
 getWinRate2 :: PlayoutArgument -> Double -> IO ()
 getWinRate2 player time = do winners <- loadExperimentData fileName :: IO [PlayoutArgument]
                              putStrLn (show player ++ ": " ++ winRate player winners)
@@ -276,6 +223,7 @@ getWinRate2 player time = do winners <- loadExperimentData fileName :: IO [Playo
         str = printf "%.3f" time
         fileName = "./experiments/mixedPlayer_" ++ show player ++ "_" ++ str ++ ".txt"
 
+-- read the content from the file
 loadExperimentData :: Read b => FilePath -> IO [b]
 loadExperimentData fileName = do filePath <- openFile fileName ReadMode
                                  contents <- hGetContents filePath

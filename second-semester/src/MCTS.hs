@@ -197,7 +197,7 @@ editHT (h:hs) winIdx ht = do pn <- getPlayerNum
 -- 0. random choice policy
 -- 1. move distance evaluation
 -- 2. mixed strategy of lookup table and centroid heuristic
--- 3. mixed strategy minimax search equipped with centroid heuristic and lookup table
+-- 3. midgame-only percentage-based minimax search equipped with centroid heuristic
 
 -- random greedy policy with certain percentage of choosing the optimal option while the maintaining certain randomness factor for avoiding cycling
 switchEvaluator :: PlayoutArgument -> [Transform] -> State GameTreeStatus Transform
@@ -218,8 +218,7 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                                                 -- lookup table mixed with global board state heuristic
                                                                 Board -> boardEvaluator tfs
                                                                 -- the precentage-based minimax search 
-                                                                -- in this case, the minimax search is no longer the main evaluation but enhancement could be triggered
-                                                                -- by cetain possibility
+                                                                -- in this case, the minimax search is no longer the main evaluation but enhancement could be triggered by cetain possibility
                                                                 -- the midgame-only variant of the percentage-based minimax search is implemented here
                                                                 MParanoid -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) Paranoid depth tfs
                                                                 MBRS -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) BRS depth tfs
@@ -242,16 +241,13 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                 idx <- randomMaxSelection scores
                                 return (tfs !! idx)
 
-        -- apply the depth-limited minimax-based search and return the optimal move considered by it
+        -- apply the depth-limited minimax-based search and return the provided optimal move
         minimaxSearch :: Int -> TreeType -> State GameTreeStatus Transform
         minimaxSearch 0 _ = error "the depth should be larger than zero"
         minimaxSearch depth treetype = do (_, ri, _, eboard, iboards, pn, _, _, _) <- get
-                                          let (move, _) = mEvaluation depth (ri, eboard, iboards, pn, (-999, 999), treetype) [ri]
-                                          -- update the killer moves after completing the embedded search
-                                          return move
+                                          return $ fst $ mEvaluation depth (ri, eboard, iboards, pn, (-999, 999), treetype) [ri]
 
         -- since applying the minimax search throughout the whole simulation is too costly, it will only be applied in certain condition
-        -- in order to test the performance of different strategies of applying Minimax search, the condition is adjusted by switching the function f
         mixedSearch :: ([Pos] -> Bool) -> TreeType -> Int -> [Transform] -> State GameTreeStatus Transform
         mixedSearch f treetype depth tfs = do iboard <- getCurrentInternalBoard
                                               if f iboard then minimaxSearch depth treetype
