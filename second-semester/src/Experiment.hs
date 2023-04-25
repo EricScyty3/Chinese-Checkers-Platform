@@ -37,11 +37,10 @@ import System.IO ( hClose, openFile, hPutStr, IOMode(WriteMode, ReadMode), hGetC
 import System.Process (system)
 import Text.Printf (printf)
 import Control.Concurrent.Async ( mapConcurrently )
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (fromMaybe, isNothing, isJust)
 
 
 -- based on the valid assignments given, only select the ones with two players involved
--- might be useful if wanting to dig deeper on the performance
 twoPlayerList :: Int -> PlayoutArgument -> PlayoutArgument -> [[PlayoutArgument]]
 twoPlayerList pn p1 p2 = filter (not . samePlayers) (binaryPlayerArrangement pn)
     where
@@ -53,17 +52,6 @@ twoPlayerList pn p1 p2 = filter (not . samePlayers) (binaryPlayerArrangement pn)
         samePlayers [] = True
         samePlayers [_] = True
         samePlayers (x:y:zs) = x == y && samePlayers (y:zs)
-
-multiPlayerList :: Int -> [PlayoutArgument] -> [[PlayoutArgument]]
-multiPlayerList pn ps = multiPlayerArrangement pn ps
-    where
-        -- a list of combinations of several players with no duplications
-        multiPlayerArrangement 0 _ = [[]]
-        multiPlayerArrangement pn ps = [x:xs | x <- ps, xs <- multiPlayerArrangement (pn-1) (removeItem x ps)]
-
-        -- remove certian item from a list
-        removeItem _ [] = []
-        removeItem y (x:xs) = if y == x then xs else x:removeItem y xs
 
 --Run Experimental Trials---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -97,6 +85,8 @@ singleRun control pi eboard iboards pn hts cons pl record =
                                     if checkLoop eboard record then return Nothing
                                     else do gen <- newStdGen
                                             (neboard, niboard, nht) <- finalSelection (GRoot 0 []) (gen, pi, 1, eboard, iboards, pn, hts !! pi, cons, pl !! pi) control
+                                            -- system "cls"
+                                            -- printEoard neboard
                                             let newHistory = replace pi nht hts
                                             if winStateDetect niboard then return $ Just pi
                                             else let niboards = replace pi niboard iboards
@@ -109,7 +99,7 @@ singleRun control pi eboard iboards pn hts cons pl record =
 
 -- start the game from the initial board state
 runFromInitialState :: MCTSControl -> [PlayoutArgument] -> IO PlayoutArgument
-runFromInitialState control pl = do result <- singleRun control 0 eboard iboards pn hts (0.5, 5) pl []
+runFromInitialState control pl = do result <- singleRun control 0 eboard iboards pn hts (3, 0.9) pl []
                                     case result of
                                         Nothing -> runFromInitialState control pl -- rerun the game if cycle exists
                                         Just winIdx -> return (pl !! winIdx)
@@ -139,25 +129,24 @@ experimentRecord ws fileName = do path <- openFile fileName WriteMode
 -- ghc -main-is Experiment Experiment.hs -O2 -threaded -outputdir dist
 main :: IO ()
 main = do arg <- getArgs
-          
-          let inputTime = read $ head arg :: Double
+
+          let input = read $ head arg
               runs = read $ arg !! 1 :: Int
-              
               -- two players test
+              
               depth = read $ arg !! 2 :: Int
               percentage = read $ arg !! 3 :: Int
-              pairs = [((Move,0,0),(MParanoid,depth,percentage)),
+              pairs = [
+                       -- ((Move,0,0),(Board,0,0)),
+                       ((Move,0,0),(MParanoid,depth,percentage)),
                        ((Move,0,0),(MBRS,depth,percentage)),
                        ((Board,0,0),(MParanoid,depth,percentage)),
                        ((Board,0,0),(MBRS,depth,percentage)),
-                       ((MParanoid,depth,percentage),(MBRS,depth,percentage))]
-          result <- autoRunExperiments runs pairs inputTime
+                       ((MParanoid,depth,percentage),(MBRS,depth,percentage))
+                      ]
+                        
+          result <- autoRunExperiments runs pairs input
           
-          {-
-              -- three players test
-              player = read $ arg !! 2 :: PlayoutArgument
-          result <- autoRunExperiments2 runs player inputTime
-          -}
           {-
           -- computation speed test
           let runs = read $ head arg :: Int
@@ -165,43 +154,27 @@ main = do arg <- getArgs
           result <- runMultipleSimulations runs player
           putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
           -}
-
           result `seq` putStrLn "All Completed!"
 
 --Arrange Test Sets---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the test set of several players playing against each other
-autoRunExperiments :: Int -> [(PlayoutArgument, PlayoutArgument)] -> Double -> IO ()
-autoRunExperiments _ [] time = return ()
-autoRunExperiments runs ((p1,p2):ps) time = 
-                                       let str = printf "%.3f" time
-                                           fileName = "./experiments/" ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
+autoRunExperiments _ [] _ = return ()
+autoRunExperiments runs ((p1,p2):ps) input =
+                                       let str = printf "%.3f" input
+                                           folderName = "./experiments/"
+                                           fileName = folderName ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
                                            -- create the three-player game of two player types
                                            testSet  = twoPlayerList 3 p1 p2
-                                           control = (Nothing, Just time)
                                        in  do start <- getCurrentTime
-                                              result <- multipleGames runs control testSet
+                                              result <- multipleGames runs (Nothing, Just input) testSet
                                               -- record the winners
                                               experimentRecord result fileName
                                               end <- getCurrentTime
-                                              putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
-                                              putStrLn $ "Complete: " ++ show (p1,p2) ++ ", time: " ++ show time 
+                                              putStrLn $ "Time cost: " ++ show (diffUTCTime end start) ++ ", " ++ show (p1, p2)
+                                              putStrLn $ show p1 ++ ": " ++ winRate p1 result
+                                              putStrLn $ show p2 ++ ": " ++ winRate p2 result
                                               -- keep running until all pairs are done
-                                              autoRunExperiments runs ps time
-
--- the test set of three different types of players playing in a three-player game
-autoRunExperiments2 :: Int -> PlayoutArgument -> Double -> IO ()
-autoRunExperiments2 runs player time = 
-                              let str = printf "%.3f" time
-                                  fileName = "./experiments/mixedPlayer_" ++ show player ++ "_" ++ str ++ ".txt"
-                                  control = (Nothing, Just time)
-                                  -- create the test set with fixed benchmark players
-                                  testSet = multiPlayerList 3 [(Move,0,0),(Board,0,0), player]
-                              in  do start <- getCurrentTime
-                                     result <- multipleGames runs control testSet
-                                     -- record the winners
-                                     experimentRecord result fileName
-                                     end <- getCurrentTime
-                                     putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
+                                              autoRunExperiments runs ps input
 
 -- calculate the win rate of certain player in a list of winners
 winRate :: PlayoutArgument -> [PlayoutArgument] -> String
@@ -209,21 +182,13 @@ winRate x xs = let wr = fromIntegral (length (x `elemIndices` xs)) / fromIntegra
                in  printf "%.3f" (wr :: Double)
 
 -- get the win rate of between two players in a three-player game
-getWinRate1 :: PlayoutArgument -> PlayoutArgument -> Double -> IO ()
-getWinRate1 p1 p2 time = do winners <- loadExperimentData fileName :: IO [PlayoutArgument]
+getWinRate :: PlayoutArgument -> PlayoutArgument -> Double -> IO ()
+getWinRate p1 p2 time =  do winners <- loadExperimentData fileName :: IO [PlayoutArgument]
                             putStrLn (show p1 ++ ": " ++ winRate p1 winners)
                             putStrLn (show p2 ++ ": " ++ winRate p2 winners)
     where
         str = printf "%.3f" time
         fileName = "./experiments/" ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
-
--- get the win rate of a certain players in games containing more than two types of players
-getWinRate2 :: PlayoutArgument -> Double -> IO ()
-getWinRate2 player time = do winners <- loadExperimentData fileName :: IO [PlayoutArgument]
-                             putStrLn (show player ++ ": " ++ winRate player winners)
-    where
-        str = printf "%.3f" time
-        fileName = "./experiments/mixedPlayer_" ++ show player ++ "_" ++ str ++ ".txt"
 
 -- read the content from the file
 loadExperimentData :: Read b => FilePath -> IO [b]
