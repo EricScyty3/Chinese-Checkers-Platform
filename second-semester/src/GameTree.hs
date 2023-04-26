@@ -43,7 +43,7 @@ data GameTree = GRoot BoardIndex [GameTree] |
 -- second is the move evaluator which evaluates the movement based on forward distance
 -- thrid one is the board evaluator which checks the lookup table for the possible moves toward the goal as well as calculating through an alternative board heuristic
 -- the fourth and fifth ones are the modificaed version of minimax search that are compatible for multi-player game, and with some changes adpated here
-data PlayoutEvaluator = Random | Move | Board | 
+data PlayoutEvaluator = Move | Board | 
                         MParanoid | MBRS
                         deriving (Eq, Show, Read)
 -- the two last moves that could cause a cutoff for certain layer, and might be helpful for the next search (applied when the evaluator is minimax-based)
@@ -177,6 +177,11 @@ setRandGen gen = do (_, pi, bi, b, ps, pn, ht, cons, pa) <- get
 isRoot :: GameTree -> Bool
 isRoot GRoot {} = True
 isRoot _ = False
+
+turn2Root :: GameTree -> GameTree
+turn2Root (GRoot bi children) = GRoot bi children
+turn2Root (GNode bi _ _ children) = GRoot bi children
+turn2Root (GLeaf bi _ _) = GRoot bi []
 
 -- return the board index of a node
 getBoardIndex :: GameTree -> BoardIndex

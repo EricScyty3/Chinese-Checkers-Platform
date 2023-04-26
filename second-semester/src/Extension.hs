@@ -32,11 +32,11 @@ type MCTSControl = (Maybe Int, Maybe Double)
 
 -- given a search tree and game state, with the control of tree search, return the optimal result that is received by MCTS 
 -- currently, only the iteration counts and time limits are considered, the expansion threshold could be extended but not necessary in here
-finalSelection :: GameTree -> GameTreeStatus -> MCTSControl -> IO (Board, [Pos], HistoryTrace)
+finalSelection :: GameTree -> GameTreeStatus -> MCTSControl -> IO ((GameTree, BoardIndex), Board, [Pos], HistoryTrace)
 finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                    do -- pass the arguments to the decision function controlled by certain threshold 
                                                                       -- get the new search tree and the new movement history
-                                                                      (ntree, nht) <- getResultsUnderControl tree s control
+                                                                      (ntree, bi, nht) <- getResultsUnderControl tree s control
                                                                       let children = getChildren ntree
                                                                       if null children then do printEoard eboard
                                                                                                error "No effective result was retrieved"
@@ -56,10 +56,10 @@ finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                                   pmove = move `par` colour `pseq` projectMove colour move
                                                                                   newInternalState = flipBoard (iboards !! pi) pmove
                                                                               -- return the new external and internal boards, as well as the movement history  
-                                                                              return $ newBoard `par` newInternalState `pseq` (newBoard, newInternalState, nht)
-                                                                              
+                                                                              return $ newBoard `par` newInternalState `pseq` ((chosenNode, bi), newBoard, newInternalState, nht)
+
 -- compute the MCTS with certain threshold to control the progress
-getResultsUnderControl :: GameTree -> GameTreeStatus -> MCTSControl -> IO (GameTree, HistoryTrace)
+getResultsUnderControl :: GameTree -> GameTreeStatus -> MCTSControl -> IO (GameTree, BoardIndex, HistoryTrace)
 getResultsUnderControl tree status (Just iters, Nothing) = do iterations tree status iters -- run MCTS with certain iterations
 getResultsUnderControl tree status (Nothing, Just seconds) = do -- first get the current time for later check
                                                                 startTime <- getCurrentTime
@@ -68,9 +68,9 @@ getResultsUnderControl tree status (Nothing, Just seconds) = do -- first get the
 getResultsUnderControl tree status _ = error "Invalid control"
 
 -- repeat the four MCTS phases until certain iterations are reached
-iterations :: GameTree -> GameTreeStatus -> Int -> IO (GameTree, HistoryTrace)
+iterations :: GameTree -> GameTreeStatus -> Int -> IO (GameTree, BoardIndex, HistoryTrace)
 -- return when countdown to zero
-iterations tree s@(_, _, _, _, _, _, ht, _, _) 0 = return (tree, ht)
+iterations tree s@(_, _, bi, _, _, _, ht, _, _) 0 = return (tree, bi, ht)
 iterations tree s@(_, pi, bi, board, ps, pn, ht, cons, evaluator) count =
     -- reset every status while maintaining the board index and move history
     let n@(newGen, newTree, newIdx, newHistory) = evalState (mcts tree) s
@@ -78,12 +78,12 @@ iterations tree s@(_, pi, bi, board, ps, pn, ht, cons, evaluator) count =
     in  n `seq` iterations newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, evaluator) (count-1)
 
 -- repeating the MCTS until certain time setting (in seconds) are reached
-timeLimits :: GameTree -> GameTreeStatus -> (UTCTime, Pico) -> IO (GameTree, HistoryTrace)
+timeLimits :: GameTree -> GameTreeStatus -> (UTCTime, Pico) -> IO (GameTree, BoardIndex, HistoryTrace)
 timeLimits tree s@(_, pi, bi, board, ps, pn, ht, cons, evaluator) (start, duration) =
     let n@(newGen, newTree, newIdx, newHistory) = evalState (mcts tree) s
     in  do -- check if the time is exceeded
            currentTime <- n `seq` getCurrentTime
            let interval = nominalDiffTimeToSeconds $ diffUTCTime currentTime start
-           if interval >= duration then return (newTree, newHistory)
+           if interval >= duration then return (newTree, newIdx, newHistory)
            -- otherwise, keep processing
            else timeLimits newTree (newGen, pi, newIdx, board, ps, pn, newHistory, cons, evaluator) (start, duration)

@@ -206,7 +206,7 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                                          -- besides, the possibility of taking the minimax search during the midgame is also generated here
                                                          isMinimaxApplied <- randomPercentage percentage
                                                          -- or just the policy is set as random choice
-                                                         if optimalChoice `seq` not optimalChoice || evaluator == Random
+                                                         if optimalChoice `seq` not optimalChoice
                                                          then do idx <- randomIndex (length tfs)
                                                                  -- randomly choose a movement from the given list
                                                                  return (tfs !! idx)
@@ -222,7 +222,6 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                                                 -- the midgame-only variant of the percentage-based minimax search is implemented here
                                                                 MParanoid -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) Paranoid depth tfs
                                                                 MBRS -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) BRS depth tfs
-                                                                _ -> error "Undefined Evaluator"
     where
         -- choose the move that could give the largest distance increment
         moveEvaluator :: [Transform] -> State GameTreeStatus Transform
