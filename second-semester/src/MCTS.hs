@@ -45,9 +45,10 @@ import Data.List ( elemIndex, elemIndices )
 import Control.Monad.State ( runState, MonadState(get), State)
 import Control.Parallel ( par, pseq )
 import RBTree ( rbInsert, rbSearch )
-import Configuration ( boardEvaluations, isMidgame, isEndgame, isOpening )
+import Configuration ( isMidgame, isEndgame, isOpening, ifExistMidgame, boardEvaluation )
 import Minimax
     ( TreeType(..), winStateDetermine, moveEvaluation, mEvaluation, moveOrder )
+import BFS (centroid)
 
 
 -- during the selection a list of node that is chosen along with the selection, 
@@ -211,7 +212,7 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                                                  -- randomly choose a movement from the given list
                                                                  return (tfs !! idx)
                                                          else -- otherwise, each evaluator will lead to different estimation
-                                                              isMinimaxApplied `seq` 
+                                                              isMinimaxApplied `seq`
                                                               case evaluator of
                                                                 -- pure distance-based heuristic
                                                                 Move -> moveEvaluator tfs
@@ -235,10 +236,12 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
         -- choose the move that return the best score from the dataset/heuristic
         boardEvaluator :: [Transform] -> State GameTreeStatus Transform
         boardEvaluator tfs = do -- generate a list of new internal boards
+                                colour <- getPlayerColour
                                 psList <- mapM modifyCurrentInternalBoard tfs
-                                let scores = boardEvaluations psList
-                                idx <- randomMaxSelection scores
-                                return (tfs !! idx)
+                                if ifExistMidgame psList then moveEvaluator tfs
+                                else do let scores = map boardEvaluation psList
+                                        idx <- randomMaxSelection scores
+                                        return (tfs !! idx)
 
         -- apply the depth-limited minimax-based search and return the provided optimal move
         minimaxSearch :: Int -> TreeType -> State GameTreeStatus Transform
@@ -259,8 +262,8 @@ playout moveCounts =
                    let turns = getTurns moveCounts pn
                    if turns >= 1000 then do -- stop the playouts if costing too much time
                                             iboards <- getInternalBoards
-                                            -- if exceeds the set threshold, stops the simulation and return the player with the maximum evaluated value as the winner
-                                            let scores = boardEvaluations iboards
+                                            -- if exceeds the set threshold, stops the simulation and return the player with the most cemtroid value as the winner
+                                            let scores = map centroid iboards
                                             randomMaxSelection scores
                    -- otherwise, process normally                                          
                    else do -- first get all of the available movements

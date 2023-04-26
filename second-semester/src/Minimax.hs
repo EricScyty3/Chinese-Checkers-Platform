@@ -55,7 +55,7 @@ type MGameTreeStatus = (-- the root layer player's index, should be static
 -- the alpha and beta value, alpha value represents the solution of Max node, and beta for Min node
 -- this pair is not consistent throughout the search tree, it might be switched, for instance, 
 -- the maximum value of a subtree could be the minimum value of its parent
-type AlphaBeta = (Int, Int)
+type AlphaBeta = (Double, Double)
 
 -- the win state detection here is not just checking the internal state, it considers not only the normal winning condition, 
 -- but also the potential blocking, therefore, a board state is defined as winning for a player if the corresponding goal base is filled and at least one of the pieces belongs to him/her
@@ -176,7 +176,7 @@ mplayerMovesList (_, eboard, iboard, pn, _, _) pi = let -- the colour of the pla
 -- given a depth and tree status, and the player index to start with, 
 -- generates the potential movements based on current board and send part of them to the next layer, either Max or Min, until reaching the bottom
 -- where the board is eventually evaluated based on certain heuristic, after that, return the optimal move with its profit
-mEvaluation :: Int -> MGameTreeStatus -> [PlayerIndex] -> (Transform, Int)
+mEvaluation :: Int -> MGameTreeStatus -> [PlayerIndex] -> (Transform, Double)
 -- pass to the evaluation when reach the bottom of the fixed-depth tree
 mEvaluation 0 st _ = (defaultMove, nEvaluation st)
 mEvaluation height st@(ri, _, ps, pn, _, _) is = let (indices, rmoves) = reorderMovements (concatMap (mplayerMovesList st) is) pn
@@ -186,7 +186,7 @@ mEvaluation height st@(ri, _, ps, pn, _, _) is = let (indices, rmoves) = reorder
 
 -- the difference between two minimax search: the Paranoid search follows the regular order base, 
 -- while the BRS considers all players other than the root as a layer, so it actually evaluates a list of boards from different players 
-treeSearch :: Int -> MGameTreeStatus -> PlayerIndex -> Int
+treeSearch :: Int -> MGameTreeStatus -> PlayerIndex -> Double
 treeSearch 0 st pi = snd $ mEvaluation 0 st [pi]
 treeSearch h st@(ri, _, _, pn, _, Paranoid) pi = snd $ mEvaluation h st [turnBase pn pi]
 treeSearch h st@(ri, _, _, pn, _, BRS) pi = snd $ mEvaluation h st (turnBaseBRS pn ri pi)
@@ -194,7 +194,7 @@ treeSearch h st@(ri, _, _, pn, _, BRS) pi = snd $ mEvaluation h st (turnBaseBRS 
 -- for handling the Max nodes 
 -- here first sync the game status based on the given moves, and then passes it to the next layer until reaching the bottom (pre-set depth)  
 -- while maintaining the best score and the corresponding movement                                                       
-maxEvaluation :: Int -> MGameTreeStatus -> [Transform] -> Transform -> [PlayerIndex] -> (Transform, Int)
+maxEvaluation :: Int -> MGameTreeStatus -> [Transform] -> Transform -> [PlayerIndex] -> (Transform, Double)
 -- Max layer should return alpha value
 maxEvaluation _ (_, _, _, _, (alpha, _), _) [] bestMove _ = (bestMove, alpha) 
 maxEvaluation _ (_, _, _, _, (alpha, _), _) _ bestMove [] = (bestMove, alpha)
@@ -217,7 +217,7 @@ maxEvaluation height st@(ri, eboard, iboards, pn, ab@(alpha, beta), tt) (m:ms) b
                                                                  maxEvaluation height (ri, eboard, iboards, pn, (newAlpha, beta), tt) ms newBestMove pis
                                                                 
 -- similar to above but different in comparing the returned score
-minEvaluation :: Int -> MGameTreeStatus -> [Transform] -> Transform -> [PlayerIndex] -> (Transform, Int)
+minEvaluation :: Int -> MGameTreeStatus -> [Transform] -> Transform -> [PlayerIndex] -> (Transform, Double)
 -- Min layer returns beta value
 minEvaluation _ (_, _, _, _, (_, beta), _) [] bestMove _ = (bestMove, beta) 
 minEvaluation _ (_, _, _, _, (_, beta), _) _ bestMove [] = (bestMove, beta)
@@ -234,15 +234,13 @@ minEvaluation height st@(ri, eboard, iboards, pn, ab@(alpha, beta), tt) (m:ms) b
 
 -- evaluate the bottom node of the search tree
 -- since the evaluation should be made based on the root's perspective, the evaluation of the other layer player is done by evaluating how the root player could benefit
-nEvaluation :: MGameTreeStatus -> Int 
+nEvaluation :: MGameTreeStatus -> Double 
 nEvaluation st@(ri, eboard, iboard, pn, _, _)
     -- only care about the root layer's score, if root player wins, returns the maximum gain
     | winStateDetermine rolour eboard = 28 
     -- if no player is winning, how a board is evaluated is based on how the root player could play on this board
-    | otherwise = let ms = mplayerMovesList st ri    
-                      rs = iboard !! ri
-                      nbs = rolour `par` ms `par` rs `pseq` map (flipBoard rs . projectMove rolour) ms
-                      scores = map centroid nbs
+    | otherwise = let pms = map (projectMove rolour) (mplayerMovesList st ri) 
+                      scores = map moveEvaluation pms
                   in  if null scores then error (show eboard) else maximum scores
     where
         rolour = playerColour ri pn

@@ -24,6 +24,7 @@ import RBTree ( rbInsert, rbSearch, RBTree(..) )
 import Data.Maybe ( isJust, isNothing )
 import GHC.IO ( unsafePerformIO )
 import System.Directory.Extra (doesFileExist)
+import Minimax (moveEvaluation)
 
 --Database Construct-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- record and calculate the board value for each board state
@@ -126,21 +127,13 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
 
 --Board Evaluation------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- evaluating a board state based on the generated lookup table
-
--- compute a list of board configurations, with a mixed-strategy evaluator that combines both shortest path and centroid heuristics
-boardEvaluations :: [[Pos]] -> [Int]
-boardEvaluations ps = -- for consistent purpose, if found a midgame states existed in the list
-                      -- the evaluation will only be taken place based on the centroid heuristic
-                      if ifExistMidgame ps then map centroid ps
-                      -- otherwise, the lookup table is allowed to be used as reference
-                      else map boardEvaluation ps
-    where                      
-        -- search for a shortest path for a certain board configuration based on the given dataset
-        boardEvaluation :: [Pos] -> Int
-        boardEvaluation ps = case evaluateBoard ps (isOpening ps) of
-                                Nothing -> error ("Cannot find such board configuration: " ++ show ps)
-                                Just x  -> 28 - x
-
+     
+-- search for a shortest path for a certain board configuration based on the given dataset
+boardEvaluation :: [Pos] -> Int
+boardEvaluation ps = case evaluateBoard ps (isOpening ps) of
+                        Nothing -> error ("Cannot find such board configuration: " ++ show ps)
+                        Just x  -> 28 - x
+    where
         -- search for the shortest path value of a certain board configuration
         evaluateBoard :: [Pos] -> Bool -> Maybe Int
         evaluateBoard ps flag = -- if the entered board is at the opening stage

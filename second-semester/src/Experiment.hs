@@ -24,7 +24,7 @@ import Zobrist ( winStateDetect )
 import System.Environment (getArgs)
 import System.Random (newStdGen)
 import Extension (finalSelection, MCTSControl)
-import Configuration (lookupTable, boardEvaluations)
+import Configuration (lookupTable)
 import Data.Time (getCurrentTime)
 import Data.Time.Clock (diffUTCTime)
 import Control.Parallel (par, pseq)
@@ -139,6 +139,7 @@ multipleGames constant runs control pls = do results <- mapM (multipleRuns const
                                              return $ concat results
 
 -- write the input to a certain file of given filename
+experimentRecord :: Show a => a -> FilePath -> IO ()
 experimentRecord ws fileName = do path <- openFile fileName WriteMode
                                   hPutStr path (show ws)
                                   hClose path
@@ -163,8 +164,12 @@ main :: IO ()
 main = do arg <- getArgs
           let c = read $ head arg
               runs = read $ arg !! 1 
-          results <- multipleGames c runs (Just 10, Nothing) (twoPlayerList 3 (Move,0,0) (Board,0,0))
-          print $ winRate (Board,0,0) results
+              player = read $ arg !! 2
+          results <- multipleGames c runs (Nothing, Just 0.25) (twoPlayerList 3 (Move,0,0) player)
+          print $ winRate player results
+        --   results <- runFromInitialState c (Nothing, Just 0.25) runs
+        --   print results
+          return ()
 
 
 {-
