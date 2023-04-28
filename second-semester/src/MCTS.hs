@@ -45,7 +45,7 @@ import Data.List ( elemIndex, elemIndices )
 import Control.Monad.State ( runState, MonadState(get), State)
 import Control.Parallel ( par, pseq )
 import RBTree ( rbInsert, rbSearch )
-import Configuration ( isMidgame, isEndgame, isOpening, ifExistMidgame, boardEvaluation )
+import Configuration ( boardEvaluation, isMidgame, isEndgame, isOpening, ifExistMidgame )
 import Minimax
     ( TreeType(..), winStateDetermine, moveEvaluation, mEvaluation, moveOrder )
 import BFS (centroid)
@@ -208,12 +208,14 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                                          isMinimaxApplied <- randomPercentage percentage
                                                          -- or just the policy is set as random choice
                                                          if optimalChoice `seq` not optimalChoice
-                                                         then do idx <- randomIndex (length tfs)
-                                                                 -- randomly choose a movement from the given list
+                                                         then do -- purely random choice
+                                                                 idx <- randomIndex (length tfs)
                                                                  return (tfs !! idx)
                                                          else -- otherwise, each evaluator will lead to different estimation
                                                               isMinimaxApplied `seq`
                                                               case evaluator of
+                                                                -- normal random choice (selective randomness)
+                                                                Random -> do randomAdvance tfs
                                                                 -- pure distance-based heuristic
                                                                 Move -> moveEvaluator tfs
                                                                 -- lookup table mixed with global board state heuristic
@@ -221,9 +223,17 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                                                 -- the precentage-based minimax search 
                                                                 -- in this case, the minimax search is no longer the main evaluation but enhancement could be triggered by cetain possibility
                                                                 -- the midgame-only variant of the percentage-based minimax search is implemented here
-                                                                MParanoid -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) Paranoid depth tfs
-                                                                MBRS -> mixedSearch (\x -> isMinimaxApplied && isMidgame x) BRS depth tfs
+                                                                MParanoid -> mixedSearch isMinimaxApplied Paranoid depth tfs
+                                                                MBRS -> mixedSearch isMinimaxApplied BRS depth tfs
     where
+        -- to avoid wasting simulations, only the certain moves are allowed to be chosen randomly
+        randomAdvance :: [Transform] -> State GameTreeStatus Transform
+        randomAdvance tfs = do colour <- getPlayerColour
+                               iboard <- getCurrentInternalBoard
+                               let remainingMoves = expandPolicy colour tfs iboard
+                               idx <- randomIndex (length remainingMoves)
+                               return (remainingMoves !! idx)
+
         -- choose the move that could give the largest distance increment
         moveEvaluator :: [Transform] -> State GameTreeStatus Transform
         moveEvaluator tfs = do colour <- getPlayerColour
@@ -236,9 +246,8 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
         -- choose the move that return the best score from the dataset/heuristic
         boardEvaluator :: [Transform] -> State GameTreeStatus Transform
         boardEvaluator tfs = do -- generate a list of new internal boards
-                                colour <- getPlayerColour
                                 psList <- mapM modifyCurrentInternalBoard tfs
-                                if ifExistMidgame psList then moveEvaluator tfs
+                                if ifExistMidgame psList then moveEvaluator tfs 
                                 else do let scores = map boardEvaluation psList
                                         idx <- randomMaxSelection scores
                                         return (tfs !! idx)
@@ -250,10 +259,10 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                           return $ fst $ mEvaluation depth (ri, eboard, iboards, pn, (-999, 999), treetype) [ri]
 
         -- since applying the minimax search throughout the whole simulation is too costly, it will only be applied in certain condition
-        mixedSearch :: ([Pos] -> Bool) -> TreeType -> Int -> [Transform] -> State GameTreeStatus Transform
-        mixedSearch f treetype depth tfs = do iboard <- getCurrentInternalBoard
-                                              if f iboard then minimaxSearch depth treetype
-                                              else boardEvaluator tfs
+        mixedSearch :: Bool -> TreeType -> Int -> [Transform] -> State GameTreeStatus Transform
+        mixedSearch flag treetype depth tfs = do iboard <- getCurrentInternalBoard
+                                                 if isMidgame iboard && flag then minimaxSearch depth treetype
+                                                 else boardEvaluator tfs 
 
 -- game simulation from a certain board state til the end of the game, and every move made in the simulation is generated based on certain policy
 playout :: Int -> State GameTreeStatus PlayerIndex

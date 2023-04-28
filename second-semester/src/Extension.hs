@@ -32,11 +32,11 @@ type MCTSControl = (Maybe Int, Maybe Double)
 
 -- given a search tree and game state, with the control of tree search, return the optimal result that is received by MCTS 
 -- currently, only the iteration counts and time limits are considered, the expansion threshold could be extended but not necessary in here
-finalSelection :: GameTree -> GameTreeStatus -> MCTSControl -> IO ((GameTree, BoardIndex), Board, [Pos], HistoryTrace)
+finalSelection :: GameTree -> GameTreeStatus -> MCTSControl -> IO (Board, [Pos], HistoryTrace)
 finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                    do -- pass the arguments to the decision function controlled by certain threshold 
                                                                       -- get the new search tree and the new movement history
-                                                                      (ntree, bi, nht) <- getResultsUnderControl tree s control
+                                                                      (ntree, _, nht) <- getResultsUnderControl tree s control
                                                                       let children = getChildren ntree
                                                                       if null children then do printEoard eboard
                                                                                                error "No effective result was retrieved"
@@ -56,7 +56,7 @@ finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                                   pmove = move `par` colour `pseq` projectMove colour move
                                                                                   newInternalState = flipBoard (iboards !! pi) pmove
                                                                               -- return the new external and internal boards, as well as the movement history  
-                                                                              return $ newBoard `par` newInternalState `pseq` ((chosenNode, bi), newBoard, newInternalState, nht)
+                                                                              return $ newBoard `par` newInternalState `pseq` (newBoard, newInternalState, nht)
 
 -- compute the MCTS with certain threshold to control the progress
 getResultsUnderControl :: GameTree -> GameTreeStatus -> MCTSControl -> IO (GameTree, BoardIndex, HistoryTrace)
