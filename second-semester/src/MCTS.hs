@@ -1,6 +1,5 @@
 module MCTS where
 -- the four phases of the Monte-Carlo Tree Search: selection, expansion, playout, backpropagation, and their policies
--- the four phases of the Monte-Carlo Tree Search: selection, expansion, playout, backpropagation, and their policies
 import GameTree
     ( GameTreeStatus,
       HistoryTrace,
