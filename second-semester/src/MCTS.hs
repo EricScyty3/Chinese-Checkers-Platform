@@ -246,7 +246,8 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
         boardEvaluator :: [Transform] -> State GameTreeStatus Transform
         boardEvaluator tfs = do -- generate a list of new internal boards
                                 psList <- mapM modifyCurrentInternalBoard tfs
-                                if ifExistMidgame psList then moveEvaluator tfs 
+                                alternativeMove <- moveEvaluator tfs
+                                if psList `par` alternativeMove `pseq` ifExistMidgame psList then return alternativeMove
                                 else do let scores = map boardEvaluation psList
                                         idx <- randomMaxSelection scores
                                         return (tfs !! idx)
@@ -261,7 +262,7 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
         mixedSearch :: Bool -> TreeType -> Int -> [Transform] -> State GameTreeStatus Transform
         mixedSearch flag treetype depth tfs = do iboard <- getCurrentInternalBoard
                                                  if isMidgame iboard && flag then minimaxSearch depth treetype
-                                                 else boardEvaluator tfs 
+                                                 else boardEvaluator tfs
 
 -- game simulation from a certain board state til the end of the game, and every move made in the simulation is generated based on certain policy
 playout :: Int -> State GameTreeStatus PlayerIndex

@@ -73,7 +73,6 @@ multiPlayerList pn ps = let pl = multiPlayerArrangement pn [0 .. length ps - 1]
 
 -- given a player, run the playout phase from the initial board till the end of the game
 -- this is applied to see the search speed of each evaluator 
-{-
 runSimulation :: (Double, Double) -> PlayoutArgument -> IO ()
 runSimulation cons player = 
                        do newGen <- newStdGen
@@ -96,9 +95,6 @@ runMultipleSimulations runs cons player =
                                             let duration = realToFrac $ diffUTCTime end start
                                             return duration
 
--}
-
-{-
 runMCTSSelection :: Double -> (Double, Double) -> PlayoutArgument -> IO ()
 runMCTSSelection inputTime cons player = do gen <- newStdGen
                                             result <- finalSelection (GRoot 0 []) (gen, 0, 1, eboard, iboards, pn, RBLeaf, cons, player) (Nothing, Just inputTime)
@@ -107,7 +103,6 @@ runMCTSSelection inputTime cons player = do gen <- newStdGen
         pn = 3
         eboard = eraseBoard (playerColourList pn) externalBoard
         iboards = replicate pn startBase
--}
 
 -- given a certain status, and run a game with different players till one of the players wins, and return the data for evaluating the performance
 -- besides, one thing to point out is that the history trace is maintained by each player specifically
@@ -180,44 +175,37 @@ main = do arg <- getArgs
           testConstantPairs p1 cs ws
 -}
 
-{-
+
 main = do arg <- getArgs
           let input = read $ head arg
               player = read $ arg !! 1
           runMCTSSelection input (0.1, 5) player
           -- putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
--}
 
+{-
 -- ghc -main-is Experiment Experiment.hs -O2 -threaded -outputdir dist
 main :: IO ()
 main = do arg <- getArgs
           let input = read $ head arg :: Double
-              -- player = read $ arg !! 1 :: PlayoutArgument
-              pairs = [ [(Move,0,0), (Board,0,0), (Random,0,0)]
-                        {-[(Move,0,0), (Random,0,0), (MBRS,2,10)]-}
-                       -- ((Move, 0, 0), (Board, 0, 0))
-                    --    ((Move, 0, 0), (Random, 0, 0)),
-                    --    ((Board, 0, 0), (Random, 0, 0))
-                    --    ((Random,0,0), player),
-                    --    ((Move,0,0), player),
-                    --    ((Board,0,0), player)
-                    -- ((MParanoid,2,10), (MBRS,2,10))
-                      ]
-          mapM_ (autoRunExperiment 167 (0.1, 5) input) pairs
+              -- invovledPlayers = [ [(Move,0,0), (Board,0,0), (Random,0,0)]]
+              playerPairs = [((Move,0,0), (Board,0,0))]
+              
+          -- mapM_ (autoRunExperiment2 167 (0.1, 5) input) invovledPlayers
+          mapM_ (autoRunExperiment 167 (0.1, 5) input) playerPairs
           
           putStrLn "All Completed!"
           return ()
-
+-}
 
 --Arrange Test Sets---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the test set of several players playing against each other
--- autoRunExperiment :: Int -> (Double, Double) -> Double -> (PlayoutArgument, PlayoutArgument) -> IO ()
-autoRunExperiment runs cons input ps = 
+autoRunExperiment :: Int -> (Double, Double) -> Double -> (PlayoutArgument, PlayoutArgument) -> IO ()
+autoRunExperiment runs cons input (p1, p2) = 
                                        let str = printf "%.2f" input
-                                           folderName = "./experiments2/"
-                                           fileName = folderName ++ show ps ++ "_" ++ str ++ ".txt"
+                                           folderName = "./experiments/"
+                                           fileName = folderName ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
                                            -- create the three-player game of two player types
-                                           testSet = {-twoPlayerList 3 p1 p2-} multiPlayerList 3 ps
+                                           testSet = twoPlayerList 3 p1 p2
                                        in  do start <- getCurrentTime
                                               result <- multipleGames cons runs (Nothing, Just input) testSet
                                               -- record the winners
@@ -225,6 +213,19 @@ autoRunExperiment runs cons input ps =
                                               end <- getCurrentTime
                                               putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
 
+autoRunExperiment2 :: Int -> (Double, Double) -> Double -> [PlayoutArgument] -> IO ()
+autoRunExperiment2 runs cons input ps = 
+                                       let str = printf "%.2f" input
+                                           folderName = "./experiments2/"
+                                           fileName = folderName ++ show ps ++ "_" ++ str ++ ".txt"
+                                           -- create the three-player game of two player types
+                                           testSet = multiPlayerList 3 ps
+                                       in  do start <- getCurrentTime
+                                              result <- multipleGames cons runs (Nothing, Just input) testSet
+                                              -- record the winners
+                                              experimentRecord result fileName
+                                              end <- getCurrentTime
+                                              putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
 
 -- calculate the win rate of certain player in a list of winners
 winRate :: PlayoutArgument -> [PlayoutArgument] -> Double
