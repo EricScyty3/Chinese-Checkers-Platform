@@ -247,7 +247,11 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
         boardEvaluator tfs = do -- generate a list of new internal boards
                                 psList <- mapM modifyCurrentInternalBoard tfs
                                 alternativeMove <- moveEvaluator tfs
-                                if psList `par` alternativeMove `pseq` ifExistMidgame psList then return alternativeMove
+                                -- let scores = map centroid psList
+                                if psList `par` alternativeMove `pseq` ifExistMidgame psList 
+                                then do {-idx <- randomMaxSelection scores
+                                          return (tfs !! idx)-}
+                                        return alternativeMove
                                 else do let scores = map boardEvaluation psList
                                         idx <- randomMaxSelection scores
                                         return (tfs !! idx)

@@ -4,8 +4,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-import Monomer
-    ( nodeEnabled,
+
+import Monomer  
+  ( nodeEnabled,
       nodeVisible,
       darkTheme,
       black,
@@ -116,6 +117,7 @@ data ComputerPlayerConfig = ComputerPlayerConfig {
   _ph :: Double,   -- the constant of Progressive History in MCTS selection
   _evaluator :: PlayoutEvaluator, -- the board evaluator used during the MCTS playouts
   _depth :: Int,   -- if the embedded minimax search is applied during the playouts, the related search depth is needed to be defined
+  _percentage :: Int, -- if the embedded minimax search is applied during the playouts, the search could be triggered based on certain possibility 
   _control :: Bool, -- the choice of how the MCTS is processed, including iteration counts, time limits and tree expansions
   _cvalue :: Int   -- as well as the exact control's value
 } deriving (Eq, Show)
@@ -149,10 +151,8 @@ data AppModel = AppModel {
   _errorMessage :: String,
   -- a list of available position that a player can move from a position that was chosen
   _movesList :: [BoardPos],
-  -- the history record of the game, which could be made use of by the MCTS
-  _gameHistory :: HistoryTrace,
-  -- the history record of moves that cause a alpha-beta pruning, which could be made use of by the minimax search
-  _killerMoves :: [KillerMoves],
+  -- the history record of the game, which could be made use of by each MCTS player
+  _gameHistory :: [HistoryTrace],
   -- indicates the current player to be configured at the setting dialog
   _pageIndex :: Int,
   -- a list of potential computer players' configurations
@@ -176,7 +176,7 @@ data AppEvent
     -- update the page index for the setting panel
   | PageUpdate Int
     -- display the move made by the computer player onto the board
-  | RenderComputerAction (Board, [Pos], HistoryTrace, [KillerMoves])
+  | RenderComputerAction (Board, [Pos], HistoryTrace)
     -- generate the corresponding movement based on the current game state and pass the result to the "RenderComputerAction" event
   | GenerateComputerAction
     -- jump to the next player's turn, as well as check the next player's state
@@ -262,6 +262,7 @@ buildUI wenv model = widgetTree where
   ditem = playerConfigs . configList . singular (ix pageIdx) . depth
   citem = playerConfigs . configList . singular (ix pageIdx) . control
   cvitem = playerConfigs . configList . singular (ix pageIdx) . cvalue
+  pitem = playerConfigs . configList . singular (ix pageIdx) . percentage
 
   -- the layer that integrates the options of player's settings
   featureLayer =
@@ -280,12 +281,12 @@ buildUI wenv model = widgetTree where
           -- radio for controlling the playout evaluator
           box_ [alignTop] $ vgrid_ [childSpacing_ 5] [
             label "Simulation Evaluator" `styleBasic` [textSize 20],
-            labeledRadio_ "Random" Random eitem [textRight],
-            labeledRadio_ "Move" Move eitem [textRight],
-            labeledRadio_ "Board" Board eitem [textRight],
+            labeledRadio_ "Random Choice" Random eitem [textRight],
+            labeledRadio_ "Move Distance" Move eitem [textRight],
+            labeledRadio_ "Lookup Table" Board eitem [textRight],
             -- and the corresponding search depth if minimax search is chosen
             hstack [
-              labeledRadio_ "Embedded Paranoid" MParanoid eitem [textRight],
+              labeledRadio_ "Midgame Paranoid" MParanoid eitem [textRight],
               spacer,
               hgrid_ [childSpacing_ 5] [
                 label "(depth)",
@@ -296,7 +297,7 @@ buildUI wenv model = widgetTree where
             ],
 
             hstack [
-              labeledRadio_ "Embedded BRS" MBRS eitem [textRight],
+              labeledRadio_ "Midgame BRS" MBRS eitem [textRight],
               spacer,
               hgrid_ [childSpacing_ 5] [
                 label "(depth)",
@@ -320,9 +321,14 @@ buildUI wenv model = widgetTree where
         spacer,
         -- the corresponding value of the control threshold
         vstack [
-          label (T.pack ("Control Value: " ++ show (vitem ^. cvalue))) `styleBasic` [textSize 20],
+          label (T.pack ("Control Value: " ++ show (vitem ^. cvalue) ++ (if vitem ^. control then " rounds" else " seconds"))) `styleBasic` [textSize 20],
           spacer,
-          hslider cvitem 1 100 `styleBasic` [fgColor orange]
+          hslider cvitem 1 50 `styleBasic` [fgColor orange],
+
+          spacer,
+          label (T.pack ("Percentage Value: " ++ show (vitem ^. percentage) ++ "%")) `styleBasic` [textSize 20],
+          spacer,
+          hslider pitem 1 100 `styleBasic` [fgColor orange] `nodeEnabled` (vitem ^. evaluator == MParanoid || vitem ^. evaluator == MBRS)
         ]
       ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
 
@@ -422,9 +428,8 @@ handleEvent wenv node model evt = case evt of
   StartGameButtonClick -> [Model $ model & startGame .~ True
                                          & displayBoard .~ eraseBoard (playerColourList pn) externalBoard
                                          & internalStates .~ replicate pn startBase
-                                         & killerMoves .~ replicate pn []
                                          & movesList .~ []
-                                         & gameHistory .~ RBLeaf
+                                         & gameHistory .~ replicate pn RBLeaf
                                          & startPos .~ initialPos
                                          & endPos .~ initialPos
                                          & playerIndex .~ 0
@@ -524,12 +529,11 @@ handleEvent wenv node model evt = case evt of
    | otherwise -> [Task $ RenderComputerAction <$> aiDecision model] -- call the decision function with necessary IO actions
 
   -- only react when the during the game that is currently played by the computer player
-  RenderComputerAction (newBoard, newInternalState, newHistory, newKillerMoves)
+  RenderComputerAction (newBoard, newInternalState, newHistory)
     | not (model ^. startGame) -> [] -- quiting the game will avoid the decision function's result being rendered
     | otherwise -> [Model $ model & displayBoard .~ newBoard
                                   & internalStates .~ insertState
-                                  & gameHistory .~ newHistory
-                                  & killerMoves .~ newKillerMoves
+                                  & gameHistory .~ replace pi newHistory ht
                                   & playerIndex .~ newTurn
                                   & ifWin .~ newWinState,
                    Task $ return GenerateComputerAction]
@@ -549,24 +553,24 @@ handleEvent wenv node model evt = case evt of
     iboards = model ^. internalStates
     eboard = model ^. displayBoard
     ht = model ^. gameHistory
-    kms = model ^. killerMoves
     currentColour = playerColour pi pn -- retrieve the current turn's colour
     availableMoves = model ^. movesList
 
     -- pass the model' state to the MCTS framework and run it, and finally return the new state
-    aiDecision :: AppModel -> IO (Board, [Pos], HistoryTrace, [KillerMoves])
+    aiDecision :: AppModel -> IO (Board, [Pos], HistoryTrace)
     aiDecision model = do gen <- newStdGen -- first get the random number generator for the later usage
                           let root = GRoot 0 [] -- initialise the search tree
-                          (newBoard, newInternalState, newHistory, newKillerMoves)
-                            <- finalSelection root (gen, pi, 1, eboard, iboards, pn, ht, (uctCons, phCons), (eval, dep, kms))
+                          (newBoard, newInternalState, newHistory)
+                            <- finalSelection root (gen, pi, 1, eboard, iboards, pn, ht !! pi, (uctCons, phCons), (eval, dep, per))
                                                    (mctsControl mctsCon ctVal)
-                          return (newBoard, newInternalState, newHistory, newKillerMoves)
+                          return (newBoard, newInternalState, newHistory)
       where
         -- access to detailed configuration for the computer player
         uctCons = model ^. playerConfigs ^?! configList . ix pi . uct
         phCons = model ^. playerConfigs ^?! configList . ix pi . ph
         eval = model ^. playerConfigs ^?! configList . ix pi . evaluator
         dep = model ^. playerConfigs ^?! configList . ix pi . depth
+        per = model ^. playerConfigs ^?! configList . ix pi . percentage
         -- the control of the search progress
         mctsCon = model ^. playerConfigs ^?! configList . ix pi . control
         ctVal = model ^. playerConfigs ^?! configList . ix pi . cvalue
@@ -603,8 +607,7 @@ main = do lookupTable `seq` startApp model handleEvent buildUI config
       _endPos = initialPos,
       _errorMessage = "",
       _movesList = [],
-      _gameHistory = RBLeaf,
-      _killerMoves = [],
+      _gameHistory = [],
       _pageIndex = 0,
-      _playerConfigs = ConfigList $ replicate 6 (ComputerPlayerConfig False 3 1 MoveEvaluator 2 True 10)
+      _playerConfigs = ConfigList $ replicate 6 (ComputerPlayerConfig False 2.5 2.5 Move 2 100 True 10)
     }

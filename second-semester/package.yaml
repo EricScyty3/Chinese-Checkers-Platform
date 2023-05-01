@@ -27,6 +27,7 @@ dependencies:
   - parallel
   - containers
   - time
+  - async
 
 executables:
   app:

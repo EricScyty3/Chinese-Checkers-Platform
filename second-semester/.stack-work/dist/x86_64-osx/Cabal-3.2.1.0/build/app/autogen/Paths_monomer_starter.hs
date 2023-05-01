@@ -30,7 +30,7 @@ version = Version [0,1,0,0] []
 bindir, libdir, dynlibdir, datadir, libexecdir, sysconfdir :: FilePath
 
 bindir     = "/Users/eric/msc-project/second-semester/.stack-work/install/x86_64-osx/167079fef1aada05b0f885ee3429c9f8879c352f1816c7974bc6eb49c4d381aa/8.10.7/bin"
-libdir     = "/Users/eric/msc-project/second-semester/.stack-work/install/x86_64-osx/167079fef1aada05b0f885ee3429c9f8879c352f1816c7974bc6eb49c4d381aa/8.10.7/lib/x86_64-osx-ghc-8.10.7/monomer-starter-0.1.0.0-HkBAnAbL4Ze6ZtV77qUiao-app"
+libdir     = "/Users/eric/msc-project/second-semester/.stack-work/install/x86_64-osx/167079fef1aada05b0f885ee3429c9f8879c352f1816c7974bc6eb49c4d381aa/8.10.7/lib/x86_64-osx-ghc-8.10.7/monomer-starter-0.1.0.0-7fD7nASt0R9K1f90crGZsd-app"
 dynlibdir  = "/Users/eric/msc-project/second-semester/.stack-work/install/x86_64-osx/167079fef1aada05b0f885ee3429c9f8879c352f1816c7974bc6eb49c4d381aa/8.10.7/lib/x86_64-osx-ghc-8.10.7"
 datadir    = "/Users/eric/msc-project/second-semester/.stack-work/install/x86_64-osx/167079fef1aada05b0f885ee3429c9f8879c352f1816c7974bc6eb49c4d381aa/8.10.7/share/x86_64-osx-ghc-8.10.7/monomer-starter-0.1.0.0"
 libexecdir = "/Users/eric/msc-project/second-semester/.stack-work/install/x86_64-osx/167079fef1aada05b0f885ee3429c9f8879c352f1816c7974bc6eb49c4d381aa/8.10.7/libexec/x86_64-osx-ghc-8.10.7/monomer-starter-0.1.0.0"

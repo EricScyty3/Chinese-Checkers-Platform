@@ -34,7 +34,6 @@ import Minimax (MGameTreeStatus)
 import Control.Monad.State (evalState, replicateM)
 import Data.List.Extra (chunksOf)
 import System.IO ( hClose, openFile, hPutStr, IOMode(WriteMode, ReadMode), hGetContents )
-import System.Process (system)
 import Text.Printf (printf)
 import Control.Concurrent.Async ( mapConcurrently, mapConcurrently_ )
 import Data.Maybe (fromMaybe, isNothing, isJust)
@@ -114,9 +113,7 @@ singleRun control pi eboard iboards pn hts pl record cons =
                                     -- therefore, it is necessary to have a mechanism to break the loop 
                                     if checkLoop eboard record then return Nothing
                                     else do gen <- newStdGen
-                                            (neboard, niboard, nht) <- finalSelection (GRoot 0 []) (gen, pi, 1, eboard, iboards, pn, hts !! pi, cons, pl !! pi) control
-                                            -- system "cls"
-                                            -- printEoard neboard                   
+                                            (neboard, niboard, nht) <- finalSelection (GRoot 0 []) (gen, pi, 1, eboard, iboards, pn, hts !! pi, cons, pl !! pi) control                   
                                             if winStateDetect niboard then return $ Just pi
                                             else let niboards = replace pi niboard iboards
                                                      nextTurn = turnBase pn pi

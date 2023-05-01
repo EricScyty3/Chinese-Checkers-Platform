@@ -34,9 +34,10 @@ executable app
       src
   default-extensions:
       OverloadedStrings
-  ghc-options: -fwarn-incomplete-patterns -threaded -O2 -fllvm
+  ghc-options: -fwarn-incomplete-patterns -threaded -O2
   build-depends:
-      base >=4.7 && <5
+      async
+    , base >=4.7 && <5
     , containers
     , data-default
     , extra

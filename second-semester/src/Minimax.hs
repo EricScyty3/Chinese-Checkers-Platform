@@ -240,6 +240,8 @@ nEvaluation st@(ri, eboard, iboard, pn, _, _)
     | winStateDetermine rolour eboard = 28 
     -- if no player is winning, how a board is evaluated is based on how the root player could play on this board
     | otherwise = let pms = map (projectMove rolour) (mplayerMovesList st ri) 
+                      -- ps = map (flipBoard (iboard !! ri)) pms 
+                      -- scores = map centroid ps
                       scores = map moveEvaluation pms
                   in  if null scores then error (show eboard) else maximum scores
     where
