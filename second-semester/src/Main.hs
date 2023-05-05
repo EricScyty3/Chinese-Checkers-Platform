@@ -323,7 +323,7 @@ buildUI wenv model = widgetTree where
         vstack [
           label (T.pack ("Control Value: " ++ show (vitem ^. cvalue) ++ (if vitem ^. control then " rounds" else " seconds"))) `styleBasic` [textSize 20],
           spacer,
-          hslider cvitem 1 50 `styleBasic` [fgColor orange],
+          hslider cvitem 1 100 `styleBasic` [fgColor orange],
 
           spacer,
           label (T.pack ("Percentage Value: " ++ show (vitem ^. percentage) ++ "%")) `styleBasic` [textSize 20],
