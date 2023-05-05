@@ -171,15 +171,15 @@ main = do arg <- getArgs
           mapM (testConstantPair p1 cs) ws
 -}
 
-{-
+
 main = do arg <- getArgs
           let input = read $ head arg
               player = read $ arg !! 1
-          runMCTSSelection input (0.1, 5) player
-          -- putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
--}
+          -- runMCTSSelection input (0.1, 5) player
+          result <- runMultipleSimulations input (0.1, 5) player
+          putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
 
-
+{-
 -- ghc -main-is Experiment Experiment.hs -O2 -threaded -outputdir dist
 main :: IO ()
 main = do arg <- getArgs
@@ -193,7 +193,7 @@ main = do arg <- getArgs
           
           putStrLn "All Completed!"
           return ()
-
+-}
 
 --Arrange Test Sets---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
