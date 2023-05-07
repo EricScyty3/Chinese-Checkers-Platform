@@ -466,7 +466,7 @@ printEoard b = do putStrLn ""
 
         skipZero :: Char -> Char
         skipZero '7' = ' '
-        skipZero '6' = ' '
+        skipZero '6' = 'e'
         skipZero ',' = ' '
         skipZero a = a
 
