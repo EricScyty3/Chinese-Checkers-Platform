@@ -465,7 +465,8 @@ printEoard b = do putStrLn ""
                                 printEoard' xs
 
         skipZero :: Char -> Char
-        skipZero '0' = ' '
+        skipZero '7' = ' '
+        skipZero '6' = ' '
         skipZero ',' = ' '
         skipZero a = a
 
@@ -476,8 +477,9 @@ testDisplay = map testDisplay'
         testDisplay' :: [BoardPos] -> [Int]
         testDisplay' [] = []
         testDisplay' (x:xs) = case getColour x of
-                                Just c -> colourToIndex c + 1:testDisplay' xs
-                                _ -> 0:testDisplay' xs
+                                Just c -> colourToIndex c :testDisplay' xs
+                                _ -> (if isEmpty x then 6 else 7) : testDisplay' xs
+
 
         colourToIndex :: Colour -> Int
         colourToIndex colour = fromMaybe (-1) $ colourIndex colour 6
