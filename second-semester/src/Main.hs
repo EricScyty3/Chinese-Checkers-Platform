@@ -326,7 +326,7 @@ buildUI wenv model = widgetTree where
           hslider cvitem 1 100 `styleBasic` [fgColor orange],
 
           spacer,
-          label (T.pack ("Percentage Value: " ++ show (vitem ^. percentage) ++ "%")) `styleBasic` [textSize 20],
+          label (T.pack ("Percentage Value (Minimax-only): " ++ show (vitem ^. percentage) ++ "%")) `styleBasic` [textSize 20],
           spacer,
           hslider pitem 1 100 `styleBasic` [fgColor orange] `nodeEnabled` (vitem ^. evaluator == MParanoid || vitem ^. evaluator == MBRS)
         ]
@@ -400,7 +400,7 @@ buildUI wenv model = widgetTree where
 
         vstack [
           -- the buttons that allow user to quit the game
-          box $ button "End Game" EndGameButtonClick `styleBasic` [textSize 30],
+          box $ button "End Game" EndGameButtonClick `styleBasic` [textSize 20],
           spacer,
           -- render the board row by row
           vgrid_ [childSpacing_ 5] (renderRowButtons <$> (model ^. displayBoard))
@@ -433,25 +433,24 @@ handleEvent wenv node model evt = case evt of
                                          & startPos .~ initialPos
                                          & endPos .~ initialPos
                                          & playerIndex .~ 0
-                                         & ifWin .~ False,
+                                         & ifWin .~ False
+                                         & errorMessage .~ "Please perform a move",
                           Task $ return GenerateComputerAction -- also check if the first turn is played by the computer player
                           ]
 
   -- quit the game and return back to the menu page
-  EndGameButtonClick -> [Model $ model & startGame .~ False
-                                       & errorMessage .~ ""
-                                       ]
+  EndGameButtonClick -> [Model $ model & startGame .~ False]
 
   -- update the page index with given increment or decrement
   PageUpdate x -> [Model $ model & pageIndex +~ x]
 
   -- update the turn index when a movement is complete
   TurnSwitch -> [Model $ model & playerIndex .~ newTurn -- update the game turn and internal state, check the win state, as well as clean the buffer
-                                  & ifWin .~ newWinState
-                                  & startPos .~ initialPos
-                                  & endPos .~ initialPos
-                                  & internalStates .~ insertState
-                                  & errorMessage .~ "",
+                               & ifWin .~ newWinState
+                               & startPos .~ initialPos
+                               & endPos .~ initialPos
+                               & internalStates .~ insertState
+                               & errorMessage .~ if newWinState then "Congratulations" else "Please perform a move",
                     Task $ return GenerateComputerAction] -- also determine the next turn's player 
     where
       currentInternalState = iboards !! pi
@@ -475,12 +474,12 @@ handleEvent wenv node model evt = case evt of
   -- first check the validity of the start position, then the end position, if no error is made then process, otherwise, discard that and print the error message 
   MoveCheck pos ci
     -- if win state is confirmed, or it is not the turn for human player then ignore the event
-    | model ^. ifWin || ifComputersTurn -> []
+    | model ^. ifWin || ifComputersTurn pi -> []
     -- if entering the start position
     | ifInitialPiece sp -> case () of
                                -- check if the entered position is fitted for the current player
                             () | pi == ci -> [Model $ model & startPos .~ pos
-                                                            & errorMessage .~ ""
+                                                            & errorMessage .~ "Please perform a move"
                                                             & movesList .~ newMovesList]
                                -- if not, then discard this, and wait for another valid input
                                | pi /= ci -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": invalid start"
@@ -496,7 +495,7 @@ handleEvent wenv node model evt = case evt of
                                                                          & startPos .~ initialPos]
                                       -- if reachable, then this movement will then be rendered
                                       | pos `elem` availableMoves -> [Model $ model & endPos .~ pos
-                                                                                    & errorMessage .~ "",
+                                                                                    & errorMessage .~ "Please perform a move",
                                                                       Task $ return RenderMove] 
                                       -- if the destination is not in the list, then invalid
                                       | pos `notElem` availableMoves -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": destination unreacbable"
@@ -524,9 +523,10 @@ handleEvent wenv node model evt = case evt of
 
   -- called by other events to determine if needed to trigger AI decision function
   GenerateComputerAction
-   | not ifComputersTurn || model ^. ifWin || not (model ^. startGame) -> [] -- ignore if already win or not the turn for computer players, or the game is ended
+   | not (ifComputersTurn pi) || model ^. ifWin || not (model ^. startGame) -> [] -- ignore if already win or not the turn for computer players, or the game is ended
 
-   | otherwise -> [Task $ RenderComputerAction <$> aiDecision model] -- call the decision function with necessary IO actions
+   | otherwise -> [ Model $ model & errorMessage .~ "Computer is now thinking ...",
+                    Task $ RenderComputerAction <$> aiDecision model] -- call the decision function with necessary IO actions
 
   -- only react when the during the game that is currently played by the computer player
   RenderComputerAction (newBoard, newInternalState, newHistory)
@@ -535,7 +535,10 @@ handleEvent wenv node model evt = case evt of
                                   & internalStates .~ insertState
                                   & gameHistory .~ replace pi newHistory ht
                                   & playerIndex .~ newTurn
-                                  & ifWin .~ newWinState,
+                                  & ifWin .~ newWinState
+                                  & errorMessage .~ if newWinState then "Congratulations" 
+                                                    else if not (ifComputersTurn newTurn) then "Please perform a move"
+                                                         else model ^. errorMessage,
                    Task $ return GenerateComputerAction]
     where
       -- update the internal state resulted from the decision function, as well as check the win state
@@ -545,7 +548,7 @@ handleEvent wenv node model evt = case evt of
 
   where
     -- boolean flag for checking whether the current turn is played by the computer player 
-    ifComputersTurn = model ^. playerConfigs ^?! configList . ix (model ^. playerIndex) . active
+    ifComputersTurn id = model ^. playerConfigs ^?! configList . ix id . active
     pn = model ^. playersAmount
     sp = model ^. startPos
     ep = model ^. endPos
@@ -583,7 +586,7 @@ main :: IO ()
 main = do lookupTable `seq` startApp model handleEvent buildUI config
   where
     config = [
-      appWindowTitle "Program",
+      appWindowTitle "Fun Haskell - Chinese Checkers",
       appWindowIcon "./assets/images/icon.png",
       appTheme darkTheme,
       appFontDef "Regular" "./assets/fonts/Roboto-Regular.ttf",
