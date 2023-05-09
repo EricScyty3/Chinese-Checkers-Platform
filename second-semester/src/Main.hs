@@ -5,7 +5,24 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 
-import Monomer  
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
+
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+import Monomer
   ( nodeEnabled,
       nodeVisible,
       darkTheme,
@@ -68,7 +85,7 @@ import Monomer
       AppEventResponse,
       MainWindowState(MainWindowNormal),
       EventResponse(Task, Model),
-      CmbCheckboxMark(checkboxSquare) )
+      CmbCheckboxMark(checkboxSquare), toggleButton, optionButton )
 import Control.Lens ( (&), (^?!), (^.), (+~), (.~), makeLenses, singular, Ixed(ix) )
 import Data.Maybe ( fromMaybe )
 import Data.Text (Text)
@@ -156,7 +173,9 @@ data AppModel = AppModel {
   -- indicates the current player to be configured at the setting dialog
   _pageIndex :: Int,
   -- a list of potential computer players' configurations
-  _playerConfigs :: ConfigList
+  _playerConfigs :: ConfigList,
+  -- indicate whether a public memory is allowed
+  _ifMemoryShared :: Bool
 } deriving (Eq, Show)
 
 -- the event that the model triggers and handles as well as the responses
@@ -372,7 +391,10 @@ buildUI wenv model = widgetTree where
         spacer,
         -- as well as the position of computer players (checkbox)
         box_ [alignLeft] $ hgrid_ [childSpacing_ 10] (computerPlayersChoices <$> [0.. model ^. playersAmount - 1])
-      ]
+      ],
+      filler,
+      -- the flag of activing the public memory
+      toggleButton "Shared Memory" ifMemoryShared
     ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
 
   -- combine all layers and other components together onto the screen
@@ -533,7 +555,7 @@ handleEvent wenv node model evt = case evt of
     | not (model ^. startGame) -> [] -- quiting the game will avoid the decision function's result being rendered
     | otherwise -> [Model $ model & displayBoard .~ newBoard
                                   & internalStates .~ insertState
-                                  & gameHistory .~ replace pi newHistory ht
+                                  & gameHistory .~ (if ifExistPublicMemory then replicate pn newHistory else replace pi newHistory ht)
                                   & playerIndex .~ newTurn
                                   & ifWin .~ newWinState
                                   & errorMessage .~ if newWinState then "Congratulations" 
@@ -545,6 +567,7 @@ handleEvent wenv node model evt = case evt of
       insertState = replace pi newInternalState iboards
       newWinState = winStateDetect newInternalState
       newTurn = if not newWinState then turnBase (model ^. playersAmount) pi else pi
+      ifExistPublicMemory = model ^. ifMemoryShared
 
   where
     -- boolean flag for checking whether the current turn is played by the computer player 
@@ -612,5 +635,6 @@ main = do lookupTable `seq` startApp model handleEvent buildUI config
       _movesList = [],
       _gameHistory = [],
       _pageIndex = 0,
-      _playerConfigs = ConfigList $ replicate 6 (ComputerPlayerConfig False 2.5 2.5 Move 2 100 True 10)
+      _playerConfigs = ConfigList $ replicate 6 (ComputerPlayerConfig False 2.5 2.5 Move 2 100 True 10),
+      _ifMemoryShared = False
     }
