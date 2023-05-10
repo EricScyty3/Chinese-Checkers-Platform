@@ -201,7 +201,7 @@ main = do arg <- getArgs
 autoRunExperiment :: Int -> (Double, Double) -> Double -> (PlayoutArgument, PlayoutArgument) -> IO ()
 autoRunExperiment runs cons input (p1, p2) = 
                                        let str = printf "%.2f" input
-                                           folderName = "./experiments/"
+                                           folderName = "./experiments1/"
                                            fileName = folderName ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
                                            -- create the three-player game  assingment of two player types
                                            testSet = twoPlayerList 3 p1 p2

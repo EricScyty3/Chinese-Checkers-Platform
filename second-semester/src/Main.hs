@@ -349,7 +349,7 @@ buildUI wenv model = widgetTree where
           spacer,
           hslider pitem 1 100 `styleBasic` [fgColor orange] `nodeEnabled` (vitem ^. evaluator == MParanoid || vitem ^. evaluator == MBRS)
         ]
-      ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
+      ] `styleBasic` [maxWidth 650, border 2 white, padding 20, radius 10]
 
   -- the layer that allow the user to flip the page of the setting panel
   selectButtonLayer =
@@ -362,7 +362,7 @@ buildUI wenv model = widgetTree where
         filler,
         -- the maximum page index is restricted when the total players number is changed
         button "Next" (PageUpdate 1) `nodeEnabled` (pageIdx < model ^. playersAmount - 1)
-      ] `styleBasic` [maxWidth 600, padding 20]
+      ] `styleBasic` [maxWidth 650, padding 20]
 
     where
       -- besides, the description of the player is updated based on the user's choice
@@ -395,7 +395,7 @@ buildUI wenv model = widgetTree where
       filler,
       -- the flag of activing the public memory
       toggleButton "Shared Memory" ifMemoryShared
-    ] `styleBasic` [maxWidth 600, border 2 white, padding 20, radius 10]
+    ] `styleBasic` [maxWidth 650, border 2 white, padding 20, radius 10]
 
   -- combine all layers and other components together onto the screen
   widgetTree =
