@@ -121,7 +121,7 @@ singleRun control pi eboard iboards pn hts pl record cons =
                                                  in  niboards `par` nextTurn `pseq`
                                                      singleRun control nextTurn neboard niboards pn newHistory pl (neboard:record) cons -- inherit the movement history 
     where
-        -- if the current game turn exceeds 150 as well as existing several repeating board states, then this is defined as a loop/cycle
+        -- if the game exceeds 150 turns as well as existing several repeating board states, then this is defined as a loop/cycle
         checkLoop input boardList = getTurns (length record) pn >= 150 && length (input `elemIndices` boardList) >= 5
 
 -- start the game from the initial board state
@@ -164,32 +164,34 @@ testConstant player w c = do results <- multipleGames (c, w) 20 (Nothing, Just 0
     where
         defaultPlayer = (Random,0,0)
 {-
-main = do arg <- getArgs
+main = do arg <- lookupTable `seq` getArgs
           let p1 = read $ head arg :: PlayoutArgument
               ws = read $ arg !! 1 :: [Double]
               cs = [0.1, 0.2, 0.3, 0.4, 0.5]
           mapM (testConstantPair p1 cs) ws
 -}
 
-
-main = do arg <- getArgs
+{-
+main = do arg <- lookupTable `seq` getArgs
           let input = read $ head arg
               player = read $ arg !! 1
           -- runMCTSSelection input (0.1, 5) player
           result <- runMultipleSimulations input (0.1, 5) player
           putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
+-}
 
 {-
 -- ghc -main-is Experiment Experiment.hs -O2 -threaded -outputdir dist
 main :: IO ()
-main = do arg <- getArgs
+main = do arg <- lookupTable `seq` getArgs -- preload the lookup table at the beginning of the program 
           let input = read $ head arg :: Double
               player = read $ arg !! 1 :: PlayoutArgument
-              -- invovledPlayers = [ [(Move,0,0), (Random,0,0), (MParanoid,2,10)], [(Move,0,0), (Random,0,0), (MBRS,2,10)]]
-              playerPairs = [((Move,0,0), player), ((Board,0,0), player)]
+              tirals = read $ arg !! 2 :: Int
+              invovledPlayers = [(Move,0,0), (Random,0,0), player]
+              -- playerPairs = [((Move,0,0), player), ((Board,0,0), player)]
               
-          -- mapM_ (autoRunExperiment2 167 (0.1, 5) input) invovledPlayers
-          mapM_ (autoRunExperiment 167 (0.1, 5) input) playerPairs
+          autoRunExperiment2 tirals (0.1, 5) input invovledPlayers
+          -- mapM_ (autoRunExperiment tirals (0.1, 5) input) playerPairs
           
           putStrLn "All Completed!"
           return ()

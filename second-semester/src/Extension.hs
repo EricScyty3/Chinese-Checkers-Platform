@@ -36,8 +36,7 @@ finalSelection :: GameTree -> GameTreeStatus -> MCTSControl -> IO (Board, [Pos],
 finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                    do -- pass the arguments to the decision function controlled by certain threshold 
                                                                       -- get the new search tree and the new movement history
-                                                                      -- preload the lookup table
-                                                                      (ntree, _, nht) <- lookupTable `seq` getResultsUnderControl tree s control
+                                                                      (ntree, _, nht) <- getResultsUnderControl tree s control
                                                                       let children = getChildren ntree
                                                                       if null children then do printEoard eboard
                                                                                                error "No effective result was retrieved"
