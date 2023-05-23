@@ -127,6 +127,7 @@ import Extension ( finalSelection )
 import System.Random ( newStdGen )
 
 
+
 -- the container for storing the parameters for a selected computer player
 data ComputerPlayerConfig = ComputerPlayerConfig {
   _active :: Bool, -- whether a computer player is active at this position
@@ -558,9 +559,9 @@ handleEvent wenv node model evt = case evt of
                                   & gameHistory .~ (if ifExistPublicMemory then replicate pn newHistory else replace pi newHistory ht)
                                   & playerIndex .~ newTurn
                                   & ifWin .~ newWinState
-                                  & errorMessage .~ if newWinState then "Congratulations" 
-                                                    else if not (ifComputersTurn newTurn) then "Please perform a move"
-                                                         else model ^. errorMessage,
+                                  & errorMessage .~ (if newWinState then "Congratulations" 
+                                                     else if not (ifComputersTurn newTurn) then "Please perform a move"
+                                                          else model ^. errorMessage),
                    Task $ return GenerateComputerAction]
     where
       -- update the internal state resulted from the decision function, as well as check the win state
@@ -607,6 +608,7 @@ handleEvent wenv node model evt = case evt of
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
 main = do lookupTable `seq` startApp model handleEvent buildUI config
+          
   where
     config = [
       appWindowTitle "Fun Haskell - Chinese Checkers",

@@ -26,6 +26,7 @@ import Data.List (elemIndices)
 import RBTree (RBTree(RBLeaf))
 import System.Environment ( getArgs )
 import Configuration (lookupTable)
+import Control.Concurrent (myThreadId)
 
 -- the condition for stopping the search of MCTS
 type MCTSControl = (Maybe Int, Maybe Double)
