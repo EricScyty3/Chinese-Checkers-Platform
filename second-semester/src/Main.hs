@@ -4,24 +4,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-
-
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 import Monomer
   ( nodeEnabled,
       nodeVisible,
@@ -85,7 +67,7 @@ import Monomer
       AppEventResponse,
       MainWindowState(MainWindowNormal),
       EventResponse(Task, Model),
-      CmbCheckboxMark(checkboxSquare), toggleButton, optionButton )
+      CmbCheckboxMark(checkboxSquare), toggleButton, optionButton, appExitEvent )
 import Control.Lens ( (&), (^?!), (^.), (+~), (.~), makeLenses, singular, Ixed(ix) )
 import Data.Maybe ( fromMaybe )
 import Data.Text (Text)
@@ -109,7 +91,7 @@ import Board
       startBase,
       Board,
       BoardPos(U),
-      Colour(Black, Red, Blue, Green, Purple, Orange), colourIndex, initialPos, ifInitialPiece )
+      Colour(Black, Red, Blue, Green, Purple, Orange), colourIndex, initialPos, ifInitialPiece, removeByIdx )
 import Control.Monad.State ( evalState )
 import qualified Data.Text as T
 import Zobrist ( flipBoard, winStateDetect )
@@ -125,8 +107,33 @@ import Configuration (LookupTable, lookupTable)
 import Data.List (elemIndex)
 import Extension ( finalSelection )
 import System.Random ( newStdGen )
+import Control.Concurrent (MVar, ThreadId, newMVar, newEmptyMVar, takeMVar, putMVar, forkFinally, killThread, myThreadId)
+import GHC.IO (unsafePerformIO)
 
+threadPool :: MVar [ThreadId]
+{-# NOINLINE threadPool #-}
+threadPool = unsafePerformIO (newMVar [])
 
+discardThread :: ThreadId -> IO ()
+discardThread id = do
+    existingThreads <- takeMVar threadPool
+    case id `elemIndex` existingThreads of
+      Nothing -> error "Error Thread"
+      Just idx -> -- update the record of running threads
+                  let newThreadPool = removeByIdx idx existingThreads
+                  in  do putMVar threadPool []
+
+appendThread :: ThreadId -> IO ()
+appendThread id = do
+    existingThreads <- takeMVar threadPool
+    putMVar threadPool (id:existingThreads) -- add the new generated thread'id to the record
+
+endAllThread :: IO ()
+endAllThread = do
+  -- get all thread ids and terminate them
+  existingThreads <- takeMVar threadPool
+  mapM_ killThread existingThreads
+  putMVar threadPool [] -- reset the thread pool
 
 -- the container for storing the parameters for a selected computer player
 data ComputerPlayerConfig = ComputerPlayerConfig {
@@ -182,7 +189,7 @@ data AppModel = AppModel {
 -- the event that the model triggers and handles as well as the responses
 data AppEvent
   = -- the initialisation of the model status
-    AppInit
+    AppInit ()
     -- determine if a movement input by the player is valid
   | MoveCheck BoardPos Int
     -- initialise the board game based on user's input
@@ -443,7 +450,7 @@ handleEvent
   -> AppEvent
   -> [AppEventResponse AppModel AppEvent]
 handleEvent wenv node model evt = case evt of
-  AppInit -> []
+  AppInit () -> []
 
   -- setup the game board according to the options in the menu page
   -- declare that the game is started letting certain subjects to be visible or invisible
@@ -462,7 +469,10 @@ handleEvent wenv node model evt = case evt of
                           ]
 
   -- quit the game and return back to the menu page
-  EndGameButtonClick -> [Model $ model & startGame .~ False]
+  EndGameButtonClick -> [Model $ model & startGame .~ False, 
+                         Task $ AppInit <$> endAllThread] 
+                         -- also terminate the running threads, for avoiding program stall, 
+                         -- but could cause exception (which can be ignored)
 
   -- update the page index with given increment or decrement
   PageUpdate x -> [Model $ model & pageIndex +~ x]
@@ -519,7 +529,7 @@ handleEvent wenv node model evt = case evt of
                                       -- if reachable, then this movement will then be rendered
                                       | pos `elem` availableMoves -> [Model $ model & endPos .~ pos
                                                                                     & errorMessage .~ "Please perform a move",
-                                                                      Task $ return RenderMove] 
+                                                                      Task $ return RenderMove]
                                       -- if the destination is not in the list, then invalid
                                       | pos `notElem` availableMoves -> [Model $ model & errorMessage .~ "Player " ++ show pi ++ ": destination unreacbable"
                                                                                        & startPos .~ initialPos]
@@ -559,7 +569,7 @@ handleEvent wenv node model evt = case evt of
                                   & gameHistory .~ (if ifExistPublicMemory then replicate pn newHistory else replace pi newHistory ht)
                                   & playerIndex .~ newTurn
                                   & ifWin .~ newWinState
-                                  & errorMessage .~ (if newWinState then "Congratulations" 
+                                  & errorMessage .~ (if newWinState then "Congratulations"
                                                      else if not (ifComputersTurn newTurn) then "Please perform a move"
                                                           else model ^. errorMessage),
                    Task $ return GenerateComputerAction]
@@ -585,11 +595,15 @@ handleEvent wenv node model evt = case evt of
 
     -- pass the model' state to the MCTS framework and run it, and finally return the new state
     aiDecision :: AppModel -> IO (Board, [Pos], HistoryTrace)
-    aiDecision model = do gen <- newStdGen -- first get the random number generator for the later usage
+    aiDecision model = do threadId <- myThreadId
+                          appendThread threadId
+
+                          gen <- newStdGen -- first get the random number generator for the later usage
                           let root = GRoot 0 [] -- initialise the search tree
                           (newBoard, newInternalState, newHistory)
                             <- finalSelection root (gen, pi, 1, eboard, iboards, pn, ht !! pi, (uctCons, phCons), (eval, dep, per))
                                                    (mctsControl mctsCon ctVal)
+                          discardThread threadId
                           return (newBoard, newInternalState, newHistory)
       where
         -- access to detailed configuration for the computer player
@@ -608,7 +622,11 @@ handleEvent wenv node model evt = case evt of
 -- load the configuration options as well as define the initial state of the application
 main :: IO ()
 main = do lookupTable `seq` startApp model handleEvent buildUI config
-          
+          endAllThread -- terminate all thread when closing the application
+          existingThreads <- takeMVar threadPool
+          if null existingThreads then print "All remaining threads were cleaned"
+          else print "Unable to clean all generated threads"
+
   where
     config = [
       appWindowTitle "Fun Haskell - Chinese Checkers",
@@ -620,7 +638,7 @@ main = do lookupTable `seq` startApp model handleEvent buildUI config
       appFontDef "Italic" "./assets/fonts/Roboto-Italic.ttf",
       appWindowResizable False, -- disable resizing windows
       appWindowState $ MainWindowNormal (800, 750),
-      appInitEvent AppInit
+      appInitEvent (AppInit ())
       ]
 
     -- provide an initial model state
