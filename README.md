@@ -7,8 +7,6 @@ This markdown sheet is an user guide for those who want to access to the platfor
 <div align="center">
     <img src="./second-semester/assets/images/game_6.png" alt="game_6" width="50%" />
 </div>
-
-
 All the sample files provided in this repository are generated based on stack and cabal environment of macOS, therefore, if you are a user of a different computer system, you may want to build up the corresponding environment first such that application could be generated and run. 
 
 Please make sure that you've already installed sufficient Haskell environments: 
@@ -19,7 +17,7 @@ Please make sure that you've already installed sufficient Haskell environments:
 
 If not, then you might want to have a look at how to [install](https://www.haskell.org/ghcup/) them easily through **GHCup**. Besides, it is also required for the user to install certain libraries to ensure the executable file provided can run correctly, which will also be mentioned in the coming sections. 
 
-The following instructions will be descirbed based on macOS environment by default, but will also provide some information of other platforms. 
+The following instructions will be described based on macOS environment by default, but will also provide some information of other platforms. 
 
 
 
@@ -50,13 +48,13 @@ After you clone the project or extract the file, open the terminal, either bash 
 cd ./msc-project/second-semester/
 ```
 
-Then you will see an executable named `app` through browsing the files in the folder. The executable `app` was copyed manually from the default generation address of stack and can be launched through the below command:
+Then you will see an executable named `app` through browsing the files in the folder. The executable `app` was copied manually from the default generation address of stack and can be launched through the below command:
 
 ```bash
 ./app
 ```
 
-To be noticed that before launching the exectable, you must install additional packages so that the GUI can be run. Please look at the [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md) for those required packages. 
+To be noticed that before launching the executable, you must install additional packages so that the GUI can be run. Please look at the [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md) for those required packages. 
 
 For Mac users, the following commands are required to install the `sdl2` and `glew`. 
 
@@ -94,11 +92,11 @@ cd ./msc-project/second-semester/
 stack build
 ```
 
-This command will construct the necessary libraries based on the specifications from `package.yaml` and set up an environment under this folder, mainly for setting the dependencies for the Monomer libaray. 
+This command will construct the necessary libraries based on the specifications from `package.yaml` and set up an environment under this folder, mainly for setting the dependencies for the Monomer library. 
 
 Here is the link to the detailed [installation](https://github.com/fjvallarino/monomer/blob/main/docs/tutorials/00-setup.md), also includes other platforms' instructions, in case you'd like to set up such an environment yourself. 
 
-Notice that, you might be required to install additional packages based on your operating system as mentioned above, so please have a look at the provided link. In order to load all necessary libaraies, it might take around 10 minutes to fully install all libraries and packages after the `stack build` command. You will be able to see the number of downloaded packages and their progresses.   
+Notice that, you might be required to install additional packages based on your operating system as mentioned above, so please have a look at the provided link. In order to load all necessary libraries, it might take around 10 minutes to fully install all libraries and packages after the `stack build` command. You will be able to see the number of downloaded packages and their progresses.   
 
 If no error appears, you can then run `stack run Main`, then the application should be successfully executed. Initially, it's the same as the given `app` executable, but can be recompiled if you modify the code later on.
 
@@ -129,7 +127,7 @@ cd ./msc-project/second-semester/src
 cabal install random
 ```
 
-Once you have set up all the packages listed above, you can access any `.hs` script in the `src` folder except for `Main.hs` which is mainly run on the evnironment built by the `stack`. For instance, you can now access to the `MCTS.hs` and play arround to the funtions included:
+Once you have set up all the packages listed above, you can access any `.hs` script in the `src` folder except for `Main.hs` which is mainly run on the environment built by the `stack`. For instance, you can now access to the `MCTS.hs` and play around to the functions included:
 
 ```bash
 ghci MCTS.hs
@@ -167,7 +165,15 @@ The following tree structure demonstrates the files that are worth mentioning to
 
 First of all, the `app` executable, the one that starts the application. The following `dataset` folder stores the lookup table used in this project, which is a txt file that contains a number of board configurations and the corresponding scores and both of them require specific function to unscramble, which leads to the Haskell scripts in the folder of `src`.
 
-In the `src` folder, there are a list of `.hs` scripts as well as some folders stroing the experiment results. The folders: `experiments` with suffix from $0$ to $2$ contain several lists of winners collected from the experimental tirals generated from the `Experiment.hs`. In `Main.hs`, as mentioned, it contains the components for rendering the graphical interface, and the specific components will be decirbed in the coming section. The `BFS.hs`,  `Configuration.hs` scripts calculate the the entities' contents of the lookup table, the one stored in `dataset` folder, and `RBTree.hs` and `Configuration.hs` together constructre the container's shape and store it in the memory when the program is running. Script `Board.hs` and `Zobrist.hs `define how the board of Chinese Checkers is computed, either in explicit or implicit way. Finally, for processing the MCTS framework, the `GameTree.hs`, `MCTS.hs` and `Minimax.hs` scripts are taken place to give a form of searching appropriate move based on the given board state. 
+In the `src` folder, there are a list of `.hs` scripts as well as some folders storing the experiment results. The folders: `experiments` with suffix from $0$ to $2$ contain several lists of winners collected from the experimental trials generated from the `Experiment.hs`. 
+
+In `Main.hs`, as mentioned, it contains the components for rendering the graphical interface, and the specific components will be described in the coming section. 
+
+The `BFS.hs`,  `Configuration.hs` scripts calculate the the entities' contents of the lookup table, the one stored in `dataset` folder, and `RBTree.hs` and `Configuration.hs` together constructs the container's shape and store it in the memory when the program is running. 
+
+Scripts `Board.hs` and `Zobrist.hs `define how the board of Chinese Checkers is computed, either in explicit or implicit way. 
+
+Finally, for processing the MCTS framework, the `GameTree.hs`, `MCTS.hs` and `Minimax.hs` scripts are taken place to give a form of searching appropriate move based on the given board state. 
 
 
 
@@ -193,27 +199,37 @@ In the first panel, the user could set the configurations of the MCTS framework 
 * the choice and the detailed settings of the playout phase's evaluator
 * the terminate condition of the MCTS
 
-Other than that, for each computer player, there is an identical panel for setting the corresponding configurations. In order to switch the panel that assoicated to a player, the below `Last` and `Next` buttons will help to index to the right panel. 
+Other than that, for each computer player, there is an identical panel for setting the corresponding configurations. In order to switch the panel that associated to a player, the below `Last` and `Next` buttons will help to index to the right panel. 
 
-To be noticed that, ony the panel corresponds to a computer player could be manipulated, for instance, according to the above sample, only the panels with indices $0$ and $3$ could be adjust with the widgets, and the other panels will not allow the user to modify unless such a computer player is enabled through the below checkboxes.
+To be noticed that, only the panel corresponds to a computer player could be manipulated, for instance, according to the above sample, only the panels with indices $0$ and $3$ could be adjust with the widgets, and the other panels will not allow the user to modify unless such a computer player is enabled through the below checkboxes.
 
 On the first panel, there are a number for widgets, for which corresponds to a feature of the search algorithm:
 
-* Exploration factor $C$: this controls the *UCT* policy of the MCTS selection phase, that the larger the value is chosen, the more exploration of unvisited nodes (expanded branches of the search tree) will be investigated, otherwise, the decision will tend toward the exploitation of the well-performed nodes more
-* History factor $W$: this controls the *Progressive History* policy of the MCTS selection phase, that the larger the value is chosen, the longer the influence on the past game history will be made on the decision
+* Exploration factor $C$: the larger the value is chosen, the more exploration of unvisited nodes (expanded branches of the search tree) will be investigated, otherwise, the decision will tend toward the exploitation of the well-performed nodes more
+* History factor $W$: the larger the value is chosen, the longer the influence on the past game history will be made on the decision
 * Simulation evaluator: this controls the mechanism that used to choose the appropriate move throughout the self-play simulation during the MCTS playout phase, you can seen this as a strategy for emulating a game
-  * Random choice: uniformly choosing the moves avaliable but with some priorities for the advancing moves.
-  * Move distance: picking up the move that gives the lagest distance increment, and if there exist multiple moves with maximum distance increments, then randomly choose one of them.
-  * Lookup table: deciding the optimal move based on the stored board values of the resulting board states, such a board value can be found in the lookup table but does not include the fraction of midgame states, hence, as an alternative, the evaluation of the midgame boards is done based on the distance increment. Similarly, the ones with the largest value are decided randomly with uniform possibility. 
-  * Midgame-only Paranoid/BRS: here, the moves during the playout phase are no longer simply decided based on certain heuristic or dataset but on an embedded multi-player version of minimax search. Besides, there are two more options to adjust the settings of such an embedded search: first, the search depth from $2$ to $4$; second, the percentage value for calling the embedded search, which allows the user to modify the frequency of triggering the minimax search per move during the playout since it could bring heavier overhead.
-* MCTS control: the basic workflow of MCTS consists of: selection, expansion, playout and backpropagation, and a full run through of the four phases is called an interation. The progress of the search could be defined in two ways, first the number of iterations being completed, and second, the time that retricts certain number of iterations from completing. Both restrcitions own the same range from $1$ to $100$, either in rounds or seconds. 
+  * Random choice: 
+    * Uniformly choosing the moves available but with some priorities for the advancing moves.
+  * Move distance: 
+    * Picking up the move that gives the largest distance increment, and if there exist multiple moves with maximum distance increments, then randomly choose one of them.
+  * Lookup table: 
+    * Deciding the optimal move based on the stored board values of the resulting board states, such a board value can be found in the lookup table.
+    * During the midgame, the evaluation of distance increment will be considered instead. 
+    * Similarly, the ones with the largest value are decided randomly with uniform possibility. 
+  * Midgame-only Paranoid/BRS: 
+    * The moves during the playout phase are no longer simply decided based on certain heuristic or dataset but on an embedded multi-player version of minimax search. 
+    * There are two more options to adjust the settings of such an embedded search: first, the search depth from $2$ to $4$; second, the percentage value for calling the embedded search, which allows the user to modify the frequency of triggering the minimax search per move during the playout.
+* MCTS control: the basic workflow of MCTS consists of: selection, expansion, playout and backpropagation, and a full run through of the four phases is called an iteration. 
+  * The progress of the search could be defined in two ways, first the number of iterations being completed, and second, the time that restricts certain number of iterations from completing. 
+  * Both restrictions own the same range from $1$ to $100$, either in rounds or seconds. 
+
 
 <div align="center">
     <img src="./second-semester/assets/images/panel2.png" alt="panel2" width="40%" />
 </div>
 
 
-In the second panel, the first row of radios displays the option of total players of a range of $[2, 3, 4, 6]$ and the second row displays the available computer players, which are strictly restricted to less than the total number of players. In order to the tigger a computer player among all avaliable players, ticking the checkboxes below will turn the player with assoicated index into computer player such that the user could manipulate its configuration panel. 
+In the second panel, the first row of radios displays the option of total players of a range of $[2, 3, 4, 6]$ and the second row displays the available computer players, which are strictly restricted to less than the total number of players. In order to the tigger a computer player among all available players, ticking the checkboxes below will turn the player with associated index into computer player such that the user could manipulate its configuration panel. 
 
 Besides, there provides an additional feature called `Shared Memory`, which makes difference on the game history. As mentioned before, the choice of MCTS algorithm could be affected based on the game history ($W$), but normally the players will only be affected by the history maintained by themselves. But here, the `Shared Memory` allows all the maintained history to be integrated into one public record such that allowing all players to access to this and contribute their update to it. 
 
@@ -222,11 +238,11 @@ Besides, there provides an additional feature called `Shared Memory`, which make
 After the players are settled, pressing the `Start Game` button will enter the game, a corresponding board will be generated. For different players, there are ways to distinguish between them. Each player's pieces are numbered with the same index and in the same colour. For instance, in a two-player game, the players will be indexed with ids: $0$ and $1$ and with colours of green and red; in a three-player game, the players will be indexed with ids: $0$, $1$ and $2$ with colours of green, red and orange; and so on.
 
 <div align="center">
-    <img src="./second-semester/assets/images/game_2.png" alt="game_2" width="30%" />
-    <img src="./second-semester/assets/images/game_3.png" alt="game_3" width="30%" />
+    <img src="./second-semester/assets/images/game_2.png" alt="game_2" width="40%" />
+    <img src="./second-semester/assets/images/game_3.png" alt="game_3" width="40%" />
   	<br>
-    <img src="./second-semester/assets/images/game_4.png" alt="game_4" width="30%" />
-    <img src="./second-semester/assets/images/game_6.png" alt="game_6" width="30%" />
+    <img src="./second-semester/assets/images/game_4.png" alt="game_4" width="40%" />
+    <img src="./second-semester/assets/images/game_6.png" alt="game_6" width="40%" />
 </div>
 
 
@@ -244,11 +260,11 @@ To move during the game, a player needs to first click one's piece and then clic
 Once the player first clicks a valid position, the resulting available list of destinations will be marked in the corresponding colour as shown above. If an entering movement is invalid, then there will be an error message posted, and the player will need to re-enter another movement. The invalid situations include (1) double-clicking a position, (2) taking a free space at the start of the movement, (3) trying to reach a destination that is too far, or (4) the destination is already occupied by another player. 
 
 <div align="center">
-    <img src="./second-semester/assets/images/error1.png" alt="error1" width="30%" />
-    <img src="./second-semester/assets/images/error2.png" alt="error2" width="30%" />
+    <img src="./second-semester/assets/images/error1.png" alt="error1" width="40%" />
+    <img src="./second-semester/assets/images/error2.png" alt="error2" width="40%" />
   	<br>
-    <img src="./second-semester/assets/images/error3.png" alt="error3" width="30%" />
-    <img src="./second-semester/assets/images/error4.png" alt="error4" width="30%" />
+    <img src="./second-semester/assets/images/error3.png" alt="error3" width="40%" />
+    <img src="./second-semester/assets/images/error4.png" alt="error4" width="40%" />
 </div>
 
 Once the game is finished, the user can close the game or continue the next one with a different setting. Press the `End Game` button, and the page will be returned to the menu, where the user could make a different configuration. 
