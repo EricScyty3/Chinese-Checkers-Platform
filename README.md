@@ -146,7 +146,7 @@ The following tree structure demonstrates the files that are worth mentioning to
      ├── app
      ├── dataset
          └── lookup_table.txt
-     ├── src
+     └── src
          ├── BFS.hs
          ├── Board.hs
          ├── Configuration.hs
@@ -205,22 +205,72 @@ To be noticed that, only the panel corresponds to a computer player could be man
 
 On the first panel, there are a number for widgets, for which corresponds to a feature of the search algorithm:
 
+
+
 * Exploration factor $C$: the larger the value is chosen, the more exploration of unvisited nodes (expanded branches of the search tree) will be investigated, otherwise, the decision will tend toward the exploitation of the well-performed nodes more
+
+  
+
 * History factor $W$: the larger the value is chosen, the longer the influence on the past game history will be made on the decision
+
+  
+
 * Simulation evaluator: this controls the mechanism that used to choose the appropriate move throughout the self-play simulation during the MCTS playout phase, you can seen this as a strategy for emulating a game
+  
+  
+  
   * Random choice: 
+    
+    
+    
     * Uniformly choosing the moves available but with some priorities for the advancing moves.
+    
+      
+    
   * Move distance: 
+    
+    
+    
     * Picking up the move that gives the largest distance increment, and if there exist multiple moves with maximum distance increments, then randomly choose one of them.
+    
+      
+    
   * Lookup table: 
+    
+    
+    
     * Deciding the optimal move based on the stored board values of the resulting board states, such a board value can be found in the lookup table.
+    
+      
+    
     * During the midgame, the evaluation of distance increment will be considered instead. 
+    
+      
+    
     * Similarly, the ones with the largest value are decided randomly with uniform possibility. 
+    
+      
+    
   * Midgame-only Paranoid/BRS: 
+    
+    
+    
     * The moves during the playout phase are no longer simply decided based on certain heuristic or dataset but on an embedded multi-player version of minimax search. 
+    
+      
+    
     * There are two more options to adjust the settings of such an embedded search: first, the search depth from $2$ to $4$; second, the percentage value for calling the embedded search, which allows the user to modify the frequency of triggering the minimax search per move during the playout.
+    
+      
+  
 * MCTS control: the basic workflow of MCTS consists of: selection, expansion, playout and backpropagation, and a full run through of the four phases is called an iteration. 
+  
+  
+  
   * The progress of the search could be defined in two ways, first the number of iterations being completed, and second, the time that restricts certain number of iterations from completing. 
+  
+    
+  
   * Both restrictions own the same range from $1$ to $100$, either in rounds or seconds. 
 
 
