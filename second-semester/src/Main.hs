@@ -624,8 +624,8 @@ main :: IO ()
 main = do lookupTable `seq` startApp model handleEvent buildUI config
           endAllThread -- terminate all thread when closing the application
           existingThreads <- takeMVar threadPool
-          if null existingThreads then print "All remaining threads were cleaned"
-          else print "Unable to clean all generated threads"
+          if null existingThreads then putStrLn "All remaining threads were cleaned"
+          else putStrLn "Unable to clean all generated threads"
 
   where
     config = [
