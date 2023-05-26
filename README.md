@@ -169,7 +169,7 @@ In the *src* folder, there is a list of *.hs* scripts as well as some folders st
 
 *Main.hs*, as mentioned, it contains the components for rendering the graphical interface, and the specific components will be described in the coming section. 
 
-The *BFS.hs*, and Configuration.hs* scripts calculate the entities' contents of the lookup table, the one stored in the *dataset* folder, and *RBTree.hs* and *Configuration.hs* together construct the container's shape and store it in the memory when the program is running. 
+The *BFS.hs*, and *Configuration.hs* scripts calculate the entities' contents of the lookup table, the one stored in the *dataset* folder, and *RBTree.hs* and *Configuration.hs* together construct the container's shape and store it in the memory when the program is running. 
 
 Scripts *Board.hs* and *Zobrist.hs* define how the board of Chinese Checkers is computed, either explicitly or implicitly. 
 
