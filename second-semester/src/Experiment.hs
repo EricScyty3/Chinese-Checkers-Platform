@@ -38,7 +38,6 @@ import Text.Printf (printf)
 import Control.Concurrent.Async ( mapConcurrently, mapConcurrently_ )
 import Data.Maybe (fromMaybe, isNothing, isJust)
 
-
 -- arrange the two players in a three-player game
 twoPlayerList :: Int -> PlayoutArgument -> PlayoutArgument -> [[PlayoutArgument]]
 twoPlayerList pn p1 p2 = filter (not . samePlayers) (binaryPlayerArrangement pn)
@@ -165,37 +164,35 @@ testConstant player w c = do results <- multipleGames (c, w) 20 (Nothing, Just 0
         defaultPlayer = (Random,0,0)
 {-
 main = do arg <- lookupTable `seq` getArgs
-          let p1 = read $ head arg :: PlayoutArgument
+          let p  = read $ head arg :: PlayoutArgument
               ws = read $ arg !! 1 :: [Double]
               cs = [0.1, 0.2, 0.3, 0.4, 0.5]
-          mapM (testConstantPair p1 cs) ws
+          mapM (testConstantPair p cs) ws
 -}
 
 {-
 main = do arg <- lookupTable `seq` getArgs
           let input = read $ head arg
               player = read $ arg !! 1
-          -- runMCTSSelection input (0.1, 5) player
           result <- runMultipleSimulations input (0.1, 5) player
           putStrLn $ show player ++ "'s time cost: " ++ show result ++ "s"
--}
+-}          
 
-{-
+
 -- ghc -main-is Experiment Experiment.hs -O2 -threaded -outputdir dist
 main :: IO ()
 main = do arg <- lookupTable `seq` getArgs -- preload the lookup table at the beginning of the program 
           let input = read $ head arg :: Double
-              player = read $ arg !! 1 :: PlayoutArgument
-              tirals = read $ arg !! 2 :: Int
-              invovledPlayers = [(Move,0,0), (Random,0,0), player]
-              -- playerPairs = [((Move,0,0), player), ((Board,0,0), player)]
+              player1 = read $ arg !! 1 :: PlayoutArgument
+              player2 = read $ arg !! 2 :: PlayoutArgument
+              trials = read $ arg !! 3 :: Int
+              -- invovledPlayers = [(Move,0,0), (Random,0,0), player1]
               
-          autoRunExperiment2 tirals (0.1, 5) input invovledPlayers
-          -- mapM_ (autoRunExperiment tirals (0.1, 5) input) playerPairs
+          -- autoRunExperiment2 trials (0.1, 5) input invovledPlayers
+          autoRunExperiment trials (0.1, 5) input (player1, player2)
           
           putStrLn "All Completed!"
           return ()
--}
 
 --Arrange Test Sets---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
