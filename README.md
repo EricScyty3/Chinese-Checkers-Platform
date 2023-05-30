@@ -1,4 +1,4 @@
-# Haskell Chinese Checkers Platform
+# Haskell Chinese Checkers Platform (MSc Project)
 
 > A platform of Chinese Checkers game with multiple players allowed as well as embedded Monte-Carlo Tree Search algorithm.
 
@@ -30,7 +30,7 @@ Before we move on, it is significant to let you know that the GUI part of this p
 - Event handler
 - UI builder
 
-For more information, please check [here](https://github.com/fjvallarino/monomer) and [here](https://github.com/fjvallarino/monomer-starter).
+For more information about the library or the license, please check [here](https://github.com/fjvallarino/monomer) and [here](https://github.com/fjvallarino/monomer-starter).
 
 
 
@@ -184,15 +184,11 @@ Once you enter the application, you will see a menu page listing all options of 
 <div align="center">
     <img src="./second-semester/assets/images/menu.png" alt="menu" width="50%" />
 </div>
-
-
 ### Menu Page
 
 <div align="center">
     <img src="./second-semester/assets/images/panel1.png" alt="panel1" width="40%" />
 </div>
-
-
 In the first panel, the user could set the configurations of the MCTS framework including 
 
 * the parameters of the selection phase's policy
@@ -205,15 +201,9 @@ To be noticed that only the panel corresponding to a computer player could be ma
 
 On the first panel, there is a number of widgets, which corresponds to a feature of the search algorithm:
 
-
-
 * Exploration factor $C$: the larger the value is chosen, the more exploration of unvisited nodes (expanded branches of the search tree) will be investigated, otherwise, the decision will tend toward the exploitation of the well-performed nodes more
 
-  
-
 * History factor $W$: the larger the value is chosen, the longer the influence of the past game history will be made on the decision
-
-  
 
 * Simulation evaluator: this controls the mechanism used to choose the appropriate move throughout the self-play simulation during the MCTS playout phase, you can see this as a strategy for emulating a game
   
@@ -221,43 +211,23 @@ On the first panel, there is a number of widgets, which corresponds to a feature
   
   * Random choice: 
     
-    
-    
     * Uniformly choosing the moves available but with some priorities for the advancing moves.
-    
-      
     
   * Move distance: 
     
-    
-    
     * Picking up the move that gives the largest distance increment, and if there exist multiple moves with maximum distance increments, then randomly choose one of them.
-    
-      
     
   * Lookup table: 
     
-    
-    
     * Deciding the optimal move based on the stored board values of the resulting board states, such a board value can be found in the lookup table.
-    
-      
     
     * During the midgame, the evaluation of distance increment will be considered instead. 
     
-      
-    
     * Similarly, the ones with the largest value are decided randomly with uniform possibility. 
-    
-      
     
   * Midgame-only Paranoid/BRS: 
     
-    
-    
     * The moves during the playout phase are no longer simply decided based on certain heuristics or datasets but on an embedded multi-player version of minimax search. 
-    
-      
     
     * There are two more options to adjust the settings of such an embedded search: first, the search depth from $2$ to $4$; second, the percentage value for calling the embedded search, which allows the user to modify the frequency of triggering the minimax search per move during the playout.
     
@@ -269,19 +239,17 @@ On the first panel, there is a number of widgets, which corresponds to a feature
   
   * The progress of the search could be defined in two ways, first the number of iterations being completed, and second, the time that restricts a certain number of iterations from completing. 
   
-    
-  
   * Both restrictions on the same range from $1$ to $100$, either in rounds or seconds. 
 
 
 <div align="center">
     <img src="./second-semester/assets/images/panel2.png" alt="panel2" width="40%" />
 </div>
-
-
 In the second panel, the first row of radios displays the option of total players of a range of $[2, 3, 4, 6]$ and the second row displays the available computer players, which are strictly restricted to less than the total number of players. To trigger a computer player among all available players, ticking the checkboxes below will turn the player with the associated index into a computer player such that the user could manipulate its configuration panel. 
 
-Besides, there provides an additional feature called "Shared Memory", which makes a difference in the game's history. As mentioned before, the choice of MCTS algorithm could be affected based on the game history ($W$), but normally the players will only be affected by the history maintained by themselves. But here, the "Shared Memory" allows all the maintained history to be integrated into one public record, allowing all players to access this and contribute their updates to it. 
+Besides, there provides an additional feature called "Shared Memory", which makes a difference in the game's history. As mentioned before, the choice of MCTS algorithm could be affected based on the game history ($W$), but normally the players will only be affected by the history maintained by themselves. But here, the "Shared Memory" allows all the maintained history to be integrated into one public record, allowing all players to access this and contribute their updates to it.
+
+
 
 ### Game Page
 
@@ -294,8 +262,6 @@ After the players are settled, pressing the "Start Game" button will enter the g
     <img src="./second-semester/assets/images/game_4.png" alt="game_4" width="40%" />
     <img src="./second-semester/assets/images/game_6.png" alt="game_6" width="40%" />
 </div>
-
-
 To simplify the game, there will be a hint text shown above to remind the player of the certain index to action as well as the winner of the game. Besides, if the user allows computer players to be involved, the hint text will explicitly show which player is AI.
 
 <div align="center">
