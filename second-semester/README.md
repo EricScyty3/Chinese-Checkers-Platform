@@ -5,8 +5,9 @@
 This markdown sheet is a user guide for those who want to access the platform, the remainder will be divided into three parts: installation and the first launch of the executable, the experimental section, as well as some detailed look at the framework design, including the GUI section and the code implementation. 
 
 <div align="center">
-    <img src="./second-semester/assets/images/game_6.png" alt="game_6" width="50%" />
+    <img src="./assets/images/game_6.png" alt="game_6" width="50%" />
 </div>
+
 All the sample files provided in this repository are generated based on the stack and cabal environment of macOS, therefore, if you are a user of a different computer system, you may want to build up the corresponding environment first such that application could be generated and run. 
 
 Please make sure that you've already installed sufficient Haskell environments: 
@@ -182,14 +183,16 @@ Finally, for processing the MCTS framework, the *GameTree.hs*, *MCTS.hs* and *Mi
 Once you enter the application, you will see a menu page listing all options of available players allowed in the game. There are two panels displayed on the screen: one for MCTS configurations and another one for setting the players' (human and computer) numbers. 
 
 <div align="center">
-    <img src="./second-semester/assets/images/menu.png" alt="menu" width="50%" />
+    <img src="./assets/images/menu.png" alt="menu" width="50%" />
 </div>
+
 
 ### Menu Page
 
 <div align="center">
-    <img src="./second-semester/assets/images/panel1.png" alt="panel1" width="40%" />
+    <img src="./assets/images/panel1.png" alt="panel1" width="40%" />
 </div>
+
 In the first panel, the user could set the configurations of the MCTS framework including 
 
 * the parameters of the selection phase's policy
@@ -237,10 +240,10 @@ On the first panel, there is a number of widgets, which corresponds to a feature
   
   * Both restrictions on the same range from $1$ to $100$, either in rounds or seconds. 
 
-
 <div align="center">
-    <img src="./second-semester/assets/images/panel2.png" alt="panel2" width="40%" />
+    <img src="./assets/images/panel2.png" alt="panel2" width="40%" />
 </div>
+
 In the second panel, the first row of radios displays the option of total players of a range of $[2, 3, 4, 6]$ and the second row displays the available computer players, which are strictly restricted to less than the total number of players. To trigger a computer player among all available players, ticking the checkboxes below will turn the player with the associated index into a computer player such that the user could manipulate its configuration panel. 
 
 Besides, there provides an additional feature called "Shared Memory", which makes a difference in the game's history. As mentioned before, the choice of MCTS algorithm could be affected based on the game history ($W$), but normally the players will only be affected by the history maintained by themselves. But here, the "Shared Memory" allows all the maintained history to be integrated into one public record, allowing all players to access this and contribute their updates to it.
@@ -252,38 +255,43 @@ Besides, there provides an additional feature called "Shared Memory", which make
 After the players are settled, pressing the "Start Game" button will enter the game, a corresponding board will be generated. For different players, there are ways to distinguish between them. Each player's pieces are numbered with the same index and in the same colour. For instance, in a two-player game, the players will be indexed with ids: $0$ and $1$ and with colours green and red; in a three-player game, the players will be indexed with ids: $0$, $1$ and $2$ with colours green, red and orange; and so on.
 
 <div align="center">
-    <img src="./second-semester/assets/images/game_2.png" alt="game_2" width="40%" />
-    <img src="./second-semester/assets/images/game_3.png" alt="game_3" width="40%" />
+    <img src="./assets/images/game_2.png" alt="game_2" width="40%" />
+    <img src="./assets/images/game_3.png" alt="game_3" width="40%" />
   	<br>
-    <img src="./second-semester/assets/images/game_4.png" alt="game_4" width="40%" />
-    <img src="./second-semester/assets/images/game_6.png" alt="game_6" width="40%" />
+    <img src="./assets/images/game_4.png" alt="game_4" width="40%" />
+    <img src="./assets/images/game_6.png" alt="game_6" width="40%" />
 </div>
+
 To simplify the game, there will be a hint text shown above to remind the player of the certain index to action as well as the winner of the game. Besides, if the user allows computer players to be involved, the hint text will explicitly show which player is AI.
 
 <div align="center">
-    <img src="./second-semester/assets/images/game1.png" alt="game1" width="50%" />
+    <img src="./assets/images/game1.png" alt="game1" width="50%" />
 </div>
+
 
 To move during the game, a player needs to first click one's piece and then click a free space as the destination of the movement. 
 <div align="center">
-    <img src="./second-semester/assets/images/game3.png" alt="game3" width="50%" />
+    <img src="./assets/images/game3.png" alt="game3" width="50%" />
 </div>
+
 
 Once the player first clicks a valid position, the resulting available list of destinations will be marked in the corresponding colour as shown above. If an entering movement is invalid, then there will be an error message posted, and the player will need to re-enter another movement. The invalid situations include (1) double-clicking a position, (2) taking a free space at the start of the movement, (3) trying to reach a destination that is too far, or (4) the destination is already occupied by another player. 
 
 <div align="center">
-    <img src="./second-semester/assets/images/error1.png" alt="error1" width="40%" />
-    <img src="./second-semester/assets/images/error2.png" alt="error2" width="40%" />
+    <img src="./assets/images/error1.png" alt="error1" width="40%" />
+    <img src="./assets/images/error2.png" alt="error2" width="40%" />
   	<br>
-    <img src="./second-semester/assets/images/error3.png" alt="error3" width="40%" />
-    <img src="./second-semester/assets/images/error4.png" alt="error4" width="40%" />
+    <img src="./assets/images/error3.png" alt="error3" width="40%" />
+    <img src="./assets/images/error4.png" alt="error4" width="40%" />
 </div>
+
 
 Once the game is finished, the user can close the game or continue the next one with a different setting. Press the `End Game` button, and the page will be returned to the menu, where the user could make a different configuration. 
 
 <div align="center">
-    <img src="./second-semester/assets/images/game2.png" alt="game2" width="50%" />
+    <img src="./assets/images/game2.png" alt="game2" width="50%" />
 </div>
+
 
 In addition, there exists a thread handler for managing the threads being expanded during the game. Since the computer players are allowed to compete with the other players, the equipped search algorithm was designed to be triggered on an individual thread called "*Task*" in Monomer, therefore, the cash of the IO action won't affect the main thread's application. Considering that the user might terminate the game while the search algorithm is still figuring out which move should be taken, it's significant to kill that activated thread such that the program won't be stalling due to many working threads. 
 
