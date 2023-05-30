@@ -184,6 +184,7 @@ Once you enter the application, you will see a menu page listing all options of 
 <div align="center">
     <img src="./second-semester/assets/images/menu.png" alt="menu" width="50%" />
 </div>
+
 ### Menu Page
 
 <div align="center">
