@@ -207,8 +207,6 @@ On the first panel, there is a number of widgets, which corresponds to a feature
 
 * Simulation evaluator: this controls the mechanism used to choose the appropriate move throughout the self-play simulation during the MCTS playout phase, you can see this as a strategy for emulating a game
   
-  
-  
   * Random choice: 
     
     * Uniformly choosing the moves available but with some priorities for the advancing moves.
@@ -231,11 +229,8 @@ On the first panel, there is a number of widgets, which corresponds to a feature
     
     * There are two more options to adjust the settings of such an embedded search: first, the search depth from $2$ to $4$; second, the percentage value for calling the embedded search, which allows the user to modify the frequency of triggering the minimax search per move during the playout.
     
-      
   
 * MCTS control: the basic workflow of MCTS consists of selection, expansion, playout and backpropagation, and a full run-through of the four phases is called an iteration. 
-  
-  
   
   * The progress of the search could be defined in two ways, first the number of iterations being completed, and second, the time that restricts a certain number of iterations from completing. 
   
