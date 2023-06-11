@@ -1,8 +1,10 @@
 # Haskell Chinese Checkers Platform (MSc Project)
 
-> A platform of Chinese Checkers game with multiple players allowed as well as embedded Monte-Carlo Tree Search algorithm.
+> A platform of Chinese Checkers game with multiple players allowed as well as embedded Monte-Carlo Tree Search algorithm. Such platform was built to complete my dissertation project, mainly for academic usage. 
 
 This markdown sheet is a user guide for those who want to access the platform, the remainder will be divided into three parts: installation and the first launch of the executable, the experimental section, as well as some detailed look at the framework design, including the GUI section and the code implementation. 
+
+The detailed project information could also be found in university [GitLab](https://projects.cs.nott.ac.uk/scyty3/msc-project) here. 
 
 <div align="center">
     <img src="./second-semester/assets/images/game_6.png" alt="game_6" width="50%" />
