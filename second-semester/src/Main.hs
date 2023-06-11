@@ -126,7 +126,7 @@ discardThread id = do
 appendThread :: ThreadId -> IO ()
 appendThread id = do
     existingThreads <- takeMVar threadPool
-    putMVar threadPool (id:existingThreads) -- add the new generated thread'id to the record
+    putMVar threadPool (id:existingThreads) -- add the new generated thread's id to the record
 
 endAllThread :: IO ()
 endAllThread = do
@@ -150,7 +150,7 @@ data ComputerPlayerConfig = ComputerPlayerConfig {
 -- a list of configuration for each computer player
 newtype ConfigList = ConfigList {
   _configList :: [ComputerPlayerConfig]
-  -- since it is a list, if wanting to check whether a computer player is active, just check the boolean flag at that index
+  -- since it is a list, if wanting to check whether a computer player is active, just check the Boolean flag at that index
 } deriving (Eq, Show)
 
 -- the GUI for the game platform allowing user to set player and board configuration
@@ -243,7 +243,7 @@ buildUI wenv model = widgetTree where
       pieceButton pos
         -- place a spacer if the position type is "U", which is just for separating the buttons
         | isSpacer pos = spacer
-        -- otherwise, place a button with related color and index
+        -- otherwise, place a button with related colour and index
         | otherwise = button (T.pack textBi) (MoveCheck pos ci)
           `styleBasic`[radius 45, bgColor (pieceColour pos), border 2 white, textSize 20, textColor white,
                       -- besides, once a button is clicked, the available destinations will be rendered with corresponding colour 
@@ -401,7 +401,7 @@ buildUI wenv model = widgetTree where
         box_ [alignLeft] $ hgrid_ [childSpacing_ 10] (computerPlayersChoices <$> [0.. model ^. playersAmount - 1])
       ],
       filler,
-      -- the flag of activing the public memory
+      -- the flag of activating the public memory
       toggleButton "Shared Memory" ifMemoryShared
     ] `styleBasic` [maxWidth 650, border 2 white, padding 20, radius 10]
 
@@ -563,7 +563,7 @@ handleEvent wenv node model evt = case evt of
 
   -- only react when the during the game that is currently played by the computer player
   RenderComputerAction (newBoard, newInternalState, newHistory)
-    | not (model ^. startGame) -> [] -- quiting the game will avoid the decision function's result being rendered
+    | not (model ^. startGame) -> [] -- quitting the game will avoid the decision function's result being rendered
     | otherwise -> [Model $ model & displayBoard .~ newBoard
                                   & internalStates .~ insertState
                                   & gameHistory .~ (if ifExistPublicMemory then replicate pn newHistory else replace pi newHistory ht)
@@ -581,7 +581,7 @@ handleEvent wenv node model evt = case evt of
       ifExistPublicMemory = model ^. ifMemoryShared
 
   where
-    -- boolean flag for checking whether the current turn is played by the computer player 
+    -- Boolean flag for checking whether the current turn is played by the computer player 
     ifComputersTurn id = model ^. playerConfigs ^?! configList . ix id . active
     pn = model ^. playersAmount
     sp = model ^. startPos

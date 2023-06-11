@@ -219,8 +219,8 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                                                 Move -> moveEvaluator tfs
                                                                 -- lookup table mixed with global board state heuristic
                                                                 Board -> boardEvaluator tfs
-                                                                -- the precentage-based minimax search 
-                                                                -- in this case, the minimax search is no longer the main evaluation but enhancement could be triggered by cetain possibility
+                                                                -- the percentage-based minimax search 
+                                                                -- in this case, the minimax search is no longer the main evaluation but enhancement could be triggered by certain possibility
                                                                 -- the midgame-only variant of the percentage-based minimax search is implemented here
                                                                 MParanoid -> mixedSearch isMinimaxApplied Paranoid depth tfs
                                                                 MBRS -> mixedSearch isMinimaxApplied BRS depth tfs
@@ -268,14 +268,14 @@ switchEvaluator (evaluator, depth, percentage) tfs = do -- first check whether r
                                                  if isMidgame iboard && flag then minimaxSearch depth treetype
                                                  else boardEvaluator tfs
 
--- game simulation from a certain board state til the end of the game, and every move made in the simulation is generated based on certain policy
+-- game simulation from a certain board state till the end of the game, and every move made in the simulation is generated based on certain policy
 playout :: Int -> State GameTreeStatus PlayerIndex
 playout moveCounts =
                 do pn <- getPlayerNum
                    let turns = getTurns moveCounts pn
                    if turns >= 1000 then do -- stop the playouts if costing too much time
                                             iboards <- getInternalBoards
-                                            -- if exceeds the set threshold, stops the simulation and return the player with the most cemtroid value as the winner
+                                            -- if exceeds the set threshold, stops the simulation and return the player with the most centroid value as the winner
                                             let scores = map centroid iboards
                                             randomMaxSelection scores
                    -- otherwise, process normally                                          

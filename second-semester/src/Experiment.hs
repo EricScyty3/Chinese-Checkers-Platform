@@ -108,7 +108,7 @@ runMCTSIteration inputTime cons player = do gen <- newStdGen
 -- while maintaining the history trace for each player specifically
 singleRun :: MCTSControl -> PlayerIndex -> Board -> [[Pos]] -> Int -> [HistoryTrace] -> [PlayoutArgument] -> [Board] -> (Double, Double) -> IO (Maybe PlayerIndex)
 singleRun control pi eboard iboards pn hts pl record cons =
-                                    -- there might exist cycling where all players are trying to maintain a board state that is most benefical for them
+                                    -- there might exist cycling where all players are trying to maintain a board state that is most beneficial for them
                                     -- therefore, it is necessary to have a mechanism to break the loop 
                                     if checkLoop eboard record then return Nothing
                                     else do gen <- newStdGen
@@ -186,9 +186,9 @@ main = do arg <- lookupTable `seq` getArgs -- preload the lookup table at the be
               player1 = read $ arg !! 1 :: PlayoutArgument
               player2 = read $ arg !! 2 :: PlayoutArgument
               trials = read $ arg !! 3 :: Int
-              -- invovledPlayers = [(Move,0,0), (Random,0,0), player1]
+              -- involvedPlayers = [(Move,0,0), (Random,0,0), player1]
               
-          -- autoRunExperiment2 trials (0.1, 5) input invovledPlayers
+          -- autoRunExperiment2 trials (0.1, 5) input involvedPlayers
           autoRunExperiment trials (0.1, 5) input (player1, player2)
           
           putStrLn "All Completed!"
@@ -202,7 +202,7 @@ autoRunExperiment runs cons input (p1, p2) =
                                        let str = printf "%.2f" input
                                            folderName = "./experiments1/"
                                            fileName = folderName ++ show (p1, p2) ++ "_" ++ str ++ ".txt"
-                                           -- create the three-player game  assingment of two player types
+                                           -- create the three-player game  assignment of two player types
                                            testSet = twoPlayerList 3 p1 p2
                                        in  do start <- getCurrentTime
                                               result <- multipleGames cons runs (Nothing, Just input) testSet
@@ -211,13 +211,13 @@ autoRunExperiment runs cons input (p1, p2) =
                                               end <- getCurrentTime
                                               putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
 
--- the test set of different players playing againts each other in a three-player game
+-- the test set of different players playing against each other in a three-player game
 autoRunExperiment2 :: Int -> (Double, Double) -> Double -> [PlayoutArgument] -> IO ()
 autoRunExperiment2 runs cons input ps = 
                                        let str = printf "%.2f" input
                                            folderName = "./experiments2/"
                                            fileName = folderName ++ show ps ++ "_" ++ str ++ ".txt"
-                                           -- create the three-player game assingment of the input player list
+                                           -- create the three-player game assignment of the input player list
                                            testSet = multiPlayerList 3 ps
                                        in  do start <- getCurrentTime
                                               result <- multipleGames cons runs (Nothing, Just input) testSet

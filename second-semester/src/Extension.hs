@@ -41,7 +41,7 @@ finalSelection tree s@(_, pi, _, eboard, iboards, pn, _, _, _) control =
                                                                       if null children then do printEoard eboard
                                                                                                error "No effective result was retrieved"
 
-                                                                      else do gen <- newStdGen -- get a new random nunmber generator for selecting the returned move
+                                                                      else do gen <- newStdGen -- get a new random number generator for selecting the returned move
                                                                               let -- get the win rate of entered player for investigated movements
                                                                                   scores = map (\n -> averageScore pi (getWins n) (getVisits n)) children
                                                                                   (_, newRandomState) = runState (setRandGen gen) s

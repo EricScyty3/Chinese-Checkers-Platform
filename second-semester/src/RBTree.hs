@@ -5,7 +5,7 @@ type Key = Int
 -- the score of the represented board state for lookup table or the history heuristic
 -- the colour of the node, either red or black 
 data TColour = Red | Black deriving (Eq, Show)
--- the Red Black tree contains the colour of node, the node value, left subtree, node index, right rubtree  
+-- the Red Black tree contains the colour of node, the node value, left subtree, node index, right subtree  
 data RBTree a = RBLeaf | RBNode TColour a (RBTree a) Key (RBTree a) deriving (Eq, Show)
 
 -- repaints a tree's root node and returns 
@@ -67,7 +67,7 @@ rbInsert :: Key -> a -> RBTree a -> RBTree a
 rbInsert h n tree = repaint Black (ins h n tree) -- recursively calling balance function may make the root node red, repaints to make it black  
     where
         -- inserts a node with red into the tree, if already exists then do something/nothing 
-        -- since inserting a red node may break the tree's properties, reblances the branch after each insertion 
+        -- since inserting a red node may break the tree's properties, rebalances the branch after each insertion 
         -- returns a weakly Red Black tree
         ins :: Key -> a -> RBTree a -> RBTree a
         ins h n RBLeaf = RBNode Red n RBLeaf h RBLeaf

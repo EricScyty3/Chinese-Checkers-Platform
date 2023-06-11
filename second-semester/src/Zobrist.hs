@@ -131,7 +131,7 @@ myXOR x y = toDecimal $ listXOR fx fy
             | boolXOR (x == 1) (y == 1) = 1
             | otherwise = 0
 
-        -- boolean xor operator
+        -- Boolean xor operator
         boolXOR :: Bool -> Bool -> Bool
         boolXOR True True = False
         boolXOR True False = True

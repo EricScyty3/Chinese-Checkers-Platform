@@ -98,7 +98,7 @@ moveOrder ms = let -- calculate the distance change for each move
                    sorted = sortBy (\(a, _) (b, _) -> compare b a) result
                in  map snd sorted -- omit the distance values
     where
-        -- zip with the assoicated distance
+        -- zip with the associated distance
         assignDistance :: [Transform] -> [(Double, Transform)]
         assignDistance ms = map getDistance ms
         

@@ -41,12 +41,12 @@ data GameTree = GRoot BoardIndex [GameTree] |
 -- the options of playout evaluator, how the board is evaluated during the self-played simulation, here several evaluator is implemented
 -- first is the classic random option, 
 -- second is the move evaluator which evaluates the movement based on forward distance
--- thrid one is the board evaluator which checks the lookup table for the possible moves toward the goal as well as calculating through an alternative board heuristic
--- the fourth and fifth ones are the modificaed version of minimax search that are compatible for multi-player game, and with some changes adpated here
+-- third one is the board evaluator which checks the lookup table for the possible moves toward the goal as well as calculating through an alternative board heuristic
+-- the fourth and fifth ones are the modified version of minimax search that are compatible for multi-player game, and with some changes adapted here
 data PlayoutEvaluator = Random | Move | Board | 
                         MParanoid | MBRS
                         deriving (Eq, Show, Read)
--- the two last moves that could cause a cutoff for certain layer, and might be helpful for the next search (applied when the evaluator is minimax-based)
+-- the two last moves that could cause a cut-off for certain layer, and might be helpful for the next search (applied when the evaluator is minimax-based)
 type KillerMoves = [Transform]
 -- the parameters of the playout evaluator, the search depth, and the percentage of minimax search being called
 type PlayoutArgument = (PlayoutEvaluator, Int, Int)

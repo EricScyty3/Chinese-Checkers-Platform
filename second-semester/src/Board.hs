@@ -57,7 +57,7 @@ defaultMove = (initialPos, initialPos)
 
 --Basic Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
--- determine the color of a piece
+-- determine the colour of a piece
 getColour :: BoardPos -> Maybe Colour
 getColour (G _) = Just Green
 getColour (B _) = Just Blue
