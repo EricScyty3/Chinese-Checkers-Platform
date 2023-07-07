@@ -32,7 +32,7 @@ Before we move on, it is significant to let you know that the GUI part of this p
 - Event handler
 - UI builder
 
-For more information about the library or the license, please check [here](https://github.com/fjvallarino/monomer) and [here](https://github.com/fjvallarino/monomer-starter).
+This library is licensed under the [BSD-3 license](https://github.com/fjvallarino/monomer/blob/main/LICENSE), for more information about the library, please check [Monomer](https://github.com/fjvallarino/monomer) and [Monomer starter](https://github.com/fjvallarino/monomer-starter).
 
 
 
