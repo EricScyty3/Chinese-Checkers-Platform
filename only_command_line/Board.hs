@@ -1,180 +1,155 @@
 module Board where
 -- The operator of displaying board state
-import Data.Maybe ( fromMaybe )
-import Data.List ( elemIndex, nub )
+import Data.Maybe ( fromMaybe, isJust )
+import Data.List ( elemIndex, nub, intersperse, intercalate )
 import Control.Monad.ST ( runST )
 import Data.STRef ( modifySTRef, newSTRef, readSTRef )
 import Control.Monad.State ( State, MonadState(get), evalState )
 import Control.Monad.Extra ( concatMapM )
 import Control.Parallel ( par, pseq )
+import qualified Data.HashMap.Strict as HashMap
+
+-- main :: IO ()
+-- main = do
+--     -- 創建一個空的哈希表
+--     let emptyHashMap = HashMap.empty
+
+--     -- 添加鍵值對到哈希表
+--     let hashMap = HashMap.insert "one" 1 emptyHashMap
+--         updatedHashMap = HashMap.insert "two" 2 hashMap
+
+--     -- 查找特定鍵對應的值
+--     case HashMap.lookup "two" updatedHashMap of
+--         Just value -> putStrLn $ "The value for key 'two' is: " ++ show value
+--         Nothing -> putStrLn "Key 'two' not found in the hash map"
 
 
--- the six colours being applied in the game
-data Colour = Green | Blue | Purple | Red | Orange | Black deriving (Eq, Show)
+-- there are six colours and two additional board statuses being applied in the game
+-- Green, Blue, Purple, Red, Orange, Black, Empty and Unknown
+data Status = G | B | P | R | O | K | E | U deriving (Eq, Show)
 -- a position is consisted of x and y coordinates
 type Pos = (Int, Int)
--- the board position should be able to represent the occupy state and the occupied piece's colour
-data BoardPos = G Pos | B Pos | P Pos | R Pos | O Pos | K Pos | E Pos | U Pos deriving (Eq, Show)
--- the representation of the board, a 2D list with corresponding pieces' positions and colours
-type Board = [[BoardPos]]
--- for occupied board, only occupied state is needed, and the positions are projected from the external star-shaped board to a square board
-type OccupiedBoard = [[Int]]
--- a movement is a transform from one position to another, therefore, should contain a start position and an end position
-type Transform = (BoardPos, BoardPos)
+-- the board position should be able to represent the occupy state and the piece's colour
+type BoardPos = (Pos, Status)
+-- a hashmap is used to hold all board statuses
+type Board = HashMap.HashMap Pos Status
+-- a movement is the transform of a piece from one position to another: (beginning, destination) and the piece's colour
+type Transform = ((Pos, Pos), Status)
 
--- the board size
-boardWidth :: Int
-boardWidth = 19
-boardHeight :: Int
-boardHeight = 13
-
--- the star-shape board could also projected to a square board corresponding to different piece's colour
--- the resulting board would be used mostly in the single-agent game and can generate a consistent form from different players 
-occupiedBoardSize :: Int
-occupiedBoardSize = 7
+-- the board size: (width, height)
+boardSize :: (Int, Int)
+boardSize = (19, 13)
 
 -- the colour corresponding to each player with different number of players allowed
-playerColourList :: Int -> [Colour]
-playerColourList 2 = [Green, Red]
-playerColourList 3 = [Green, Purple, Orange]
-playerColourList 4 = [Blue, Purple, Orange, Black]
-playerColourList 6 = [Green, Blue, Purple, Red, Orange, Black]
+playerColourList :: Int -> [Status]
+playerColourList 2 = [G, R]
+playerColourList 3 = [G, P, O]
+playerColourList 4 = [B, P, O, K]
+playerColourList 6 = [G, B, P, R, O, K]
 playerColourList _ = error "Invalid number of players"
-
 -- given a colour and the total number of players, return the corresponding player's index
-colourIndex :: Colour -> Int -> Maybe Int
+colourIndex :: Status -> Int -> Maybe Int
 colourIndex colour pn = colour `elemIndex` playerColourList pn
-
--- determine if a piece is modified from default form
-ifInitialPiece :: BoardPos -> Bool
-ifInitialPiece pos = pos == initialPos
-
--- the default position, which just indicate nothing
-initialPos :: BoardPos
-initialPos = U (-1, -1)
-defaultMove :: Transform
-defaultMove = (initialPos, initialPos)
 
 --Basic Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
--- determine the colour of a piece
-getColour :: BoardPos -> Maybe Colour
-getColour (G _) = Just Green
-getColour (B _) = Just Blue
-getColour (P _) = Just Purple
-getColour (R _) = Just Red
-getColour (O _) = Just Orange
-getColour (K _) = Just Black
-getColour _ = Nothing -- type E and U do not contain any colour information
-
--- see if a piece's colour is the same as a given colour
-compareColour :: BoardPos -> Colour -> Bool
-compareColour bPos colour = case getColour bPos of
-                             Just bcolour -> bcolour == colour
-                             Nothing -> False
-
--- identify if a position on the board is empty
-isEmpty :: BoardPos -> Bool
-isEmpty (E _) = True
-isEmpty _ = False
-
--- identify if a position on the board is occupied through checking the position's colour
-isOccupied :: BoardPos -> Bool
-isOccupied bPos = case getColour bPos of
-                    Just _ -> True
-                    _      -> False
-
--- type U should be ignored when rendering, therefore, skips as it is just a spacer                    
-isSpacer :: BoardPos -> Bool
-isSpacer (U _) = True
-isSpacer _ = False
-
--- extract the associated position
+-- determine a position's status 
+getStatus :: BoardPos -> Status
+getStatus (_, s) = s
+-- extract the associated coordinate
 getPos :: BoardPos -> Pos
-getPos (U p) = p
-getPos (K p) = p
-getPos (O p) = p
-getPos (P p) = p
-getPos (R p) = p
-getPos (B p) = p
-getPos (G p) = p
-getPos (E p) = p
+getPos (p, _) = p
+-- identify if a position is free
+isEmpty :: BoardPos -> Bool
+isEmpty (_, E) = True
+isEmpty _ = False
+-- determine if a position (U) is used as a spacer when rendering                    
+isSpacer :: BoardPos -> Bool
+isSpacer (_, U) = True
+isSpacer _ = False
+-- identify if a position is occupied by a piece
+isOccupied :: BoardPos -> Bool
+isOccupied x = not (isEmpty x) && not (isSpacer x)
 
--- change the colour and return the new board position
-repaint :: Colour -> BoardPos -> BoardPos
-repaint Green bpos  = G (getPos bpos)
-repaint Black bpos  = K (getPos bpos)
-repaint Orange bpos = O (getPos bpos)
-repaint Red bpos    = R (getPos bpos)
-repaint Blue bpos   = B (getPos bpos)
-repaint Purple bpos = P (getPos bpos)
-
--- discard a position's colour
+-- change the status of a position
+repaint :: Status -> BoardPos -> BoardPos
+repaint s (p, _) = (p, s)
+-- reset a position's status
 erase :: BoardPos -> BoardPos
-erase bpos = E (getPos bpos)
-
--- assign a colour to a position to generate a board position
-appendColour :: Colour -> Pos -> BoardPos
-appendColour Green p = G p
-appendColour Blue p = B p
-appendColour Purple p = P p
-appendColour Red p = R p
-appendColour Orange p = O p
-appendColour Black p = K p
+erase (p, _) = (p, E)
 
 --Board Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 -- the main board that contains the overall states for displaying and for movement handling
-externalBoard :: Board
-externalBoard = [
-        [U(0, 0),  U(1, 0),  U(2, 0),  U(3, 0),  U(4, 0),  U(5, 0),  U(6, 0),  U(7, 0),  U(8, 0),  G(9, 0),  U(10, 0),  U(11, 0),  U(12, 0),  U(13, 0),  U(14, 0),  U(15, 0),  U(16, 0),  U(17, 0),  U(18, 0)],
-        [U(0, 1),  U(1, 1),  U(2, 1),  U(3, 1),  U(4, 1),  U(5, 1),  U(6, 1),  U(7, 1),  G(8, 1),  U(9, 1),  G(10, 1),  U(11, 1),  U(12, 1),  U(13, 1),  U(14, 1),  U(15, 1),  U(16, 1),  U(17, 1),  U(18, 1)],
-        [U(0, 2),  U(1, 2),  U(2, 2),  U(3, 2),  U(4, 2),  U(5, 2),  U(6, 2),  G(7, 2),  U(8, 2),  G(9, 2),  U(10, 2),  G(11, 2),  U(12, 2),  U(13, 2),  U(14, 2),  U(15, 2),  U(16, 2),  U(17, 2),  U(18, 2)],
-        [B(0, 3),  U(1, 3),  B(2, 3),  U(3, 3),  B(4, 3),  U(5, 3),  E(6, 3),  U(7, 3),  E(8, 3),  U(9, 3),  E(10, 3),  U(11, 3),  E(12, 3),  U(13, 3),  K(14, 3),  U(15, 3),  K(16, 3),  U(17, 3),  K(18, 3)],
-        [U(0, 4),  B(1, 4),  U(2, 4),  B(3, 4),  U(4, 4),  E(5, 4),  U(6, 4),  E(7, 4),  U(8, 4),  E(9, 4),  U(10, 4),  E(11, 4),  U(12, 4),  E(13, 4),  U(14, 4),  K(15, 4),  U(16, 4),  K(17, 4),  U(18, 4)],
-        [U(0, 5),  U(1, 5),  B(2, 5),  U(3, 5),  E(4, 5),  U(5, 5),  E(6, 5),  U(7, 5),  E(8, 5),  U(9, 5),  E(10, 5),  U(11, 5),  E(12, 5),  U(13, 5),  E(14, 5),  U(15, 5),  K(16, 5),  U(17, 5),  U(18, 5)],
-        [U(0, 6),  U(1, 6),  U(2, 6),  E(3, 6),  U(4, 6),  E(5, 6),  U(6, 6),  E(7, 6),  U(8, 6),  E(9, 6),  U(10, 6),  E(11, 6),  U(12, 6),  E(13, 6),  U(14, 6),  E(15, 6),  U(16, 6),  U(17, 6),  U(18, 6)],
-        [U(0, 7),  U(1, 7),  P(2, 7),  U(3, 7),  E(4, 7),  U(5, 7),  E(6, 7),  U(7, 7),  E(8, 7),  U(9, 7),  E(10, 7),  U(11, 7),  E(12, 7),  U(13, 7),  E(14, 7),  U(15, 7),  O(16, 7),  U(17, 7),  U(18, 7)],
-        [U(0, 8),  P(1, 8),  U(2, 8),  P(3, 8),  U(4, 8),  E(5, 8),  U(6, 8),  E(7, 8),  U(8, 8),  E(9, 8),  U(10, 8),  E(11, 8),  U(12, 8),  E(13, 8),  U(14, 8),  O(15, 8),  U(16, 8),  O(17, 8),  U(18, 8)],
-        [P(0, 9),  U(1, 9),  P(2, 9),  U(3, 9),  P(4, 9),  U(5, 9),  E(6, 9),  U(7, 9),  E(8, 9),  U(9, 9),  E(10, 9),  U(11, 9),  E(12, 9),  U(13, 9),  O(14, 9),  U(15, 9),  O(16, 9),  U(17, 9),  O(18, 9)],
-        [U(0, 10), U(1, 10), U(2, 10), U(3, 10), U(4, 10), U(5, 10), U(6, 10), R(7, 10), U(8, 10), R(9, 10), U(10, 10), R(11, 10), U(12, 10), U(13, 10), U(14, 10), U(15, 10), U(16, 10), U(17, 10), U(18, 10)],
-        [U(0, 11), U(1, 11), U(2, 11), U(3, 11), U(4, 11), U(5, 11), U(6, 11), U(7, 11), R(8, 11), U(9, 11), R(10, 11), U(11, 11), U(12, 11), U(13, 11), U(14, 11), U(15, 11), U(16, 11), U(17, 11), U(18, 11)],
-        [U(0, 12), U(1, 12), U(2, 12), U(3, 12), U(4, 12), U(5, 12), U(6, 12), U(7, 12), U(8, 12), R(9, 12), U(10, 12), U(11, 12), U(12, 12), U(13, 12), U(14, 12), U(15, 12), U(16, 12), U(17, 12), U(18, 12)]
+boardList :: [BoardPos]
+boardList = [
+    ((0,0),U),((1,0),U),((2,0),U),((3,0),U),((4,0),U),((5,0),U),((6,0),U),((7,0),U),((8,0),U),((9,0),G),((10,0),U),((11,0),U),((12,0),U),((13,0),U),((14,0),U),((15,0),U),((16,0),U),((17,0),U),((18,0),U),
+    ((0,1),U),((1,1),U),((2,1),U),((3,1),U),((4,1),U),((5,1),U),((6,1),U),((7,1),U),((8,1),G),((9,1),U),((10,1),G),((11,1),U),((12,1),U),((13,1),U),((14,1),U),((15,1),U),((16,1),U),((17,1),U),((18,1),U),
+    ((0,2),U),((1,2),U),((2,2),U),((3,2),U),((4,2),U),((5,2),U),((6,2),U),((7,2),G),((8,2),U),((9,2),G),((10,2),U),((11,2),G),((12,2),U),((13,2),U),((14,2),U),((15,2),U),((16,2),U),((17,2),U),((18,2),U),
+    ((0,3),B),((1,3),U),((2,3),B),((3,3),U),((4,3),B),((5,3),U),((6,3),E),((7,3),U),((8,3),E),((9,3),U),((10,3),E),((11,3),U),((12,3),E),((13,3),U),((14,3),K),((15,3),U),((16,3),K),((17,3),U),((18,3),K),
+    ((0,4),U),((1,4),B),((2,4),U),((3,4),B),((4,4),U),((5,4),E),((6,4),U),((7,4),E),((8,4),U),((9,4),E),((10,4),U),((11,4),E),((12,4),U),((13,4),E),((14,4),U),((15,4),K),((16,4),U),((17,4),K),((18,4),U),
+    ((0,5),U),((1,5),U),((2,5),B),((3,5),U),((4,5),E),((5,5),U),((6,5),E),((7,5),U),((8,5),E),((9,5),U),((10,5),E),((11,5),U),((12,5),E),((13,5),U),((14,5),E),((15,5),U),((16,5),K),((17,5),U),((18,5),U),
+    ((0,6),U),((1,6),U),((2,6),U),((3,6),E),((4,6),U),((5,6),E),((6,6),U),((7,6),E),((8,6),U),((9,6),E),((10,6),U),((11,6),E),((12,6),U),((13,6),E),((14,6),U),((15,6),E),((16,6),U),((17,6),U),((18,6),U),
+    ((0,7),U),((1,7),U),((2,7),P),((3,7),U),((4,7),E),((5,7),U),((6,7),E),((7,7),U),((8,7),E),((9,7),U),((10,7),E),((11,7),U),((12,7),E),((13,7),U),((14,7),E),((15,7),U),((16,7),O),((17,7),U),((18,7),U),
+    ((0,8),U),((1,8),P),((2,8),U),((3,8),P),((4,8),U),((5,8),E),((6,8),U),((7,8),E),((8,8),U),((9,8),E),((10,8),U),((11,8),E),((12,8),U),((13,8),E),((14,8),U),((15,8),O),((16,8),U),((17,8),O),((18,8),U),
+    ((0,9),P),((1,9),U),((2,9),P),((3,9),U),((4,9),P),((5,9),U),((6,9),E),((7,9),U),((8,9),E),((9,9),U),((10,9),E),((11,9),U),((12,9),E),((13,9),U),((14,9),O),((15,9),U),((16,9),O),((17,9),U),((18,9),O),
+    ((0,10),U),((1,10),U),((2,10),U),((3,10),U),((4,10),U),((5,10),U),((6,10),U),((7,10),R),((8,10),U),((9,10),R),((10,10),U),((11,10),R),((12,10),U),((13,10),U),((14,10),U),((15,10),U),((16,10),U),((17,10),U),((18,10),U),
+    ((0,11),U),((1,11),U),((2,11),U),((3,11),U),((4,11),U),((5,11),U),((6,11),U),((7,11),U),((8,11),R),((9,11),U),((10,11),R),((11,11),U),((12,11),U),((13,11),U),((14,11),U),((15,11),U),((16,11),U),((17,11),U),((18,11),U),
+    ((0,12),U),((1,12),U),((2,12),U),((3,12),U),((4,12),U),((5,12),U),((6,12),U),((7,12),U),((8,12),U),((9,12),R),((10,12),U),((11,12),U),((12,12),U),((13,12),U),((14,12),U),((15,12),U),((16,12),U),((17,12),U),((18,12),U)
     ]
 
--- access an element in a 2D list, while wrapping the container as the state
-getElement :: Pos -> State [[a]] a
-getElement (x, y) = do n <- get
-                       return ((n !! y) !! x)
+-- print the board in terminal, for debugging
+printEoard :: [BoardPos] -> IO ()
+printEoard b = do putStrLn ""
+                  printEoard' b
+    where
+        printEoard' [] = putStrLn ""
+        printEoard' xs = do let str = map toChar (take count xs)
+                            putStrLn $ intersperse ' ' str
+                            printEoard' (drop count xs)
+
+        count = fst boardSize
+
+        toChar (_, G) = 'G'
+        toChar (_, B) = 'B'
+        toChar (_, P) = 'P'
+        toChar (_, R) = 'R'
+        toChar (_, O) = 'O'
+        toChar (_, K) = 'K'
+        toChar (_, E) = 'E'
+        toChar (_, U) = ' '
+
+-- rearrange the board as a hashmap 
+boardMap :: Board
+boardMap = HashMap.fromList boardList
 
 -- mutate an element in a 2D list
-replace2 :: Pos -> a -> [[a]] -> [[a]]
-replace2 (x, y) newItem table = let newRow = replace x newItem (table !! y)
-                                in  replace y newRow table
+-- replace2 :: Pos -> Board -> [[a]] -> [[a]]
+-- replace2 (x, y) newItem table = let newRow = replace x newItem (table !! y)
+--                                 in  replace y newRow table
 
 -- mutate an element in a list
-replace :: Int -> a -> [a] -> [a]
-replace idx newItem row = front ++ [newItem] ++ end
-    where
-        (front, _:end) = splitAt idx row
+-- replace :: Int -> a -> [a] -> [a]
+-- replace idx newItem row = front ++ [newItem] ++ end
+--     where
+--         (front, _:end) = splitAt idx row
 
 -- remove an element in a list
-removeByIdx :: Int -> [a] -> [a]
-removeByIdx idx row = front ++ end
-    where
-        (front, _:end) = splitAt idx row
+-- removeByIdx :: Int -> [a] -> [a]
+-- removeByIdx idx row = front ++ end
+--     where
+--         (front, _:end) = splitAt idx row
 
 -- find the all pieces' positions on the board based on the colour
 -- could be used when needed to generate an occupied board for certain player
-findPiecesWithColour :: Colour -> Board -> [BoardPos]
-findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
+-- findPiecesWithColour :: Colour -> Board -> [BoardPos]
+-- findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
 
 -- mutate a position of the board with a certain function, either "repaint" or "erase"
 changeBoardElement :: (BoardPos -> BoardPos) -> BoardPos -> Board -> Board
-changeBoardElement f bPos board = let newbPos = f bPos
-                                      pos = getPos bPos
-                                  in  newbPos `par` pos `pseq` replace2 pos newbPos board
-
+changeBoardElement f bPos board = let (pos, s) = f bPos
+                                  in  HashMap.insert pos s board
+{-
 -- erase the pieces on the board and keep only certain coloured pieces, 
 -- this is to generate different board according to the different numbers of players
 eraseBoard :: [Colour] -> Board -> Board
@@ -340,8 +315,7 @@ reversion Black    = reverseBlack
         (5,8) (6,7) (7,6) (8,5)
         (4,7) (5,6) (6,5) (7,4)
 (1,-1)  (3,6) (4,5) (5,4) (6,3)
--}
-projectGreen :: Pos -> Pos
+-}projectGreen :: Pos -> Pos
 projectGreen (x, y) = let disY = ((x - ix) + (y - iy)) `div` 2
                           (ox, oy) = (ix + disY, iy + disY) -- move Y
                       in  (x - ox, disY)
@@ -448,38 +422,6 @@ reverseBlack (x, y) = let (ox, oy) = (ix + 2 * x, iy) -- move x
                       in  (ox - y, oy + y)            -- move y
     where
         (ix, iy) = (6, 3)
+-}
 
 
---Board Display----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- print the board in terminal: debugging usage, can be ignored
-
--- board printing
-printEoard :: Board -> IO ()
-printEoard b = do putStrLn ""
-                  printEoard' (testDisplay b)
-    where
-        printEoard' :: [[Int]] -> IO ()
-        printEoard' [] = putStrLn ""
-        printEoard' (x:xs) = do let str = map skipZero (show x)
-                                putStrLn str
-                                printEoard' xs
-
-        skipZero :: Char -> Char
-        skipZero '7' = ' '
-        skipZero '6' = 'e'
-        skipZero ',' = ' '
-        skipZero a = a
-
--- transform the board positions into numerical values
-testDisplay :: Board -> [[Int]]
-testDisplay = map testDisplay'
-    where
-        testDisplay' :: [BoardPos] -> [Int]
-        testDisplay' [] = []
-        testDisplay' (x:xs) = case getColour x of
-                                Just c -> colourToIndex c :testDisplay' xs
-                                _ -> (if isEmpty x then 6 else 7) : testDisplay' xs
-
-
-        colourToIndex :: Colour -> Int
-        colourToIndex colour = fromMaybe (-1) $ colourIndex colour 6
