@@ -1,13 +1,13 @@
 module Board where
 -- The operator of displaying board state
 import Data.Maybe ( fromMaybe, isJust )
-import Data.List ( elemIndex, nub, intersperse, intercalate )
+import Data.List ( elemIndex, nub, intersperse, intercalate, sort, sortBy )
 import Control.Monad.ST ( runST )
 import Data.STRef ( modifySTRef, newSTRef, readSTRef )
 import Control.Monad.State ( State, MonadState(get), evalState )
 import Control.Monad.Extra ( concatMapM )
 import Control.Parallel ( par, pseq )
-import qualified Data.HashMap.Strict as HashMap
+import qualified Data.HashMap.Strict as HM
 
 -- main :: IO ()
 -- main = do
@@ -32,7 +32,7 @@ type Pos = (Int, Int)
 -- the board position should be able to represent the occupy state and the piece's colour
 type BoardPos = (Pos, Status)
 -- a hashmap is used to hold all board statuses
-type Board = HashMap.HashMap Pos Status
+type Board = HM.HashMap Pos Status
 -- a movement is the transform of a piece from one position to another: (beginning, destination) and the piece's colour
 type Transform = ((Pos, Pos), Status)
 
@@ -73,9 +73,11 @@ isOccupied x = not (isEmpty x) && not (isSpacer x)
 
 -- change the status of a position
 repaint :: Status -> BoardPos -> BoardPos
+repaint _ (p, U) = (p, U)
 repaint s (p, _) = (p, s)
 -- reset a position's status
 erase :: BoardPos -> BoardPos
+erase (p, U) = (p, U)
 erase (p, _) = (p, E)
 
 --Board Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -83,22 +85,26 @@ erase (p, _) = (p, E)
 -- the main board that contains the overall states for displaying and for movement handling
 boardList :: [BoardPos]
 boardList = [
-    ((0,0),U),((1,0),U),((2,0),U),((3,0),U),((4,0),U),((5,0),U),((6,0),U),((7,0),U),((8,0),U),((9,0),G),((10,0),U),((11,0),U),((12,0),U),((13,0),U),((14,0),U),((15,0),U),((16,0),U),((17,0),U),((18,0),U),
-    ((0,1),U),((1,1),U),((2,1),U),((3,1),U),((4,1),U),((5,1),U),((6,1),U),((7,1),U),((8,1),G),((9,1),U),((10,1),G),((11,1),U),((12,1),U),((13,1),U),((14,1),U),((15,1),U),((16,1),U),((17,1),U),((18,1),U),
-    ((0,2),U),((1,2),U),((2,2),U),((3,2),U),((4,2),U),((5,2),U),((6,2),U),((7,2),G),((8,2),U),((9,2),G),((10,2),U),((11,2),G),((12,2),U),((13,2),U),((14,2),U),((15,2),U),((16,2),U),((17,2),U),((18,2),U),
-    ((0,3),B),((1,3),U),((2,3),B),((3,3),U),((4,3),B),((5,3),U),((6,3),E),((7,3),U),((8,3),E),((9,3),U),((10,3),E),((11,3),U),((12,3),E),((13,3),U),((14,3),K),((15,3),U),((16,3),K),((17,3),U),((18,3),K),
-    ((0,4),U),((1,4),B),((2,4),U),((3,4),B),((4,4),U),((5,4),E),((6,4),U),((7,4),E),((8,4),U),((9,4),E),((10,4),U),((11,4),E),((12,4),U),((13,4),E),((14,4),U),((15,4),K),((16,4),U),((17,4),K),((18,4),U),
-    ((0,5),U),((1,5),U),((2,5),B),((3,5),U),((4,5),E),((5,5),U),((6,5),E),((7,5),U),((8,5),E),((9,5),U),((10,5),E),((11,5),U),((12,5),E),((13,5),U),((14,5),E),((15,5),U),((16,5),K),((17,5),U),((18,5),U),
-    ((0,6),U),((1,6),U),((2,6),U),((3,6),E),((4,6),U),((5,6),E),((6,6),U),((7,6),E),((8,6),U),((9,6),E),((10,6),U),((11,6),E),((12,6),U),((13,6),E),((14,6),U),((15,6),E),((16,6),U),((17,6),U),((18,6),U),
-    ((0,7),U),((1,7),U),((2,7),P),((3,7),U),((4,7),E),((5,7),U),((6,7),E),((7,7),U),((8,7),E),((9,7),U),((10,7),E),((11,7),U),((12,7),E),((13,7),U),((14,7),E),((15,7),U),((16,7),O),((17,7),U),((18,7),U),
-    ((0,8),U),((1,8),P),((2,8),U),((3,8),P),((4,8),U),((5,8),E),((6,8),U),((7,8),E),((8,8),U),((9,8),E),((10,8),U),((11,8),E),((12,8),U),((13,8),E),((14,8),U),((15,8),O),((16,8),U),((17,8),O),((18,8),U),
-    ((0,9),P),((1,9),U),((2,9),P),((3,9),U),((4,9),P),((5,9),U),((6,9),E),((7,9),U),((8,9),E),((9,9),U),((10,9),E),((11,9),U),((12,9),E),((13,9),U),((14,9),O),((15,9),U),((16,9),O),((17,9),U),((18,9),O),
-    ((0,10),U),((1,10),U),((2,10),U),((3,10),U),((4,10),U),((5,10),U),((6,10),U),((7,10),R),((8,10),U),((9,10),R),((10,10),U),((11,10),R),((12,10),U),((13,10),U),((14,10),U),((15,10),U),((16,10),U),((17,10),U),((18,10),U),
-    ((0,11),U),((1,11),U),((2,11),U),((3,11),U),((4,11),U),((5,11),U),((6,11),U),((7,11),U),((8,11),R),((9,11),U),((10,11),R),((11,11),U),((12,11),U),((13,11),U),((14,11),U),((15,11),U),((16,11),U),((17,11),U),((18,11),U),
-    ((0,12),U),((1,12),U),((2,12),U),((3,12),U),((4,12),U),((5,12),U),((6,12),U),((7,12),U),((8,12),U),((9,12),R),((10,12),U),((11,12),U),((12,12),U),((13,12),U),((14,12),U),((15,12),U),((16,12),U),((17,12),U),((18,12),U)
+    ((0,0),U),((0,1),U),((0,2),U),((0,3),U),((0,4),U),((0,5),U),((0,6),U),((0,7),U),((0,8),U),((0,9),G),((0,10),U),((0,11),U),((0,12),U),((0,13),U),((0,14),U),((0,15),U),((0,16),U),((0,17),U),((0,18),U),
+    ((1,0),U),((1,1),U),((1,2),U),((1,3),U),((1,4),U),((1,5),U),((1,6),U),((1,7),U),((1,8),G),((1,9),U),((1,10),G),((1,11),U),((1,12),U),((1,13),U),((1,14),U),((1,15),U),((1,16),U),((1,17),U),((1,18),U),
+    ((2,0),U),((2,1),U),((2,2),U),((2,3),U),((2,4),U),((2,5),U),((2,6),U),((2,7),G),((2,8),U),((2,9),G),((2,10),U),((2,11),G),((2,12),U),((2,13),U),((2,14),U),((2,15),U),((2,16),U),((2,17),U),((2,18),U),
+    ((3,0),B),((3,1),U),((3,2),B),((3,3),U),((3,4),B),((3,5),U),((3,6),E),((3,7),U),((3,8),E),((3,9),U),((3,10),E),((3,11),U),((3,12),E),((3,13),U),((3,14),K),((3,15),U),((3,16),K),((3,17),U),((3,18),K),
+    ((4,0),U),((4,1),B),((4,2),U),((4,3),B),((4,4),U),((4,5),E),((4,6),U),((4,7),E),((4,8),U),((4,9),E),((4,10),U),((4,11),E),((4,12),U),((4,13),E),((4,14),U),((4,15),K),((4,16),U),((4,17),K),((4,18),U),
+    ((5,0),U),((5,1),U),((5,2),B),((5,3),U),((5,4),E),((5,5),U),((5,6),E),((5,7),U),((5,8),E),((5,9),U),((5,10),E),((5,11),U),((5,12),E),((5,13),U),((5,14),E),((5,15),U),((5,16),K),((5,17),U),((5,18),U),
+    ((6,0),U),((6,1),U),((6,2),U),((6,3),E),((6,4),U),((6,5),E),((6,6),U),((6,7),E),((6,8),U),((6,9),E),((6,10),U),((6,11),E),((6,12),U),((6,13),E),((6,14),U),((6,15),E),((6,16),U),((6,17),U),((6,18),U),
+    ((7,0),U),((7,1),U),((7,2),P),((7,3),U),((7,4),E),((7,5),U),((7,6),E),((7,7),U),((7,8),E),((7,9),U),((7,10),E),((7,11),U),((7,12),E),((7,13),U),((7,14),E),((7,15),U),((7,16),O),((7,17),U),((7,18),U),
+    ((8,0),U),((8,1),P),((8,2),U),((8,3),P),((8,4),U),((8,5),E),((8,6),U),((8,7),E),((8,8),U),((8,9),E),((8,10),U),((8,11),E),((8,12),U),((8,13),E),((8,14),U),((8,15),O),((8,16),U),((8,17),O),((8,18),U),
+    ((9,0),P),((9,1),U),((9,2),P),((9,3),U),((9,4),P),((9,5),U),((9,6),E),((9,7),U),((9,8),E),((9,9),U),((9,10),E),((9,11),U),((9,12),E),((9,13),U),((9,14),O),((9,15),U),((9,16),O),((9,17),U),((9,18),O),
+    ((10,0),U),((10,1),U),((10,2),U),((10,3),U),((10,4),U),((10,5),U),((10,6),U),((10,7),R),((10,8),U),((10,9),R),((10,10),U),((10,11),R),((10,12),U),((10,13),U),((10,14),U),((10,15),U),((10,16),U),((10,17),U),((10,18),U),
+    ((11,0),U),((11,1),U),((11,2),U),((11,3),U),((11,4),U),((11,5),U),((11,6),U),((11,7),U),((11,8),R),((11,9),U),((11,10),R),((11,11),U),((11,12),U),((11,13),U),((11,14),U),((11,15),U),((11,16),U),((11,17),U),((11,18),U),
+    ((12,0),U),((12,1),U),((12,2),U),((12,3),U),((12,4),U),((12,5),U),((12,6),U),((12,7),U),((12,8),U),((12,9),R),((12,10),U),((12,11),U),((12,12),U),((12,13),U),((12,14),U),((12,15),U),((12,16),U),((12,17),U),((12,18),U)
     ]
 
 -- print the board in terminal, for debugging
+printBoard :: Board -> IO()
+printBoard b = let ls = HM.toList b
+               in  printEoard $ sortBy (\(a, _) (b, _) -> compare a b) ls
+
 printEoard :: [BoardPos] -> IO ()
 printEoard b = do putStrLn ""
                   printEoard' b
@@ -121,7 +127,10 @@ printEoard b = do putStrLn ""
 
 -- rearrange the board as a hashmap 
 boardMap :: Board
-boardMap = HashMap.fromList boardList
+boardMap = HM.fromList boardList
+
+updateBoard :: BoardPos -> Board -> Board
+updateBoard (pos, s) = HM.insert pos s
 
 -- mutate an element in a 2D list
 -- replace2 :: Pos -> Board -> [[a]] -> [[a]]
@@ -145,35 +154,25 @@ boardMap = HashMap.fromList boardList
 -- findPiecesWithColour :: Colour -> Board -> [BoardPos]
 -- findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
 
--- mutate a position of the board with a certain function, either "repaint" or "erase"
-changeBoardElement :: (BoardPos -> BoardPos) -> BoardPos -> Board -> Board
-changeBoardElement f bPos board = let (pos, s) = f bPos
-                                  in  HashMap.insert pos s board
-{-
+-- mutate a position of the board with a certain function
+-- changeBoardValue :: (BoardPos -> BoardPos) -> BoardPos -> Board -> Board
+-- changeBoardValue f bPos = updateBoard (f bPos)
+
 -- erase the pieces on the board and keep only certain coloured pieces, 
 -- this is to generate different board according to the different numbers of players
-eraseBoard :: [Colour] -> Board -> Board
-eraseBoard keptColours eboard = runST $ do n <- newSTRef eboard
-                                           modifySTRef n (map (eraseRow keptColours))
-                                           readSTRef n
-    where
-        eraseRow :: [Colour] -> [BoardPos] -> [BoardPos]
-        eraseRow _ [] = []
-        eraseRow cs (x:xs) = case getColour x of
-                                Nothing -> x:eraseRow cs xs
-                                Just c  -> if c `notElem` cs then erase x:eraseRow cs xs else x:eraseRow cs xs
+eraseBoard :: [Status] -> Board -> Board
+eraseBoard cs = HM.map (\x -> if x `elem` cs then E else x)
 
--- given two positions, modify their colour states to form a movement
+-- given two positions, modify their states to form a movement: erase the start and paint the end
 repaintPath :: Board -> Transform -> Board
-repaintPath eboard (start, end) = case getColour start of
-                                    Nothing -> error "Invalid start position for a movement"
-                                    Just colour -> runST $
-                                                    do n <- newSTRef eboard
-                                                       modifySTRef n (changeBoardElement erase start) -- erase the start position's colour
-                                                       modifySTRef n (changeBoardElement (repaint colour) end) -- over-write the end position's colour
-                                                       readSTRef n
+repaintPath board ((start, end), status) = updateBoard (end, status) $ updateBoard (start, E) board
+                                      
 --Movement Operators-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+jumps :: BoardPos -> Board -> [BoardPos]
+jumps = undefined
+
+{-
 -- Game Rules: players move their pieces one after another based on turn, 
 -- the first player that manages moving all of his pieces to the opposite corner of the start base wins the game
 -- there are two movements allowed in the game: one is to simply jump to the adjacent empty position (step)
