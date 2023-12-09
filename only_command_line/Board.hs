@@ -8,7 +8,16 @@ import Control.Monad.State ( State, MonadState(get), evalState )
 import Control.Monad.Extra ( concatMapM )
 import Control.Parallel ( par, pseq )
 import qualified Data.HashMap.Strict as HM
+import Control.Parallel.Strategies (parMap, rseq)
+import qualified Data.Set as Set
 
+
+ordNub :: (Ord a) => [a] -> [a]
+ordNub = check Set.empty
+  where
+    check _ [] = []
+    check s (x:xs) = if x `Set.member` s then check s xs
+                     else x : check (Set.insert x s) xs
 -- main :: IO ()
 -- main = do
 --     -- 創建一個空的哈希表
@@ -26,7 +35,7 @@ import qualified Data.HashMap.Strict as HM
 
 -- there are six colours and two additional board statuses being applied in the game
 -- Green, Blue, Purple, Red, Orange, Black, Empty and Unknown
-data Status = G | B | P | R | O | K | E | U deriving (Eq, Show)
+data Status = G | B | P | R | O | K | E | U deriving (Eq, Show, Ord)
 -- a position is consisted of x and y coordinates
 type Pos = (Int, Int)
 -- the board position should be able to represent the occupy state and the piece's colour
@@ -36,9 +45,12 @@ type Board = HM.HashMap Pos Status
 -- a movement is the transform of a piece from one position to another: (beginning, destination) and the piece's colour
 type Transform = ((Pos, Pos), Status)
 
--- the board size: (width, height)
+-- the board size: (height, width)
 boardSize :: (Int, Int)
-boardSize = (19, 13)
+boardSize = (13, 19)
+
+occupiedBoardSize :: Int
+occupiedBoardSize = 7
 
 -- the colour corresponding to each player with different number of players allowed
 playerColourList :: Int -> [Status]
@@ -50,6 +62,13 @@ playerColourList _ = error "Invalid number of players"
 -- given a colour and the total number of players, return the corresponding player's index
 colourIndex :: Status -> Int -> Maybe Int
 colourIndex colour pn = colour `elemIndex` playerColourList pn
+
+-- a state used to represent the error state such as Nothing or positions need to be discarded
+errorState :: BoardPos
+errorState = ((-1, -1), U)
+-- determine if a state is not accepted
+isError :: BoardPos -> Bool
+isError bs = bs == errorState
 
 --Basic Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -80,21 +99,25 @@ erase :: BoardPos -> BoardPos
 erase (p, U) = (p, U)
 erase (p, _) = (p, E)
 
+-- see if a piece's colour is the same as a given colour
+comparePiece :: BoardPos -> Status -> Bool
+comparePiece (_, x) s = x == s
+
 --Board Operators--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 -- the main board that contains the overall states for displaying and for movement handling
 boardList :: [BoardPos]
 boardList = [
-    ((0,0),U),((0,1),U),((0,2),U),((0,3),U),((0,4),U),((0,5),U),((0,6),U),((0,7),U),((0,8),U),((0,9),G),((0,10),U),((0,11),U),((0,12),U),((0,13),U),((0,14),U),((0,15),U),((0,16),U),((0,17),U),((0,18),U),
-    ((1,0),U),((1,1),U),((1,2),U),((1,3),U),((1,4),U),((1,5),U),((1,6),U),((1,7),U),((1,8),G),((1,9),U),((1,10),G),((1,11),U),((1,12),U),((1,13),U),((1,14),U),((1,15),U),((1,16),U),((1,17),U),((1,18),U),
-    ((2,0),U),((2,1),U),((2,2),U),((2,3),U),((2,4),U),((2,5),U),((2,6),U),((2,7),G),((2,8),U),((2,9),G),((2,10),U),((2,11),G),((2,12),U),((2,13),U),((2,14),U),((2,15),U),((2,16),U),((2,17),U),((2,18),U),
-    ((3,0),B),((3,1),U),((3,2),B),((3,3),U),((3,4),B),((3,5),U),((3,6),E),((3,7),U),((3,8),E),((3,9),U),((3,10),E),((3,11),U),((3,12),E),((3,13),U),((3,14),K),((3,15),U),((3,16),K),((3,17),U),((3,18),K),
-    ((4,0),U),((4,1),B),((4,2),U),((4,3),B),((4,4),U),((4,5),E),((4,6),U),((4,7),E),((4,8),U),((4,9),E),((4,10),U),((4,11),E),((4,12),U),((4,13),E),((4,14),U),((4,15),K),((4,16),U),((4,17),K),((4,18),U),
-    ((5,0),U),((5,1),U),((5,2),B),((5,3),U),((5,4),E),((5,5),U),((5,6),E),((5,7),U),((5,8),E),((5,9),U),((5,10),E),((5,11),U),((5,12),E),((5,13),U),((5,14),E),((5,15),U),((5,16),K),((5,17),U),((5,18),U),
-    ((6,0),U),((6,1),U),((6,2),U),((6,3),E),((6,4),U),((6,5),E),((6,6),U),((6,7),E),((6,8),U),((6,9),E),((6,10),U),((6,11),E),((6,12),U),((6,13),E),((6,14),U),((6,15),E),((6,16),U),((6,17),U),((6,18),U),
-    ((7,0),U),((7,1),U),((7,2),P),((7,3),U),((7,4),E),((7,5),U),((7,6),E),((7,7),U),((7,8),E),((7,9),U),((7,10),E),((7,11),U),((7,12),E),((7,13),U),((7,14),E),((7,15),U),((7,16),O),((7,17),U),((7,18),U),
-    ((8,0),U),((8,1),P),((8,2),U),((8,3),P),((8,4),U),((8,5),E),((8,6),U),((8,7),E),((8,8),U),((8,9),E),((8,10),U),((8,11),E),((8,12),U),((8,13),E),((8,14),U),((8,15),O),((8,16),U),((8,17),O),((8,18),U),
-    ((9,0),P),((9,1),U),((9,2),P),((9,3),U),((9,4),P),((9,5),U),((9,6),E),((9,7),U),((9,8),E),((9,9),U),((9,10),E),((9,11),U),((9,12),E),((9,13),U),((9,14),O),((9,15),U),((9,16),O),((9,17),U),((9,18),O),
+    ((0,0),U), ((0,1),U), ((0,2),U), ((0,3),U), ((0,4),U), ((0,5),U), ((0,6),U), ((0,7),U), ((0,8),U), ((0,9),G), ((0,10),U), ((0,11),U), ((0,12),U), ((0,13),U), ((0,14),U), ((0,15),U), ((0,16),U), ((0,17),U), ((0,18),U),
+    ((1,0),U), ((1,1),U), ((1,2),U), ((1,3),U), ((1,4),U), ((1,5),U), ((1,6),U), ((1,7),U), ((1,8),G), ((1,9),U), ((1,10),G), ((1,11),U), ((1,12),U), ((1,13),U), ((1,14),U), ((1,15),U), ((1,16),U), ((1,17),U), ((1,18),U),
+    ((2,0),U), ((2,1),U), ((2,2),U), ((2,3),U), ((2,4),U), ((2,5),U), ((2,6),U), ((2,7),G), ((2,8),U), ((2,9),G), ((2,10),U), ((2,11),G), ((2,12),U), ((2,13),U), ((2,14),U), ((2,15),U), ((2,16),U), ((2,17),U), ((2,18),U),
+    ((3,0),B), ((3,1),U), ((3,2),B), ((3,3),U), ((3,4),B), ((3,5),U), ((3,6),E), ((3,7),U), ((3,8),E), ((3,9),U), ((3,10),E), ((3,11),U), ((3,12),E), ((3,13),U), ((3,14),K), ((3,15),U), ((3,16),K), ((3,17),U), ((3,18),K),
+    ((4,0),U), ((4,1),B), ((4,2),U), ((4,3),B), ((4,4),U), ((4,5),E), ((4,6),U), ((4,7),B), ((4,8),U), ((4,9),E), ((4,10),U), ((4,11),E), ((4,12),U), ((4,13),E), ((4,14),U), ((4,15),K), ((4,16),U), ((4,17),K), ((4,18),U),
+    ((5,0),U), ((5,1),U), ((5,2),B), ((5,3),U), ((5,4),E), ((5,5),U), ((5,6),E), ((5,7),U), ((5,8),B), ((5,9),U), ((5,10),E), ((5,11),U), ((5,12),E), ((5,13),U), ((5,14),E), ((5,15),U), ((5,16),K), ((5,17),U), ((5,18),U),
+    ((6,0),U), ((6,1),U), ((6,2),U), ((6,3),E), ((6,4),U), ((6,5),E), ((6,6),U), ((6,7),E), ((6,8),U), ((6,9),E), ((6,10),U), ((6,11),E), ((6,12),U), ((6,13),E), ((6,14),U), ((6,15),E), ((6,16),U), ((6,17),U), ((6,18),U),
+    ((7,0),U), ((7,1),U), ((7,2),P), ((7,3),U), ((7,4),B), ((7,5),U), ((7,6),B), ((7,7),U), ((7,8),E), ((7,9),U), ((7,10),E), ((7,11),U), ((7,12),E), ((7,13),U), ((7,14),E), ((7,15),U), ((7,16),O), ((7,17),U), ((7,18),U),
+    ((8,0),U), ((8,1),P), ((8,2),U), ((8,3),P), ((8,4),U), ((8,5),E), ((8,6),U), ((8,7),E), ((8,8),U), ((8,9),E), ((8,10),U), ((8,11),E), ((8,12),U), ((8,13),E), ((8,14),U), ((8,15),O), ((8,16),U), ((8,17),O), ((8,18),U),
+    ((9,0),P), ((9,1),U), ((9,2),P), ((9,3),U), ((9,4),P), ((9,5),U), ((9,6),E), ((9,7),U), ((9,8),E), ((9,9),U), ((9,10),E), ((9,11),U), ((9,12),E), ((9,13),U), ((9,14),O), ((9,15),U), ((9,16),O), ((9,17),U), ((9,18),O),
     ((10,0),U),((10,1),U),((10,2),U),((10,3),U),((10,4),U),((10,5),U),((10,6),U),((10,7),R),((10,8),U),((10,9),R),((10,10),U),((10,11),R),((10,12),U),((10,13),U),((10,14),U),((10,15),U),((10,16),U),((10,17),U),((10,18),U),
     ((11,0),U),((11,1),U),((11,2),U),((11,3),U),((11,4),U),((11,5),U),((11,6),U),((11,7),U),((11,8),R),((11,9),U),((11,10),R),((11,11),U),((11,12),U),((11,13),U),((11,14),U),((11,15),U),((11,16),U),((11,17),U),((11,18),U),
     ((12,0),U),((12,1),U),((12,2),U),((12,3),U),((12,4),U),((12,5),U),((12,6),U),((12,7),U),((12,8),U),((12,9),R),((12,10),U),((12,11),U),((12,12),U),((12,13),U),((12,14),U),((12,15),U),((12,16),U),((12,17),U),((12,18),U)
@@ -111,10 +134,10 @@ printEoard b = do putStrLn ""
     where
         printEoard' [] = putStrLn ""
         printEoard' xs = do let str = map toChar (take count xs)
-                            putStrLn $ intersperse ' ' str
+                            putStrLn str
                             printEoard' (drop count xs)
 
-        count = fst boardSize
+        count = snd boardSize
 
         toChar (_, G) = 'G'
         toChar (_, B) = 'B'
@@ -151,8 +174,8 @@ updateBoard (pos, s) = HM.insert pos s
 
 -- find the all pieces' positions on the board based on the colour
 -- could be used when needed to generate an occupied board for certain player
--- findPiecesWithColour :: Colour -> Board -> [BoardPos]
--- findPiecesWithColour colour = concatMap (filter (`compareColour` colour))
+findPieces :: Status -> Board -> [BoardPos]
+findPieces s board =  filter (`comparePiece` s) (HM.toList board)
 
 -- mutate a position of the board with a certain function
 -- changeBoardValue :: (BoardPos -> BoardPos) -> BoardPos -> Board -> Board
@@ -166,13 +189,8 @@ eraseBoard cs = HM.map (\x -> if x `elem` cs then E else x)
 -- given two positions, modify their states to form a movement: erase the start and paint the end
 repaintPath :: Board -> Transform -> Board
 repaintPath board ((start, end), status) = updateBoard (end, status) $ updateBoard (start, E) board
-                                      
+
 --Movement Operators-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-jumps :: BoardPos -> Board -> [BoardPos]
-jumps = undefined
-
-{-
 -- Game Rules: players move their pieces one after another based on turn, 
 -- the first player that manages moving all of his pieces to the opposite corner of the start base wins the game
 -- there are two movements allowed in the game: one is to simply jump to the adjacent empty position (step)
@@ -181,6 +199,79 @@ jumps = undefined
 -- besides, the bases other than the start and goal are not allowed for a player to stay
 -- additionally, once a piece successfully enter the goal base, it cannot move out, but is still moveable within the base
 
+-- offer a player's all avaiable moves on the given board
+allDestinations :: [BoardPos] -> Board -> [BoardPos]
+allDestinations bs board = ordNub . concat $ parMap rseq (`destinations` board) bs
+
+-- enter a board position and return a list of available movements/reachable positions: adjacent jump and chained jump
+destinations :: BoardPos -> Board -> [BoardPos]
+destinations bPos board = if isOccupied bPos then let -- find the reachable destinations for steps
+                                                      js = jumps bPos boardSize board
+                                                      -- find the reachable destinations for hops
+                                                      hs = allHops [] boardSize board bPos
+                                                  in  -- combine the two lists and discard the repeated ones
+                                                      js `par` hs `pseq` ordNub (js ++ hs)
+                          else [] -- invalid chosen pieces
+
+-- list the available position for a piece to move to
+jumps :: BoardPos -> Pos -> Board -> [BoardPos]
+jumps (bs, _) size board = let -- first list a serise of positions on the board
+                               moves = filter (borderCheck size) (jumpDirections bs)
+                               -- then check if such a position is occupied by another piece
+                               moves' = filter (\key -> case HM.lookup key board of
+                                                            Just E -> True
+                                                            _ -> False
+                                                ) moves
+                            in  map (, E) moves'
+-- list the directions of a piece
+adjacentPositions :: [Pos -> Pos]
+adjacentPositions = [f (-1, -1), f (0, -2), f (1, -1), f (1, 1), f (0, 2), f (-1, 1)]
+    where
+        f (a, b) (x, y) = (a+x, b+y)
+-- list the adjacent positions for a piece to move to
+jumpDirections :: Pos -> [Pos]
+jumpDirections ps = adjacentPositions <*> pure ps
+
+-- test if a position is not out of a set border
+borderCheck :: Pos -> Pos -> Bool
+borderCheck (xlimt, ylimt) (x, y) = x >= 0 && y >= 0 && x < xlimt && y < ylimt
+
+-- generate a list of one-over jump chained together to reach a larger jump range
+-- recursively search for the reachable destinations for chained jumps of different directions
+-- during the search, a list of discovered positions is maintained to avoid cycling/repetition, 
+-- while another list stores the new frontiers based on the previous list of positions
+allHops :: [BoardPos] -> Pos -> Board -> BoardPos -> [BoardPos]
+allHops record size board bs = -- generate a new list of positions found
+                               let moves = hops bs size board
+                                   -- add the newly discovered positions to the record, also avoid backward moves
+                                   newGeneration = filter (`notElem` record) moves
+                                   -- continue the next "layer" of search based on the positions discovered at this "layer"
+                                   newRecord = newGeneration ++ record
+                                   -- until not new positions are found, return the combined list of all found positions
+                                   expandedMoves = concat $ parMap rseq (allHops newRecord size board) newGeneration
+                                   -- might exist duplicated positions, but will be omitted at the final combination
+                               in  expandedMoves ++ newGeneration
+-- list a positions that can be reached by one hop
+hops :: BoardPos -> Pos -> Board -> [BoardPos]
+hops (bs, _) size board = let -- generate a list of positions that could be reached by just one hop in different directions
+                              moves = map (hopCheck bs board) adjacentPositions
+                              -- discard the invalid positions
+                           in  filter (\x@(ps, s) -> borderCheck size ps && not (isError x)) moves
+-- given a board position, chek if a hop is valid in a certain direction
+hopCheck :: Pos -> Board -> (Pos -> Pos) -> BoardPos
+hopCheck ps board f = if -- a hop means to jump over an adjancent piece, indicating that the first adjancent position 
+                         -- should be occupied and the following one should be empty  
+                         isOccupied (HM.lookup ps1 board) && (HM.lookup ps2 board == Just E)
+                      then (ps2, E) else errorState
+        where
+            ps1 = f ps
+            ps2 = f ps1
+
+            isOccupied (Just E) = False
+            isOccupied (Just U) = False
+            isOccupied Nothing = False
+            isOccupied _ = True
+{-
 -- enter a board position and return a list of available movements/reachable positions: adjacent jump and chained jump
 destinationList :: BoardPos -> State Board [BoardPos]
 destinationList bPos = do case getColour bPos of
@@ -271,9 +362,9 @@ baseMoveAllow :: Colour -> Pos -> Pos -> Bool
 baseMoveAllow colour start end = let sp = projection colour start
                                      ep = projection colour end
                                  in  sp `par` ep `pseq` (sp `notElem` goalBase) || (ep `elem` goalBase)
-
+-}
 --Projection Operator----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
+{-
 -- the projected positions of the end and start based within the occupied board
 goalBase :: [Pos]
 goalBase = [(0,4),(0,5),(1,5),(0,6),(1,6),(2,6)]
