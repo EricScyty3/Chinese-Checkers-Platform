@@ -11,27 +11,14 @@ import qualified Data.HashMap.Strict as HM
 import Control.Parallel.Strategies (parMap, rseq)
 import qualified Data.Set as Set
 
-
-ordNub :: (Ord a) => [a] -> [a]
-ordNub = check Set.empty
+-- remove the duplicate elements in a list based on the Set data structure
+-- continues checking elements in a built Set
+setNub :: (Ord a) => [a] -> [a]
+setNub = fill Set.empty
   where
-    check _ [] = []
-    check s (x:xs) = if x `Set.member` s then check s xs
-                     else x : check (Set.insert x s) xs
--- main :: IO ()
--- main = do
---     -- 創建一個空的哈希表
---     let emptyHashMap = HashMap.empty
-
---     -- 添加鍵值對到哈希表
---     let hashMap = HashMap.insert "one" 1 emptyHashMap
---         updatedHashMap = HashMap.insert "two" 2 hashMap
-
---     -- 查找特定鍵對應的值
---     case HashMap.lookup "two" updatedHashMap of
---         Just value -> putStrLn $ "The value for key 'two' is: " ++ show value
---         Nothing -> putStrLn "Key 'two' not found in the hash map"
-
+    fill _ [] = []
+    fill s (x:xs) = if x `Set.member` s then fill s xs
+                    else x : fill (Set.insert x s) xs
 
 -- there are six colours and two additional board statuses being applied in the game
 -- Green, Blue, Purple, Red, Orange, Black, Empty and Unknown
@@ -112,10 +99,10 @@ boardList = [
     ((1,0),U), ((1,1),U), ((1,2),U), ((1,3),U), ((1,4),U), ((1,5),U), ((1,6),U), ((1,7),U), ((1,8),G), ((1,9),U), ((1,10),G), ((1,11),U), ((1,12),U), ((1,13),U), ((1,14),U), ((1,15),U), ((1,16),U), ((1,17),U), ((1,18),U),
     ((2,0),U), ((2,1),U), ((2,2),U), ((2,3),U), ((2,4),U), ((2,5),U), ((2,6),U), ((2,7),G), ((2,8),U), ((2,9),G), ((2,10),U), ((2,11),G), ((2,12),U), ((2,13),U), ((2,14),U), ((2,15),U), ((2,16),U), ((2,17),U), ((2,18),U),
     ((3,0),B), ((3,1),U), ((3,2),B), ((3,3),U), ((3,4),B), ((3,5),U), ((3,6),E), ((3,7),U), ((3,8),E), ((3,9),U), ((3,10),E), ((3,11),U), ((3,12),E), ((3,13),U), ((3,14),K), ((3,15),U), ((3,16),K), ((3,17),U), ((3,18),K),
-    ((4,0),U), ((4,1),B), ((4,2),U), ((4,3),B), ((4,4),U), ((4,5),E), ((4,6),U), ((4,7),B), ((4,8),U), ((4,9),E), ((4,10),U), ((4,11),E), ((4,12),U), ((4,13),E), ((4,14),U), ((4,15),K), ((4,16),U), ((4,17),K), ((4,18),U),
-    ((5,0),U), ((5,1),U), ((5,2),B), ((5,3),U), ((5,4),E), ((5,5),U), ((5,6),E), ((5,7),U), ((5,8),B), ((5,9),U), ((5,10),E), ((5,11),U), ((5,12),E), ((5,13),U), ((5,14),E), ((5,15),U), ((5,16),K), ((5,17),U), ((5,18),U),
+    ((4,0),U), ((4,1),B), ((4,2),U), ((4,3),B), ((4,4),U), ((4,5),E), ((4,6),U), ((4,7),E), ((4,8),U), ((4,9),E), ((4,10),U), ((4,11),E), ((4,12),U), ((4,13),E), ((4,14),U), ((4,15),K), ((4,16),U), ((4,17),K), ((4,18),U),
+    ((5,0),U), ((5,1),U), ((5,2),B), ((5,3),U), ((5,4),E), ((5,5),U), ((5,6),E), ((5,7),U), ((5,8),E), ((5,9),U), ((5,10),E), ((5,11),U), ((5,12),E), ((5,13),U), ((5,14),E), ((5,15),U), ((5,16),K), ((5,17),U), ((5,18),U),
     ((6,0),U), ((6,1),U), ((6,2),U), ((6,3),E), ((6,4),U), ((6,5),E), ((6,6),U), ((6,7),E), ((6,8),U), ((6,9),E), ((6,10),U), ((6,11),E), ((6,12),U), ((6,13),E), ((6,14),U), ((6,15),E), ((6,16),U), ((6,17),U), ((6,18),U),
-    ((7,0),U), ((7,1),U), ((7,2),P), ((7,3),U), ((7,4),B), ((7,5),U), ((7,6),B), ((7,7),U), ((7,8),E), ((7,9),U), ((7,10),E), ((7,11),U), ((7,12),E), ((7,13),U), ((7,14),E), ((7,15),U), ((7,16),O), ((7,17),U), ((7,18),U),
+    ((7,0),U), ((7,1),U), ((7,2),P), ((7,3),U), ((7,4),E), ((7,5),U), ((7,6),E), ((7,7),U), ((7,8),E), ((7,9),U), ((7,10),E), ((7,11),U), ((7,12),E), ((7,13),U), ((7,14),E), ((7,15),U), ((7,16),O), ((7,17),U), ((7,18),U),
     ((8,0),U), ((8,1),P), ((8,2),U), ((8,3),P), ((8,4),U), ((8,5),E), ((8,6),U), ((8,7),E), ((8,8),U), ((8,9),E), ((8,10),U), ((8,11),E), ((8,12),U), ((8,13),E), ((8,14),U), ((8,15),O), ((8,16),U), ((8,17),O), ((8,18),U),
     ((9,0),P), ((9,1),U), ((9,2),P), ((9,3),U), ((9,4),P), ((9,5),U), ((9,6),E), ((9,7),U), ((9,8),E), ((9,9),U), ((9,10),E), ((9,11),U), ((9,12),E), ((9,13),U), ((9,14),O), ((9,15),U), ((9,16),O), ((9,17),U), ((9,18),O),
     ((10,0),U),((10,1),U),((10,2),U),((10,3),U),((10,4),U),((10,5),U),((10,6),U),((10,7),R),((10,8),U),((10,9),R),((10,10),U),((10,11),R),((10,12),U),((10,13),U),((10,14),U),((10,15),U),((10,16),U),((10,17),U),((10,18),U),
@@ -175,7 +162,7 @@ updateBoard (pos, s) = HM.insert pos s
 -- find the all pieces' positions on the board based on the colour
 -- could be used when needed to generate an occupied board for certain player
 findPieces :: Status -> Board -> [BoardPos]
-findPieces s board =  filter (`comparePiece` s) (HM.toList board)
+findPieces s board = HM.toList $ HM.filter (== s) board
 
 -- mutate a position of the board with a certain function
 -- changeBoardValue :: (BoardPos -> BoardPos) -> BoardPos -> Board -> Board
@@ -201,7 +188,7 @@ repaintPath board ((start, end), status) = updateBoard (end, status) $ updateBoa
 
 -- offer a player's all avaiable moves on the given board
 allDestinations :: [BoardPos] -> Board -> [BoardPos]
-allDestinations bs board = ordNub . concat $ parMap rseq (`destinations` board) bs
+allDestinations bs board = setNub . concat $ parMap rseq (`destinations` board) bs
 
 -- enter a board position and return a list of available movements/reachable positions: adjacent jump and chained jump
 destinations :: BoardPos -> Board -> [BoardPos]
@@ -210,7 +197,7 @@ destinations bPos board = if isOccupied bPos then let -- find the reachable dest
                                                       -- find the reachable destinations for hops
                                                       hs = allHops [] boardSize board bPos
                                                   in  -- combine the two lists and discard the repeated ones
-                                                      js `par` hs `pseq` ordNub (js ++ hs)
+                                                      js `par` hs `pseq` setNub (js ++ hs)
                           else [] -- invalid chosen pieces
 
 -- list the available position for a piece to move to
@@ -364,13 +351,8 @@ baseMoveAllow colour start end = let sp = projection colour start
                                  in  sp `par` ep `pseq` (sp `notElem` goalBase) || (ep `elem` goalBase)
 -}
 --Projection Operator----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-{-
--- the projected positions of the end and start based within the occupied board
-goalBase :: [Pos]
-goalBase = [(0,4),(0,5),(1,5),(0,6),(1,6),(2,6)]
-startBase :: [Pos]
-startBase = [(4,0),(5,0),(6,0),(5,1),(6,1),(6,2)]
 
+{-
 -- project the movement to the internal (occupied) board based on certain colour
 projectMove :: Colour -> Transform -> (Pos, Pos)
 projectMove colour (x, y) = let px = projection colour (getPos x)
@@ -394,124 +376,6 @@ reversion Purple   = reversePurple
 reversion Red      = reverseRed
 reversion Orange   = reverseOrange
 reversion Black    = reverseBlack
-
--- Below is the coordinate conversion of internal board state of each colour and the external display board state
--- mainly mathematical computation, can be ignored
-
--- through modifying the x-y coordinates 
-{-
-        (1,1)
-        (6,9) (7,8) (8,7) (9,6)
-        (5,8) (6,7) (7,6) (8,5)
-        (4,7) (5,6) (6,5) (7,4)
-(1,-1)  (3,6) (4,5) (5,4) (6,3)
--}projectGreen :: Pos -> Pos
-projectGreen (x, y) = let disY = ((x - ix) + (y - iy)) `div` 2
-                          (ox, oy) = (ix + disY, iy + disY) -- move Y
-                      in  (x - ox, disY)
-    where
-        (ix, iy) = (3, 6)
-
-reverseGreen :: Pos -> Pos
-reverseGreen (x,y) = let (ox, oy) = (ix + x, iy - x) -- move x
-                     in  (ox + y, oy + y)            -- move y
-    where
-        (ix, iy) = (3, 6)
-{-
-         (2, 0)
-         (12,9) (11,8) (10,7) (9, 6)
-         (10,9) (9, 8) (8, 7) (7, 6)
-         (8, 9) (7, 8) (6, 7) (5, 6)
-(-1,-1)  (6, 9) (5, 8) (4, 7) (3, 6)
--}
-projectBlue :: Pos -> Pos
-projectBlue (x, y) = let disX = iy - y
-                         (ox, oy) = (ix - disX, iy - disX) -- move x
-                     in  (disX, (x - ox) `div` 2)
-    where
-        (ix, iy) = (6, 9)
-
-reverseBlue :: Pos -> Pos
-reverseBlue (x, y) = let (ox, oy) = (ix - x, iy - x) -- move x
-                     in  (2*y + ox, oy)              -- move y
-    where
-        (ix, iy) = (6, 9)
-{-
-        (1,-1)
-        (15,6) (13,6) (11,6) (9, 6)
-        (14,7) (12,7) (10,7) (8, 7)
-        (13,8) (11,8) (9, 8) (7, 8)
-(-2,0)  (12,9) (10,9) (8, 9) (6, 9)
--}
-projectPurple :: Pos -> Pos
-projectPurple (x, y) = let disY = iy - y
-                           (ox, oy) = (ix + disY, iy - disY) -- move y
-                       in  ((ox-x) `div` 2, disY)
-    where
-        (ix, iy) = (12, 9)
-
-reversePurple :: Pos -> Pos
-reversePurple (x, y) = let (ox, oy) = (ix - 2*x, iy) -- move x
-                       in  (ox + y, oy - y)          -- move y
-    where
-        (ix, iy) = (12, 9)
-{-
-        (-1,-1)
-        (12,3) (11,4) (10,5) (9, 6)
-        (13,4) (12,5) (11,6) (10,7)
-        (14,5) (13,6) (12,7) (11,8)
-(-1,1)  (15,6) (14,7) (13,8) (12,9)
--}
-projectRed :: Pos -> Pos
-projectRed (x, y) = let disY = ((ix - x) + (iy - y)) `div` 2
-                        (ox, oy) = (ix - disY, iy - disY) -- move y
-                    in  (ox - x, disY)
-    where
-        (ix, iy) = (15, 6)
-
-reverseRed :: Pos -> Pos
-reverseRed (x, y) = let (ox, oy) = (ix - x, iy + x) -- move x
-                    in  (ox - y, oy - y)            -- move y
-    where
-        (ix, iy) = (15, 6)
-{-
-        (-2,0)
-        (6, 3) (7, 4) (8, 5) (9, 6)
-        (8, 3) (9, 4) (10,5) (11,6)
-        (10,3) (11,4) (12,5) (13,6)
-(1, 1)  (12,3) (13,4) (14,5) (15,6)
--}
-projectOrange :: Pos -> Pos
-projectOrange (x, y) = let disX = y - iy
-                           (ox, oy) = (ix + disX, iy + disX) -- move x 
-                       in  (disX, (ox - x) `div` 2)
-    where
-        (ix, iy) = (12, 3)
-
-reverseOrange :: Pos -> Pos
-reverseOrange (x, y) = let (ox, oy) = (ix + x, iy + x) -- move x
-                       in  (ox - 2*y, oy)              -- move y
-    where
-        (ix, iy) = (12, 3)
-{-
-        (-1,1)
-        (3, 6) (5, 6) (7, 6) (9, 6)
-        (4, 5) (6, 5) (8, 5) (10,5)
-        (5, 4) (7, 4) (9, 4) (11,4)
-(2, 0)  (6, 3) (8, 3) (10,3) (12,3)
--}
-projectBlack :: Pos -> Pos
-projectBlack (x, y) = let disY = y - iy
-                          (ox, oy) = (ix - disY, iy + disY) -- move Y
-                      in  ((x-ox) `div` 2, disY)
-    where
-        (ix, iy) = (6, 3)
-
-reverseBlack :: Pos -> Pos
-reverseBlack (x, y) = let (ox, oy) = (ix + 2 * x, iy) -- move x
-                      in  (ox - y, oy + y)            -- move y
-    where
-        (ix, iy) = (6, 3)
 -}
 
 
