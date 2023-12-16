@@ -1,5 +1,5 @@
 
-module Projection where
+module NProjection where
 
 -- Below is the coordinate conversion of internal board state of each colour and the external display board state
 -- mainly mathematical computation, can be ignored
