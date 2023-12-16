@@ -10,6 +10,7 @@ import Control.Parallel ( par, pseq )
 import qualified Data.HashMap.Strict as HM
 import Control.Parallel.Strategies (parMap, rseq)
 import qualified Data.Set as Set
+import Projection
 
 -- remove the duplicate elements in a list based on the Set data structure
 -- continues checking elements in a built Set
@@ -352,30 +353,28 @@ baseMoveAllow colour start end = let sp = projection colour start
 -}
 --Projection Operator----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-{-
 -- project the movement to the internal (occupied) board based on certain colour
-projectMove :: Colour -> Transform -> (Pos, Pos)
-projectMove colour (x, y) = let px = projection colour (getPos x)
-                                py = projection colour (getPos y)
-                            in  px `par` py `pseq` (px, py)
+projectMove :: Transform -> (Pos, Pos)
+projectMove ((x, y), s) = (projection s x, projection s y)
 
 -- the projection of the main board to the occupied board for each player (colour)
-projection :: Colour -> Pos -> Pos
-projection Green   = projectGreen
-projection Blue    = projectBlue
-projection Purple  = projectPurple
-projection Red     = projectRed
-projection Orange  = projectOrange
-projection Black   = projectBlack
+projection :: Status -> Pos -> Pos
+projection G = projectGreen
+projection B = projectBlue
+projection P = projectPurple
+projection R = projectRed
+projection O = projectOrange
+projection K = projectBlack
+projection _ = error "Invalid Status for Projection"
 
 -- revert the projected position to the main board ones
-reversion :: Colour -> Pos -> Pos
-reversion Green    = reverseGreen
-reversion Blue     = reverseBlue
-reversion Purple   = reversePurple
-reversion Red      = reverseRed
-reversion Orange   = reverseOrange
-reversion Black    = reverseBlack
--}
+reversion :: Status -> Pos -> Pos
+reversion G = reverseGreen
+reversion B = reverseBlue
+reversion P = reversePurple
+reversion R = reverseRed
+reversion O = reverseOrange
+reversion K = reverseBlack
+reversion _ = error "Invalid Status for Reversion"
 
 
