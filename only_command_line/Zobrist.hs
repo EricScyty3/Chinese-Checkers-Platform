@@ -2,20 +2,16 @@ module Zobrist where
 -- the operators of hashing (transform an occupied board positions into a single integer), could be use to represent a certain state sufficiently 
 
 import Data.List ( elemIndex )
-import Board
-    ( getElement,
-      goalBase,
-      occupiedBoardSize,
-      replace,
-      startBase,
-      testValidPos,
-      Pos )
+import NBoard ( Pos, occupiedBoardSize )
 import Control.Monad.State ( State, evalState )
 import Control.Parallel ( par, pseq )
+import qualified Data.HashMap.Strict as HM
+import Data.Bits ( Bits(xor) )
+import NProjection (startBase, goalBase)
 
 
 -- a list of unique random integers 
-type StateTable = [[Int]]
+type StateTable = HM.HashMap Pos Int
 
 -- board state table: each position can only have one state, either occupied or not, and if a position is occupied, the stored value will be applied
 {- 
@@ -33,15 +29,20 @@ randomBoardState = randomBoardColumn randomList 0
         randomList = nub $ randomRs (1, 2^32) (mkStdGen 42)
 -}
 -- the generated random number table, each entity represent an occupy state of a certain position of the internal board
-randomBoardState :: StateTable
+-- randomBoardState :: StateTable
+randomBoardState :: [(Pos, Int)]
 randomBoardState = [
-                    [3292324401, 233489048,  2624610400, 1597242128, 1980104913, 1321694675, 3441975186],
-                    [1130700312, 1305326220, 2205018208, 2326285813, 2296381747, 3769793212, 2531570566],
-                    [3207055759, 1137426218, 2956685049, 4256428639, 724082013,  2138168924, 2728019182],
-                    [2087020672, 2189657155, 903285258,  1992067404, 2726019740, 1298665595, 1408913945],
-                    [2990988946, 3063264481, 149517643,  1100318883, 2752873187, 3781215980, 2792287776],
-                    [977698729,  118633436,  2784537123, 1886397907, 1695135422, 92683337,   2971222636],
-                    [1857154033, 3253362046, 1756536471, 2064999353, 510226296,  402957728,  3185258486]]
+                    ((0,0),3292324401),((0,1),233489048),((0,2),2624610400),((0,3),1597242128),((0,4),1980104913),((0,5),1321694675),((0,6),3441975186),
+                    ((1,0),1130700312),((1,1),1305326220),((1,2),2205018208),((1,3),2326285813),((1,4),2296381747),((1,5),3769793212),((1,6),2531570566),
+                    ((2,0),3207055759),((2,1),1137426218),((2,2),2956685049),((2,3),4256428639),((2,4),724082013),((2,5),2138168924),((2,6),2728019182),
+                    ((3,0),2087020672),((3,1),2189657155),((3,2),903285258),((3,3),1992067404),((3,4),2726019740),((3,5),1298665595),((3,6),1408913945),
+                    ((4,0),2990988946),((4,1),3063264481),((4,2),149517643),((4,3),1100318883),((4,4),2752873187),((4,5),3781215980),((4,6),2792287776),
+                    ((5,0),977698729),((5,1),118633436),((5,2),2784537123),((5,3),1886397907),((5,4),1695135422),((5,5),92683337),((5,6),2971222636),
+                    ((6,0),1857154033),((6,1),3253362046),((6,2),1756536471),((6,3),2064999353),((6,4),510226296),((6,5),402957728),((6,6),3185258486)]
+
+-- rearrange the board as a hashmap 
+stateTable :: StateTable
+stateTable = HM.fromList randomBoardState
 
 --Hash Operators---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- the internal single-agent board for one player with the top-right the starting point and botton-left the destination
@@ -49,91 +50,34 @@ randomBoardState = [
 
 -- the hashed values of the both start and goal states
 hashInitial :: Int
-hashInitial = hash startBase
+hashInitial = hashBoard startBase
 hashEnd :: Int
-hashEnd = hash goalBase
+hashEnd = hashBoard goalBase
 
 -- a regular win for a player can be detected based on comparing the hashed values
 winStateDetect :: [Pos] -> Bool
-winStateDetect ps = hashEnd == hash ps
+winStateDetect ps = hashEnd == hashBoard ps
+
+updateHash :: Int -> (Pos, Pos) -> Int
+updateHash x (start, end) = case HM.lookup start stateTable of 
+                                Nothing -> error "Hash: invalid board position"
+                                Just h1 -> case HM.lookup end stateTable of
+                                            Nothing -> error "Hash: invalid board position"
+                                            Just h2 -> (x `xor` h1) `xor` h2
 
 -- given a list of positions on the pieces on the current internal board, return a hashed value
-hash :: [Pos] -> Int
-hash ps = let -- filter the positions that is out of the border
-              posL = filter (testValidPos occupiedBoardSize occupiedBoardSize) ps
-          in  -- compute the hash value with the given random state table
-              evalState (hashBoardWithPos posL) randomBoardState
-    where
-        hashBoardWithPos :: [Pos] -> State StateTable Int
-        hashBoardWithPos [] = return 0
-        hashBoardWithPos (p:ps) = do -- get the random value corresponding to the position
-                                     randomState1 <- getElement p
-                                     randomState2 <- hashBoardWithPos ps
-                                     -- and apply XOR operator to them
-                                     return (randomState1 `myXOR` randomState2)
+hashBoard :: [Pos] -> Int
+hashBoard [] = 0
+hashBoard (p:ps) = case HM.lookup p stateTable of
+                    -- get the random value corresponding to the position
+                    -- and apply XOR operator to them
+                    Just v -> v `xor` hashBoard ps
+                    Nothing -> error "Hash: invalid board position"
 
 -- given a positions change, reflect that onto the internal board's positions
 flipBoard :: [Pos] -> (Pos, Pos) -> [Pos]
-flipBoard ps (x, y) = case x `elemIndex` ps of -- first find the start position 
-                        Nothing -> error "Not existing such position in the list"
-                        Just idx -> replace idx y ps -- and replace that with the end position
-
---XOR Construct---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
--- how the XOR operator is defined
-
--- transform a decimal integer into a binary list
-toBinary :: Int -> [Int]
-toBinary 0 = [0]
-toBinary n = reverse (toBinary' n)
+flipBoard ps (start, end) = replace end start ps
     where
-        toBinary' :: Int -> [Int]
-        toBinary' 0 = []
-        toBinary' n
-            | even n = 0:toBinary' (n `div` 2) 
-            | otherwise = 1:toBinary' (n `div` 2) 
-
--- transform a binary list into a decimal integer 
-toDecimal :: [Int] -> Int
-toDecimal [] = 0
-toDecimal (x:xs) = (x * 2 ^ length xs) + toDecimal xs
-
--- first transform the integers into binary list and then apply xor operator, and finally return as a decimal integer
-myXOR :: Int -> Int -> Int
-myXOR x y = toDecimal $ listXOR fx fy
-    where
-        (fx, fy) = let bx = toBinary x
-                       by = toBinary y
-                   in  bx `par` by `pseq` fixLength bx by
-
-        -- maintain the same length of the two binary lists
-        fixLength :: [Int] -> [Int] -> ([Int], [Int])
-        fixLength x y
-            | lx > ly = (x, fillZeros y (lx - ly))
-            | lx < ly = (fillZeros x (ly - lx), y)
-            | otherwise = (x, y)
-            where
-                lx = length x
-                ly = length y
-
-        -- extend the length with 0 at the front
-        fillZeros :: [Int] -> Int -> [Int]
-        fillZeros xs l = replicate l 0 ++ xs
-
-        -- xor the two binary values in lists
-        listXOR :: [Int] -> [Int] -> [Int]
-        listXOR _ [] = []
-        listXOR [] _ = []
-        listXOR (x:xs) (y:ys) = binaryXOR x y:listXOR xs ys
-
-        -- binary xor operator
-        binaryXOR :: Int -> Int -> Int
-        binaryXOR x y
-            | boolXOR (x == 1) (y == 1) = 1
-            | otherwise = 0
-
-        -- Boolean xor operator
-        boolXOR :: Bool -> Bool -> Bool
-        boolXOR True True = False
-        boolXOR True False = True
-        boolXOR False True = True
-        boolXOR False False = False
+        replace _ _ [] = []
+        replace new old (x:xs) = if old == x then new:xs
+                                 else x:replace new old xs
