@@ -8,27 +8,57 @@ import System.IO
       openFile,
       hGetContents,
       hPutStr,
-      IOMode(ReadMode, WriteMode) )
-import Zobrist ( hash )
-import BFS
-    ( centroid,
-      centroidPos,
-      shortestMoves,
-      symmetric1_pos,
-      symmetric2_pos )
-import Board ( Pos )
+      IOMode(ReadMode, WriteMode),
+      withFile, Handle )
+import NZobrist ( hashBoard, updateHash )
+-- import BFS
+--     ( centroid,
+--       centroidPos,
+--       shortestMoves,
+--       symmetric1_pos,
+--       symmetric2_pos )
+import NBoard ( Pos )
 import Control.Parallel ( par, pseq )
 import Control.Monad.ST ( runST )
 import Data.STRef ( modifySTRef, newSTRef, readSTRef )
-import RBTree ( rbInsert, rbSearch, RBTree(..) )
 import Data.Maybe ( isJust, isNothing )
 import GHC.IO ( unsafePerformIO )
 import System.Directory.Extra (doesFileExist)
-import Minimax (moveEvaluation)
+import Data.List (permutations)
+import qualified Data.HashMap.Lazy as HML
+import Control.Parallel.Strategies (parMap, rseq)
+import Data.Time (getCurrentTime)
+import Data.Time.Clock (diffUTCTime)
+-- import Minimax (moveEvaluation)
+
+-- in a lookup table, the key is the hashed board and the value is the shortest path pair
+type LookupTable = HML.HashMap Int (Int, Int)
+
+countCombinations :: Integer -> Integer -> Integer
+countCombinations pieces totalSpace = let x = product [1..pieces]
+                                          y = product [1..totalSpace]
+                                          z = product [1..(totalSpace - pieces)]
+                                      in  y `div` (x * z)
+
+
+-- load the lookup table data from the file
+loadTableElements :: IO ()
+loadTableElements = let filename1 = "../dataset/lookup_table.txt"
+                        filename2 = "./dataset/lookup_table.txt"
+                    in  do does1Exist <- doesFileExist filename1
+                           filePath <- if does1Exist then openFile filename1 ReadMode
+                                       else openFile filename2 ReadMode
+                           contents <- hGetContents filePath
+                           let result = (\(a, b, c) -> (a, (b, c))) <$> concatMap read (lines contents) :: [(Int, (Int, Int))]
+                               lookupTable = HML.fromList result
+                           -- do something
+                           print $ HML.lookup 556115780 lookupTable
+                           hClose filePath
 
 --Database Construct-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- record and calculate the board value for each board state
 
+{-
 -- considering processing just one huge tree could be very inefficient, an alternative is to 
 -- divide the tree into several smaller sub-trees and run them in parallel, finally combine into one
 splitTree :: RBTree [Pos] -> Int -> [RBTree [Pos]]
@@ -60,25 +90,28 @@ tableElementsConstruct (RBNode _ ps t1 key t2) widths@(width1, width2) = let lef
         x = shortestMoves ps width1 -- the farther it is from the goal state, the wider breadth it might need
         y = shortestMoves (symmetric2_pos ps) width2 -- the closer it is, the less wide breadth could be sufficient 
         newElement = x `par` y `pseq` (key, x, y)
+-}
 
 --Board Generations------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- produced the configuration of sufficient states to build a reliable lookup table for evaluation
 {-
-The needed configurations will be shown as following, ignoring the middle-game stage because the lookup table is quite weak for this,
-hence, the size of the table could also be reduced.
-Besides, according to the mirror states sharing the same shortest paths, these can be eliminated as well. 
+There are several information we can know from this represenation:
+    - for 49 positions and 6 pieces, there are 13,983,816 possible board configurations
+    - if we separate the board based on the diagonal, the board configuration can be classified as Opening and Endgame
+    - also, every opening can be pointed to one endgame configuration by flipping the board
+    - similarly, two configurations could also share the same heuristic value (shortest path) based on the symmetric feature
 
-    [0, 1, 1, 1, 1, 1, 1]
-    [0, 0, 1, 1, 1, 1, 1]
-    [0, 0, 0, 1, 1, 1, 1]
-    [0, 0, 0, 0, 1, 1, 1]
-    [0, 0, 0, 0, 0, 1, 1]
-    [0, 0, 0, 0, 0, 0, 1]
-    [0, 0, 0, 0, 0, 0, 0]                
+    [1, 0, 0, 0, 0, 0, 1]
+    [0, 1, 0, 0, 0, 1, 0]
+    [0, 0, 1, 0, 1, 0, 0]
+    [0, 0, 0, 1, 0, 0, 0]
+    [0, 0, 1, 0, 1, 0, 0]
+    [0, 1, 0, 0, 0, 1, 0]
+    [1, 0, 0, 0, 0, 0, 1]                
 -}
-
 -- list all needed opening states to be computed and stored 
 -- store all sufficient board states into a tree
+{-
 sufficientBoards :: (RBTree [Pos], Int)
 sufficientBoards = let ps = listAllPermutations 6 ([], 0)
                    in  boardTree ps RBLeaf 0
@@ -93,25 +126,25 @@ boardTree (p:ps) rb size = let -- to avoid opening mirror images, the hash of th
                            in  -- add if not duplicated
                                if hash1 `par` hash2 `pseq` isNothing (rbSearch hash2 rb) then boardTree ps (rbInsert hash1 p rb) (size+1) 
                                else boardTree ps rb size -- otherwise, skip this one
-{-
-    [0, 1, 1, 1, 1, 1, 1] [0 .. 5]  0 -> (1, 0)
-    [0, 0, 1, 1, 1, 1, 1] [6 ..10]  6 -> (2, 1)
-    [0, 0, 0, 1, 1, 1, 1] [11..14] 11 -> (3, 2)
-    [0, 0, 0, 0, 1, 1, 1] [15..17] 15 -> (4, 3)
-    [0, 0, 0, 0, 0, 1, 1] [18..19] 18 -> (5, 4)
-    [0, 0, 0, 0, 0, 0, 1] [20]     20 -> (6, 5)
-    [0, 0, 0, 0, 0, 0, 0]
+
+    [0, 1, 1, 1, 1, 1, 1] [0 .. 6]  0 -> (0, 0)
+    [0, 0, 1, 1, 1, 1, 1] [7 ..13]  7 -> (1, 0)
+    [0, 0, 0, 1, 1, 1, 1] [14..20] 14 -> (2, 0)
+    [0, 0, 0, 0, 1, 1, 1] [21..27] 21 -> (3, 0)
+    [0, 0, 0, 0, 0, 1, 1] [28..34] 28 -> (4, 0)
+    [0, 0, 0, 0, 0, 0, 1] [35..41] 35 -> (5, 0)
+    [0, 0, 0, 0, 0, 0, 0] [42..48] 42 -> (6, 0)
 -}
 -- convert the 1-dimensional index to 2-dimensional coordinate, specifically for the 21-length list
 idx2Pos :: Int -> Pos
-idx2Pos idx
-    | 0  <= idx && idx <= 5  = (idx + 1, 0)
-    | 6  <= idx && idx <= 10 = (idx - 5 + 1, 1)
-    | 11 <= idx && idx <= 14 = (idx - 10 + 2, 2)
-    | 15 <= idx && idx <= 17 = (idx - 14 + 3, 3)
-    | 18 <= idx && idx <= 19 = (idx - 17 + 4, 4)
-    | otherwise = (6, 5)
-
+idx2Pos idx = (idx `div` 7, idx `mod` 7)
+    -- | 0  <= idx && idx <= 6  = (idx + 1, 0)
+    -- | 7  <= idx && idx <= 10 = (idx - 5 + 1, 1)
+    -- | 11 <= idx && idx <= 14 = (idx - 10 + 2, 2)
+    -- | 15 <= idx && idx <= 17 = (idx - 14 + 3, 3)
+    -- | 18 <= idx && idx <= 19 = (idx - 17 + 4, 4)
+    -- | otherwise = (6, 5)
+{-
 -- treat the occupied board as a 1D list of length 21, and return all the possible position combinations of the pieces
 -- in other words, this returns a list of possible opening states' positions through permute operations
 listAllPermutations :: Int -> ([Pos], Int) -> [[Pos]]
@@ -124,10 +157,30 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 21 - pieces] 
     where
         flipBoardState :: [Pos] -> Pos -> [Pos]
         flipBoardState ls p = p:ls
+-}
+
+-- treat the occupied board as a 1D list of length 49, and return all the possible permutations
+listAllPermutations :: Int -> ([Pos], Int) -> [[Pos]]
+listAllPermutations 0 (ls, _) = [ls]
+listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 49 - pieces] -- settle the allowed index of element for permutation
+                                                nls = map idx2Pos idx -- convert the index to 2-dimension coordinate
+                                                pls = map (: ls) nls -- concatenating the previously investigated positions
+                                                next = map (+1) idx -- push forward the range as every element before this will already be manipulated 
+                                            in  concat $ parMap rseq (listAllPermutations (pieces - 1)) (zip pls next) -- expand the permutation
+                                            
+
+main :: IO ()
+main = do -- start <- getCurrentTime
+          let len = length $ listAllPermutations 6 ([], 0)
+          putStrLn $ "The are " ++ show len ++ " permutations"
+        --   end <- getCurrentTime
+        --   let duration = realToFrac $ diffUTCTime end start
+        --   putStrLn $ "Time cost: " ++ show duration
+
 
 --Board Evaluation------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- evaluating a board state based on the generated lookup table
-     
+{-
 -- search for a shortest path for a certain board configuration based on the given dataset
 boardEvaluation :: [Pos] -> Int
 boardEvaluation ps = case evaluateBoard ps (isOpening ps) of
@@ -183,16 +236,8 @@ lookupTable = let elems = loadTableElements
 constructTable :: [(Int, Int, Int)] -> LookupTable -> LookupTable
 constructTable [] tree = tree
 constructTable ((boardHash, opening, endgame):xs) tree = constructTable xs (rbInsert boardHash (opening, endgame) tree)
+-}
 
--- load the stored lookup table data from the file
-loadTableElements :: [(Int, Int, Int)]
-loadTableElements = let filename1 = "../dataset/lookup_table.txt"
-                        filename2 = "./dataset/lookup_table.txt"
-                    in  unsafePerformIO $ -- backdoor to extract the content from IO process 
-                        do does1Exist <- doesFileExist filename1
-                           filePath <- if does1Exist then openFile filename1 ReadMode
-                                       else openFile filename2 ReadMode
-                           contents <- hGetContents filePath
-                           return $ convertToElement (lines contents)
-    where
-        convertToElement s = concatMap read s
+
+
+

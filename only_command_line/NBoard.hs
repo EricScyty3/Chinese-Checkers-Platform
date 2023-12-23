@@ -22,7 +22,7 @@ import NProjection
       reverseGreen,
       reverseOrange,
       reversePurple,
-      reverseRed, goalBase )
+      reverseRed, goalBase, startBase )
 
 -- remove the duplicate elements in a list based on the Set data structure
 -- continues checking elements in a built Set
@@ -202,7 +202,7 @@ repaintPath board ((start, end), status) = updateBoard (end, status) $ updateBoa
 -- besides, other players' bases are not allowed to stay or pass by
 -- additionally, once a piece successfully enter the goal base, it cannot move out, but is still moveable within the base
 
--- offer a player's all avaiable moves on the given board
+-- offer a (only one) player's all avaiable moves on the given board
 -- might cause error if contains multiple player's pieces
 allDestinations :: [BoardPos] -> Board -> [Pos]
 allDestinations bs board = setNub . concat $ parMap rseq (`destinations` board) bs
@@ -211,21 +211,21 @@ allDestinations bs board = setNub . concat $ parMap rseq (`destinations` board) 
 destinations :: BoardPos -> Board -> [Pos]
 destinations bs@(ps, st) board = if isOccupied bs
                                  then let -- find the reachable destinations for steps
-                                          js = jumps bs boardSize board
+                                          js = jumps bs board
                                           -- find the reachable destinations for hops
-                                          hs = allHops [] boardSize board st ps
+                                          hs = allHops [] board st ps
                                       in  -- combine the two lists and discard the repeated ones
                                           js `par` hs `pseq` setNub (js ++ hs)
                                  else []  -- invalid chosen pieces
 
 -- list the available position for a piece to move to
-jumps :: BoardPos -> (Int, Int) -> Board -> [Pos]
-jumps (bs, st) size board = let -- first list a serise of valid positions can be resulted from the board
-                                moves = filter (validMove st size bs) (jumpDirections bs)
-                                -- then check if such a position is occupied by another piece
-                            in  filter (\key -> case HM.lookup key board of
-                                                    Just E -> True
-                                                    _ -> False) moves
+jumps :: BoardPos -> Board -> [Pos]
+jumps (bs, st) board = let -- first list a serise of valid positions can be resulted from the board
+                           moves = filter (validMove st bs) (jumpDirections bs)
+                           -- then check if such a position is occupied by another piece
+                       in  filter (\key -> case HM.lookup key board of
+                                                Just E -> True
+                                                _ -> False) moves
 
 
 -- list the directions of a piece
@@ -241,8 +241,8 @@ jumpDirections ps = adjacentPositions <*> pure ps
 -- first, the piece cannot exceed the board
 -- second, the piece cannot access other players' bases
 -- thrid, the piece cannot go out the goal base once it has entered
-validMove :: Status -> (Int, Int) -> Pos -> Pos -> Bool
-validMove st size start end = borderCheck size end && borderCheck2 st end && baseMoveAllow st start end
+validMove :: Status -> Pos -> Pos -> Bool
+validMove st start end = borderCheck boardSize end && borderCheck2 st end && baseMoveAllow st start end
 -- test if a position is not out of a set border
 borderCheck :: (Int, Int) -> Pos -> Bool
 borderCheck (xlimt, ylimt) (x, y) = x >= 0 && y >= 0 && x < xlimt && y < ylimt
@@ -260,40 +260,41 @@ baseMoveAllow st start end = let sp = projection st start
 -- recursively search for the reachable destinations for chained jumps of different directions
 -- during the search, a list of discovered positions is maintained to avoid cycling/repetition, 
 -- while another list stores the new frontiers based on the previous list of positions
-allHops :: [Pos] -> (Int, Int) -> Board -> Status -> Pos -> [Pos]
-allHops record size board st ps = -- generate a new list of positions found
-                                  let moves = hops ps st size board
-                                      -- add the newly discovered positions to the record, also avoid backward moves
-                                      newGeneration = filter (`notElem` record) moves
-                                      -- continue the next "layer" of search based on the positions discovered at this "layer"
-                                      newRecord = newGeneration ++ record
-                                      -- until not new positions are found, return the combined list of all found positions
-                                      expandedMoves = concat $ parMap rseq (allHops newRecord size board st) newGeneration
-                                      -- might exist duplicated positions, but will be omitted at the final combination
-                                  in  expandedMoves ++ newGeneration
+allHops :: [Pos] -> Board -> Status -> Pos -> [Pos]
+allHops record board st ps = -- generate a new list of positions found
+                            let moves = hops ps st board
+                                -- add the newly discovered positions to the record, also avoid backward moves
+                                newGeneration = filter (`notElem` record) moves
+                                -- continue the next "layer" of search based on the positions discovered at this "layer"
+                                newRecord = newGeneration ++ record
+                                -- until not new positions are found, return the combined list of all found positions
+                                expandedMoves = concat $ parMap rseq (allHops newRecord board st) newGeneration
+                                -- might exist duplicated positions, but will be omitted at the final combination
+                            in  expandedMoves ++ newGeneration
 
 -- list a positions that can be reached by one hop
-hops :: Pos -> Status -> (Int, Int) -> Board -> [Pos]
-hops ps st size board = let -- generate a list of positions that could be reached by just one hop in different directions
-                            moves = map (hopCheck ps st board size) adjacentPositions
-                            -- discard the invalid positions
-                        in  extractJustValues moves
-    where
-        extractJustValues [] = []
-        extractJustValues (Just x:xs) = x:extractJustValues xs
-        extractJustValues (Nothing:xs) = extractJustValues xs
+hops :: Pos -> Status -> Board -> [Pos]
+hops ps st board = let -- generate a list of positions that could be reached by just one hop in different directions
+                       moves = map (hopCheck ps st board) adjacentPositions
+                       -- discard the invalid positions
+                   in  extractJustValues moves
+
+extractJustValues :: [Maybe a] -> [a]
+extractJustValues [] = []
+extractJustValues (Just x:xs) = x:extractJustValues xs
+extractJustValues (Nothing:xs) = extractJustValues xs
 
 -- given a board position, chek if a hop is valid in a certain direction
-hopCheck :: Pos -> Status -> Board -> (Int, Int) -> (Pos -> Pos) -> Maybe Pos
-hopCheck ps st board size f = if -- a hop means to jump over an adjancent piece, indicating that the first adjancent position 
-                                 -- should be occupied and the following one should be empty  
-                                 -- besides, a valid movement should also obey the above three rules
-                                 isOccupied (HM.lookup ps1 board) && (HM.lookup ps2 board == Just E) && validMove st size ps ps2
-                              then
-                                 -- the moves that pass the test will be returned in Just
-                                 Just ps2
-                                 -- otherwise, will give Nothing
-                              else Nothing
+hopCheck :: Pos -> Status -> Board -> (Pos -> Pos) -> Maybe Pos
+hopCheck ps st board f = if -- a hop means to jump over an adjancent piece, indicating that the first adjancent position 
+                            -- should be occupied and the following one should be empty  
+                            -- besides, a valid movement should also obey the above three rules
+                            isOccupied (HM.lookup ps1 board) && (HM.lookup ps2 board == Just E) && validMove st ps ps2
+                         then
+                            -- the moves that pass the test will be returned in Just
+                            Just ps2
+                            -- otherwise, will give Nothing
+                         else Nothing
         where
             ps1 = f ps
             ps2 = f ps1

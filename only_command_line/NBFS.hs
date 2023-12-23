@@ -1,9 +1,9 @@
-module BFS where
+module NBFS where
 -- in order to complete a lookup table for evaluating the board state, the minimum moves for each board to reach the goal state is necessary
 -- hence, this module aims to search the sufficient moves of any state for a player to win the game in single-agent board
 -- if you're not interested in how to retrieve the lookup table used in this application, you can ignore this module
-    
-import Board ( goalBase, occupiedBoardSize, testValidPos, OccupiedBoard, Pos )
+
+import NBoard ( occupiedBoardSize, Pos, borderCheck, extractJustValues, setNub )
 import Data.List ( elemIndex, sort, sortBy, transpose )
 import Control.Monad.ST ( runST )
 import Data.STRef ( modifySTRef, newSTRef, readSTRef )
@@ -11,13 +11,15 @@ import Control.Monad.State ( State, evalState, MonadState(get) )
 import Control.Monad.Extra ( concatMapM )
 import Control.Parallel ( par, pseq )
 import Data.Containers.ListUtils ( nubOrd )
+import NProjection (goalBase, startBase)
+import Control.Parallel.Strategies (parMap, rseq)
 
 -- it will need a breadth-first search for preventing duplicate moves, and also, due to the difficulty of measuring the prediction in A star, BFS is somehow more accurate 
 -- each level represents a move that is done only if certain moves before were done
 -- level 0 means the initial state
 -- level 1 means a move is performed by each piece from the initial state, might exists duplications
 -- as shown below:
-testBoard :: OccupiedBoard
+testBoard :: [[Int]]
 testBoard = [
         [0,1,0,0,1,1,0],
         [0,0,0,1,0,0,0],
@@ -29,6 +31,8 @@ testBoard = [
     ]
 -- to speed up the processing, rather than having the whole occupied board, only the occupied positions are maintained in the state monad
 -- additional consideration for more accurate estimate might be considered in multi-agent form, but not necessary here
+
+{-
 
 -- breadth-first search
 shortestMoves :: [Pos] -> Int -> Int
@@ -121,66 +125,122 @@ flipLists v (x:xs) = do let (p, ps) = x
                                     Just i  -> do let newps = sort $ t : filter (/= f) ps
                                                       newv  = v - centroidPos f + centroidPos t
                                                   return (newps `par` newv `pseq` (newps, newv))
-
+-}
 --Movement Operators-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
 -- similar to the Board module but with different formats (Pos) and the board is simpler since there is no need to consider the colour issues
 -- given a list of positions, find their corresponding available movements
-dListForBoard :: [Pos] -> [(Pos, [Pos])]
-dListForBoard ps = evalState (mapM destinationList' ps) ps -- zip the from and to destinations
 
--- combine the two movement lists and discard the duplicate ones
-destinationList' :: Pos -> State [Pos] (Pos, [Pos])
-destinationList' p = do ps <- get
-                        if p `notElem` ps then return (p, []) -- invalid input position
-                        else do adjacentMoves <- findAvaliableNeighbors' p
-                                chainedMoves  <- recursiveSearch' [] p
-                                let movesList = adjacentMoves `par` chainedMoves `pseq` nubOrd (adjacentMoves ++ chainedMoves)
-                                return (p, movesList) -- return the pair of source positions and a list of target positions
+-- dListForBoard :: [Pos] -> [(Pos, [Pos])]
+-- dListForBoard ps = evalState (mapM destinationList' ps) ps -- zip the from and to destinations
 
--- discover the available adjacent positions around the entered one
-findAvaliableNeighbors' :: Pos -> State [Pos] [Pos]
-findAvaliableNeighbors' p@(x, y) = do ps <- get
-                                      let avaliableList = filter (`notElem` ps) neighborPosList
-                                      return avaliableList
-    where
-        neighborPosList :: [Pos]
-        neighborPosList = filter (validMoveCheck p) [(x, y-1), (x-1, y-1), (x-1, y), (x, y+1), (x+1, y+1), (x+1, y)]
-        size = occupiedBoardSize
+-- offer a (only one) player's all avaiable moves on the given board
+-- might cause error if contains multiple player's pieces
+allDestinations' :: [Pos] -> [Pos]
+allDestinations' board = setNub . concat $ parMap rseq (`destinations'` board) board
 
-        -- check the validity of the movement
-        validMoveCheck :: Pos -> Pos -> Bool
-        validMoveCheck f t = testValidPos size size t && BFS.baseMoveAllow f t
+-- enter a board position and return a list of available movements/reachable positions: adjacent jump and chained jump
+destinations' :: Pos -> [Pos] -> [Pos]
+destinations' pos board = if pos `elem` board
+                          then let -- find the reachable destinations for steps
+                                   js = jumps' pos board
+                                   -- find the reachable destinations for hops
+                                   hs = allHops' [] board pos
+                               in  -- combine the two lists and discard the repeated ones
+                                   js `par` hs `pseq` setNub (js ++ hs)
+                          else []  -- invalid chosen pieces
 
--- search for all chained jump destinations that can be reached
-recursiveSearch' :: [Pos] -> Pos -> State [Pos] [Pos]
-recursiveSearch' record pos = do chainJumpList <- jumpDirection' pos
-                                 let renewList = filter (`notElem` record) chainJumpList -- prevent duplicate search 
-                                     newRecord = renewList ++ record
-                                 recursiveList <- concatMapM (recursiveSearch' newRecord) renewList
-                                 return (recursiveList ++ renewList)
+-- -- combine the two movement lists and discard the duplicate ones
+-- destinationList' :: Pos -> State [Pos] (Pos, [Pos])
+-- destinationList' p = do ps <- get
+--                         if p `notElem` ps then return (p, []) -- invalid input position
+--                         else do adjacentMoves <- findAvaliableNeighbors' p
+--                                 chainedMoves  <- recursiveSearch' [] p
+--                                 let movesList = adjacentMoves `par` chainedMoves `pseq` nubOrd (adjacentMoves ++ chainedMoves)
+--                                 return (p, movesList) -- return the pair of source positions and a list of target positions
 
--- return the available hopping destinations
-jumpDirection' :: Pos -> State [Pos] [Pos]
-jumpDirection' pos = do reachableList <- mapM (determineValidJump' pos) [f (0, -1), f (-1, -1), f (-1, 0), f (0, 1), f (1, 1), f (1, 0)]
-                        return $ filter (/= pos) reachableList -- remove the invalid moves
+adjacentPositions' :: [Pos -> Pos]
+adjacentPositions' = [f (-1, 0), f (-1, -1), f (0, -1), f (1, 0), f (1, 1), f (0, 1)]
     where
         f (a, b) (x, y) = (a+x, b+y)
 
--- check if a one over hop is valid
-determineValidJump' :: Pos -> (Pos -> Pos) -> State [Pos] Pos
-determineValidJump' pos f = if not validMoveCheck then return pos
-                            else do ps <- get
-                                    if fp2 `notElem` ps && fp `elem` ps then return fp2
-                                    else return pos
-    where
-        fp = f pos
-        fp2 = (f . f) pos
-        size = occupiedBoardSize
+jumpDirections' :: Pos -> [Pos]
+jumpDirections' ps = adjacentPositions' <*> pure ps
 
-        -- check the validity of the movement
-        validMoveCheck :: Bool
-        validMoveCheck = testValidPos size size fp2 && BFS.baseMoveAllow pos fp2
+-- discover the available adjacent positions around the entered one
+jumps' :: Pos -> [Pos] -> [Pos]
+jumps' pos board = filter (\x -> x `notElem` board && validMove' pos x) (jumpDirections' pos) 
+
+-- -- search for all chained jump destinations that can be reached
+-- recursiveSearch' :: [Pos] -> Pos -> State [Pos] [Pos]
+-- recursiveSearch' record pos = do chainJumpList <- jumpDirection' pos
+--                                  let renewList = filter (`notElem` record) chainJumpList -- prevent duplicate search 
+--                                      newRecord = renewList ++ record
+--                                  recursiveList <- concatMapM (recursiveSearch' newRecord) renewList
+--                                  return (recursiveList ++ renewList)
+
+-- generate a list of one-over jump chained together to reach a larger jump range
+-- recursively search for the reachable destinations for chained jumps of different directions
+-- during the search, a list of discovered positions is maintained to avoid cycling/repetition, 
+-- while another list stores the new frontiers based on the previous list of positions
+allHops' :: [Pos] -> [Pos] -> Pos -> [Pos]
+allHops' record board ps = -- generate a new list of positions found
+                           let moves = hops' ps board
+                               -- add the newly discovered positions to the record, also avoid backward moves
+                               newGeneration = filter (`notElem` record) moves
+                               -- continue the next "layer" of search based on the positions discovered at this "layer"
+                               newRecord = newGeneration ++ record
+                               -- until not new positions are found, return the combined list of all found positions
+                               expandedMoves = concat $ parMap rseq (allHops' newRecord board) newGeneration
+                              -- might exist duplicated positions, but will be omitted at the final combination
+                           in  expandedMoves ++ newGeneration
+
+-- list a positions that can be reached by one hop
+hops' :: Pos -> [Pos] -> [Pos]
+hops' ps board = let -- generate a list of positions that could be reached by just one hop in different directions
+                     moves = map (hopCheck' ps board) adjacentPositions'
+                     -- discard the invalid positions
+                 in  extractJustValues moves
+
+-- -- return the available hopping destinations
+-- jumpDirection' :: Pos -> State [Pos] [Pos]
+-- jumpDirection' pos = do reachableList <- mapM (determineValidJump' pos) [f (0, -1), f (-1, -1), f (-1, 0), f (0, 1), f (1, 1), f (1, 0)]
+--                         return $ filter (/= pos) reachableList -- remove the invalid moves
+--     where
+--         f (a, b) (x, y) = (a+x, b+y)
+
+-- given a board position, chek if a hop is valid in a certain direction
+hopCheck' :: Pos -> [Pos] -> (Pos -> Pos) -> Maybe Pos
+hopCheck' pos board f = if isOccupied ps1 && not (isOccupied ps2) && validMove' pos ps2 then Just ps2 else Nothing
+        where
+            ps1 = f pos
+            ps2 = f ps1
+
+            isOccupied x = x `elem` board
+
+-- check if a one over hop is valid
+-- determineValidJump' :: Pos -> (Pos -> Pos) -> State [Pos] Pos
+-- determineValidJump' pos f = if not validMoveCheck then return pos
+--                             else do ps <- get
+--                                     if fp2 `notElem` ps && fp `elem` ps then return fp2
+--                                     else return pos
+--     where
+--         fp = f pos
+--         fp2 = (f . f) pos
+--         size = occupiedBoardSize
+
+--         -- check the validity of the movement
+--         validMoveCheck :: Bool
+--         validMoveCheck = testValidPos size size fp2 && baseMoveAllow' pos fp2
+
+-- check the validity of the movement
+validMove' :: Pos -> Pos -> Bool
+validMove' from to = borderCheck' to && baseMoveAllow' from to
+
+borderCheck' :: Pos -> Bool
+borderCheck' = NBoard.borderCheck (occupiedBoardSize, occupiedBoardSize)
 
 -- prevent piece from moving out the goal base
-baseMoveAllow :: Pos -> Pos -> Bool
-baseMoveAllow fp tp = (fp `notElem` goalBase) || (tp `elem` goalBase)
+baseMoveAllow' :: Pos -> Pos -> Bool
+baseMoveAllow' from to = (from `notElem` goalBase) || (to `elem` goalBase)
