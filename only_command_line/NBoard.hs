@@ -159,15 +159,15 @@ updating :: [BoardPos] -> Board -> Board
 updating xs b = foldr updateBoard b xs
 
 -- mutate an element in a 2D list
--- replace2 :: Pos -> Board -> [[a]] -> [[a]]
--- replace2 (x, y) newItem table = let newRow = replace x newItem (table !! y)
---                                 in  replace y newRow table
+replace2 :: Pos -> a -> [[a]] -> [[a]]
+replace2 (x, y) newItem table = let newRow = replace y newItem (table !! x)
+                                in  replace x newRow table
 
 -- mutate an element in a list
--- replace :: Int -> a -> [a] -> [a]
--- replace idx newItem row = front ++ [newItem] ++ end
---     where
---         (front, _:end) = splitAt idx row
+replace :: Int -> a -> [a] -> [a]
+replace idx newItem row = front ++ [newItem] ++ end
+    where
+        (front, _:end) = splitAt idx row
 
 -- remove an element in a list
 -- removeByIdx :: Int -> [a] -> [a]

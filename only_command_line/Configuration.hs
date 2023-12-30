@@ -29,10 +29,11 @@ import qualified Data.HashMap.Lazy as HML
 import Control.Parallel.Strategies (parMap, rseq)
 import Data.Time (getCurrentTime)
 import Data.Time.Clock (diffUTCTime)
+import NBFS (symmetric1_pos)
 -- import Minimax (moveEvaluation)
 
 -- in a lookup table, the key is the hashed board and the value is the shortest path pair
-type LookupTable = HML.HashMap Int (Int, Int)
+type LookupTable = HML.HashMap Int [Pos]
 
 countCombinations :: Integer -> Integer -> Integer
 countCombinations pieces totalSpace = let x = product [1..pieces]
@@ -42,18 +43,18 @@ countCombinations pieces totalSpace = let x = product [1..pieces]
 
 
 -- load the lookup table data from the file
-loadTableElements :: IO ()
-loadTableElements = let filename1 = "../dataset/lookup_table.txt"
-                        filename2 = "./dataset/lookup_table.txt"
-                    in  do does1Exist <- doesFileExist filename1
-                           filePath <- if does1Exist then openFile filename1 ReadMode
-                                       else openFile filename2 ReadMode
-                           contents <- hGetContents filePath
-                           let result = (\(a, b, c) -> (a, (b, c))) <$> concatMap read (lines contents) :: [(Int, (Int, Int))]
-                               lookupTable = HML.fromList result
-                           -- do something
-                           print $ HML.lookup 556115780 lookupTable
-                           hClose filePath
+-- loadTableElements :: IO ()
+-- loadTableElements = let filename1 = "../dataset/lookup_table.txt"
+--                         filename2 = "./dataset/lookup_table.txt"
+--                     in  do does1Exist <- doesFileExist filename1
+--                            filePath <- if does1Exist then openFile filename1 ReadMode
+--                                        else openFile filename2 ReadMode
+--                            contents <- hGetContents filePath
+--                            let result = (\(a, b, c) -> (a, (b, c))) <$> concatMap read (lines contents) :: [(Int, (Int, Int))]
+--                                lookupTable = HML.fromList result
+--                            -- do something
+--                            print $ HML.lookup 556115780 lookupTable
+--                            hClose filePath
 
 --Database Construct-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- record and calculate the board value for each board state
@@ -167,15 +168,29 @@ listAllPermutations pieces (ls, startIdx) = let idx = [startIdx .. 49 - pieces] 
                                                 pls = map (: ls) nls -- concatenating the previously investigated positions
                                                 next = map (+1) idx -- push forward the range as every element before this will already be manipulated 
                                             in  concat $ parMap rseq (listAllPermutations (pieces - 1)) (zip pls next) -- expand the permutation
-                                            
 
+
+build :: [[Pos]] -> LookupTable -> Int -> Int
+build [] table count = count
+build (p:ps) table count = 
+                     let hash1 = hashBoard p
+                         hash2 = hashBoard $ symmetric1_pos p
+                         ifExist1 = HML.member hash1 table
+                         ifExist2 = HML.member hash2 table
+                     in  if ifExist1 `par` ifExist2 `pseq` (ifExist1 || ifExist2) then build ps table count
+                         else build ps (HML.insert hash1 p table) (count + 1)
+
+
+-- ghc -main-is Configuration Configuration.hs -O2 -threaded -outputdir dist
 main :: IO ()
-main = do -- start <- getCurrentTime
-          let len = length $ listAllPermutations 6 ([], 0)
-          putStrLn $ "The are " ++ show len ++ " permutations"
-        --   end <- getCurrentTime
-        --   let duration = realToFrac $ diffUTCTime end start
-        --   putStrLn $ "Time cost: " ++ show duration
+main = do start <- getCurrentTime
+          let ps = listAllPermutations 6 ([], 0)
+              tableSize = build ps HML.empty 0
+          putStrLn $ "The are " ++ show (length ps) ++ " permutations"
+          putStrLn $ "Size of Lookup Table: " ++ show tableSize
+          end <- getCurrentTime
+          let duration = realToFrac $ diffUTCTime end start
+          putStrLn $ "Time cost: " ++ show duration
 
 
 --Board Evaluation------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

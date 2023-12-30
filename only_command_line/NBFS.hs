@@ -3,7 +3,7 @@ module NBFS where
 -- hence, this module aims to search the sufficient moves of any state for a player to win the game in single-agent board
 -- if you're not interested in how to retrieve the lookup table used in this application, you can ignore this module
 
-import NBoard ( occupiedBoardSize, Pos, borderCheck, extractJustValues, setNub )
+import NBoard ( occupiedBoardSize, Pos, borderCheck, extractJustValues, setNub, replace2, replace )
 import Data.List ( elemIndex, sort, sortBy, transpose )
 import Control.Monad.ST ( runST )
 import Data.STRef ( modifySTRef, newSTRef, readSTRef )
@@ -13,79 +13,130 @@ import Control.Parallel ( par, pseq )
 import Data.Containers.ListUtils ( nubOrd )
 import NProjection (goalBase, startBase)
 import Control.Parallel.Strategies (parMap, rseq)
+import qualified Data.Heap as Heap
+import Data.Time (getCurrentTime, diffUTCTime)
+
 
 -- it will need a breadth-first search for preventing duplicate moves, and also, due to the difficulty of measuring the prediction in A star, BFS is somehow more accurate 
 -- each level represents a move that is done only if certain moves before were done
 -- level 0 means the initial state
 -- level 1 means a move is performed by each piece from the initial state, might exists duplications
 -- as shown below:
+
 testBoard :: [[Int]]
 testBoard = [
-        [0,1,0,0,1,1,0],
-        [0,0,0,1,0,0,0],
+        [0,0,0,0,1,1,1],
+        [0,0,0,0,0,1,1],
         [0,0,0,0,0,0,1],
-        [0,0,0,0,0,0,1],
+        [0,0,0,0,0,0,0],
         [0,0,0,0,0,0,0],
         [0,0,0,0,0,0,0],
         [0,0,0,0,0,0,0]
     ]
+
+printBoard' :: [Pos] -> IO ()
+printBoard' ps = printEoard' $ transform2Table ps emptyTable
+    where
+        emptyTable :: [[Int]]
+        emptyTable = replicate 7 $ replicate 7 0
+
+        printEoard' :: [[Int]] -> IO ()
+        printEoard' [] = return ()
+        printEoard' (b:bs) = do print b
+                                printEoard' bs
+
+        transform2Table :: [Pos] -> [[Int]] -> [[Int]]
+        transform2Table [] b = b
+        transform2Table (p:ps) board = transform2Table ps (replace2 p 1 board)
+
 -- to speed up the processing, rather than having the whole occupied board, only the occupied positions are maintained in the state monad
 -- additional consideration for more accurate estimate might be considered in multi-agent form, but not necessary here
 
-{-
+-- a generation/layer of the search is consist of a list of candidate and corresponding centroid  
+type MinLayer = Heap.MinPrioHeap Int [Pos]
+type MaxLayer = Heap.MaxPrioHeap Int [Pos]
+
+
+-- ghc -main-is NBFS NBFS.hs -O2 -threaded -outputdir dist
+main :: IO()
+main = do start <- getCurrentTime
+          let x = shortestMoves startBase 800
+          putStrLn $ "The Shortest Path is: " ++ show x
+          end <- getCurrentTime
+          putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
 
 -- breadth-first search
 shortestMoves :: [Pos] -> Int -> Int
 shortestMoves ps wd = let evalValue = centroid ps
-                      in  if evalValue == 28 then 0 else bSearchS 0 wd [(sort ps, evalValue)] [] []
+                      in  if evalValue == 28 then 0 else bSearch 0 wd (Heap.singleton (evalValue, ps)) Heap.empty
 
--- for a list of board states, process each new state for each state 
--- update the new positions based on the old ones
--- finally return the level index, meaning the moves required to reach the goal state
-bSearchS :: Int -> Int -> [([Pos], Int)] -> [([Pos], Int)] -> [([Pos], Int)] -> Int
-bSearchS i wd np1 np2 [] = let combinedSet = runST $ do n <- newSTRef np2
-                                                        modifySTRef n (updateList np1 wd)
-                                                        readSTRef n
-                           in bSearchS (i+1) wd [] [] combinedSet -- clear the new position list and start searching on them, and update the level counts
+bSearch :: Int -> Int -> MinLayer -> MinLayer -> Int
+bSearch i lim current new = case Heap.view current of
+                                Nothing -> bSearch (i+1) lim new Heap.empty
+                                Just ((28, _), _) -> i
+                                Just ((c, b), rest) -> let candidates = expands (c, b) (allDestinations' b)
+                                                       in  bSearch i lim rest (renewLayer lim new candidates)
 
-bSearchS i wd np1 np2 [b] = case evalState (bSearch np1 wd) b of
-                                [(_, 28)] -> i  -- indicate that the goal state is reached, return the level counts
-                                ls -> bSearchS i wd ls np2 [] -- otherwise, keep searching/expanding the known board states
+-- -- for a list of board states, process each new state for each state 
+-- -- update the new positions based on the old ones
+-- -- finally return the level index, meaning the moves required to reach the goal state
+-- bSearchS :: Int -> Int -> [([Pos], Int)] -> [([Pos], Int)] -> [([Pos], Int)] -> Int
+-- bSearchS i wd np1 np2 [] = let combinedSet = runST $ do n <- newSTRef np2
+--                                                         modifySTRef n (updateList np1 wd)
+--                                                         readSTRef n
+--                            in bSearchS (i+1) wd [] [] combinedSet -- clear the new position list and start searching on them, and update the level counts
 
-bSearchS i wd np1 np2 (b:bs) = let set1 = evalState (bSearch np1 wd) b -- bidirectional solution, that solves the boards in two direction in parallel to save the time
-                                   set2 = evalState (bSearch np2 wd) (last bs)
-                               in  if set1 `par` set2 `pseq` (goalReached set1 || goalReached set2) then i
-                                   else bSearchS i wd set1 set2 (init bs)
-    where
-        goalReached :: [([Pos], Int)] -> Bool
-        goalReached [(_, 28)] = True
-        goalReached _ = False
+-- bSearchS i wd np1 np2 [b] = case evalState (bSearch np1 wd) b of
+--                                 [(_, 28)] -> i  -- indicate that the goal state is reached, return the level counts
+--                                 ls -> bSearchS i wd ls np2 [] -- otherwise, keep searching/expanding the known board states
+
+-- bSearchS i wd np1 np2 (b:bs) = let set1 = evalState (bSearch np1 wd) b -- bidirectional solution, that solves the boards in two direction in parallel to save the time
+--                                    set2 = evalState (bSearch np2 wd) (last bs)
+--                                in  if set1 `par` set2 `pseq` (goalReached set1 || goalReached set2) then i
+--                                    else bSearchS i wd set1 set2 (init bs)
+--     where
+--         goalReached :: [([Pos], Int)] -> Bool
+--         goalReached [(_, 28)] = True
+--         goalReached _ = False
 
 -- for each pieces on a board, return the resulting board states it could lead to
 -- return the list containing the new found states and previously accumulated states
-bSearch :: [([Pos], Int)] -> Int -> State ([Pos], Int) [([Pos], Int)] -- maintaining the current board and its value
-bSearch ps wd = do (board, score) <- get
-                   let moves = dListForBoard board -- retrieve the available moves
-                       ns = evalState (flipLists score moves) board -- result the expanded boards
-                   return (runST $ do n <- newSTRef ps
-                                      modifySTRef n (updateList ns wd)
-                                      readSTRef n) -- update the previously discovered board states with the new found board states
+-- expandLayer :: (Int, [Pos]) -> Int -> MinLayer
+-- expandLayer (cen, board) lim = 
+-- bSearch :: [([Pos], Int)] -> Int -> State ([Pos], Int) [([Pos], Int)] -- maintaining the current board and its value
+-- bSearch ps wd = do (board, score) <- get
+--                    let moves = dListForBoard board -- retrieve the available moves
+--                        ns = evalState (flipLists score moves) board -- result the expanded boards
+--                    return (runST $ do n <- newSTRef ps
+--                                       modifySTRef n (updateList ns wd)
+--                                       readSTRef n) -- update the previously discovered board states with the new found board states
 
 -- popular the candidate movements within a certain width, also replace the board states with better ones once the width is reached
-updateList :: [([Pos], Int)] -> Int -> [([Pos], Int)] -> [([Pos], Int)]
-updateList [] _ ps = ps -- return the new candidate set
-updateList (n:ns) wb ps
-  | snd n == 28 = [n] -- if reach the goal then just return the goal state
-  | n `elem` ps = updateList ns wb ps -- skip if already exists in the candidate set
-  | length ps < wb = updateList ns wb (mySort (n:ps)) -- just add if still has space
-  | otherwise = let minScore = (snd . head) ps -- the minimum item is the first item of the list
-                    (_, score) = n
-                in  if score `par` minScore `pseq` (score > minScore) then updateList ns wb (mySort (n:tail ps)) -- replace the element with the current board state
-                    else updateList ns wb ps -- if the board state is not better then skip 
+renewLayer :: Int -> MinLayer -> MaxLayer -> MinLayer
+renewLayer lim minHp maxHp =
+    case Heap.view maxHp of
+        Nothing -> minHp -- return the new candidate set
+        Just ((28, board), _) -> Heap.singleton (28, board)  -- if reach the goal then just return a singleton
+        Just (item@(maxcen, _), restMaxHp) -> -- if the heap's space is still spare then just insert the the candidate
+                        if Heap.size minHp < lim then renewLayer lim (Heap.insert item minHp) restMaxHp
+                        -- otherwise, have to filter out the ones wth less centroid 
+                        else case Heap.view minHp of
+                                Nothing -> error "Invalid operation in Heap"
+                                Just ((mincen, _), restMinHp) -> if maxcen > mincen then renewLayer lim (Heap.insert item restMinHp) restMaxHp
+                                                                 else renewLayer lim minHp restMaxHp
+
+-- updateList (n:ns) wb ps
+--   | snd n == 28 = [n] -- if reach the goal then just return the goal state
+--   | n `elem` ps = updateList ns wb ps -- skip if already exists in the candidate set
+--   | length ps < wb = updateList ns wb (mySort (n:ps)) -- just add if still has space
+--   | otherwise = let minScore = (snd . head) ps -- the minimum item is the first item of the list
+--                     (_, score) = n
+--                 in  if score `par` minScore `pseq` (score > minScore) then updateList ns wb (mySort (n:tail ps)) -- replace the element with the current board state
+--                     else updateList ns wb ps -- if the board state is not better then skip 
 
 -- sort the list based on score, such that every time the minimum value is at the front
-mySort :: [([Pos], Int)] -> [([Pos], Int)]
-mySort = sortBy (\(_, x) (_, y) -> compare x y)
+-- mySort :: [([Pos], Int)] -> [([Pos], Int)]
+-- mySort = sortBy (\(_, x) (_, y) -> compare x y)
 
 --Board Handling--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- to tend the movement from right-top to left-bottom, the centroid of the position can be set as: y-x
@@ -93,63 +144,74 @@ mySort = sortBy (\(_, x) (_, y) -> compare x y)
 -- such that the the closer to the home base, the larger the centroid is
 -- calculate the centroid for the whole occupied board
 centroid :: [Pos] -> Int
-centroid ps = sum (map centroidPos ps) -- the highest value will be 28 while the lowest is -28
+centroid ps = sum $ map centroidPos ps -- the highest value will be 28 while the lowest is -28
 centroidPos :: Pos -> Int
-centroidPos (x, y) = y - x
+centroidPos (x, y) = x - y
+-- update a given centroid based on a movement
+updateCentroid :: Int -> (Pos, Pos) -> Int
+updateCentroid cen (from, to) = cen - centroidPos from + centroidPos to
 
 -- the two types of symmetric a board could be presented
-symmetric1 :: OccupiedBoard -> OccupiedBoard
-symmetric1 = reverse . transpose . reverse
-symmetric2 :: OccupiedBoard -> OccupiedBoard
-symmetric2 = transpose
+-- symmetric1 :: OccupiedBoard -> OccupiedBoard
+-- symmetric1 = reverse . transpose . reverse
+-- symmetric2 :: OccupiedBoard -> OccupiedBoard
+-- symmetric2 = transpose
+
 -- the symmetric conversion based on occupied positions 
+-- horizontal 
 symmetric1_pos :: [Pos] -> [Pos]
 symmetric1_pos = map (\(x, y) -> (6 - y, 6 - x))
+-- vertical
 symmetric2_pos :: [Pos] -> [Pos]
 symmetric2_pos = map (\(x, y) -> (y, x))
 
--- implement the list of movements and the resulting boards (positions)
+-- implement a list of movements and get the resulting boards (positions), combine all into a MinHeap
 -- as well as update the new evaluation value of the resulting board
-flipLists :: Int -> [(Pos, [Pos])] -> State [Pos] [([Pos], Int)]
-flipLists _ [] = return []
-flipLists v (x:xs) = do let (p, ps) = x
-                        resultingBoards <- mapM (flipBoardState v p) ps -- get the resulting boards and their values for the one position
-                        otherResultingBoards <- flipLists v xs -- the rest of the resulting boards as well as the corresponding values
-                        return (resultingBoards `par` otherResultingBoards `pseq` (resultingBoards ++ otherResultingBoards)) -- eventually get all possible boards result from the current board
-    where
-        -- exchange two pieces' states on the occupied board by replacing the position with a new one as well as update the new evaluation value
-        flipBoardState :: Int -> Pos -> Pos -> State [Pos] ([Pos], Int)
-        flipBoardState v f t = do ps <- get
-                                  case elemIndex f ps of
-                                    Nothing -> error "Cannot find this position in the occupied board"
-                                    Just i  -> do let newps = sort $ t : filter (/= f) ps
-                                                      newv  = v - centroidPos f + centroidPos t
-                                                  return (newps `par` newv `pseq` (newps, newv))
--}
+expands :: (Int, [Pos]) -> [(Pos, [Pos])] -> MaxLayer
+expands currentState = Heap.fromList . concat . parMap rseq (flipBoard currentState)
+
+-- generate new boards based on the given pair of movements: (pos, a list of destinations)
+flipBoard :: (Int, [Pos]) -> (Pos, [Pos]) -> [(Int, [Pos])]
+flipBoard _ (_, []) = []
+flipBoard (cen, board) (p, m:ms) = case elemIndex p board of
+                                        Nothing -> error "Invalid position for board flipping"
+                                        Just idx -> let newBoard = replace idx m board
+                                                        newCentroid = updateCentroid cen (p, m)
+                                                    in  (newCentroid, newBoard):flipBoard (cen, board) (p, ms)
+-- expands _ [] = return []
+-- expands v (x:xs) = do let (p, ps) = x
+--                         resultingBoards <- mapM (flipBoardState v p) ps -- get the resulting boards and their values for the one position
+--                         otherResultingBoards <- flipLists v xs -- the rest of the resulting boards as well as the corresponding values
+--                         return (resultingBoards `par` otherResultingBoards `pseq` (resultingBoards ++ otherResultingBoards)) -- eventually get all possible boards result from the current board
+--     where
+--         -- exchange two pieces' states on the occupied board by replacing the position with a new one as well as update the new evaluation value
+--         flipBoardState :: Int -> Pos -> Pos -> State [Pos] ([Pos], Int)
+--         flipBoardState v f t = do ps <- get
+--                                   case elemIndex f ps of
+--                                     Nothing -> error "Cannot find this position in the occupied board"
+--                                     Just i  -> do let newps = sort $ t : filter (/= f) ps
+--                                                       newv  = v - centroidPos f + centroidPos t
+--                                                   return (newps `par` newv `pseq` (newps, newv))
+
 --Movement Operators-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
 -- similar to the Board module but with different formats (Pos) and the board is simpler since there is no need to consider the colour issues
 -- given a list of positions, find their corresponding available movements
 
--- dListForBoard :: [Pos] -> [(Pos, [Pos])]
--- dListForBoard ps = evalState (mapM destinationList' ps) ps -- zip the from and to destinations
-
 -- offer a (only one) player's all avaiable moves on the given board
 -- might cause error if contains multiple player's pieces
-allDestinations' :: [Pos] -> [Pos]
-allDestinations' board = setNub . concat $ parMap rseq (`destinations'` board) board
+allDestinations' :: [Pos] -> [(Pos, [Pos])]
+allDestinations' board = setNub $ parMap rseq (`destinations'` board) board
 
--- enter a board position and return a list of available movements/reachable positions: adjacent jump and chained jump
-destinations' :: Pos -> [Pos] -> [Pos]
+-- enter a board position and get a list of available movements/reachable positions: adjacent jump and chained jump, zipped with the given position
+destinations' :: Pos -> [Pos] -> (Pos, [Pos])
 destinations' pos board = if pos `elem` board
                           then let -- find the reachable destinations for steps
                                    js = jumps' pos board
                                    -- find the reachable destinations for hops
                                    hs = allHops' [] board pos
                                in  -- combine the two lists and discard the repeated ones
-                                   js `par` hs `pseq` setNub (js ++ hs)
-                          else []  -- invalid chosen pieces
+                                   (pos, js `par` hs `pseq` setNub (js ++ hs))
+                          else (pos, [])  -- invalid position, therefore, empty list
 
 -- -- combine the two movement lists and discard the duplicate ones
 -- destinationList' :: Pos -> State [Pos] (Pos, [Pos])
@@ -170,7 +232,7 @@ jumpDirections' ps = adjacentPositions' <*> pure ps
 
 -- discover the available adjacent positions around the entered one
 jumps' :: Pos -> [Pos] -> [Pos]
-jumps' pos board = filter (\x -> x `notElem` board && validMove' pos x) (jumpDirections' pos) 
+jumps' pos board = filter (\x -> x `notElem` board && validMove' pos x) (jumpDirections' pos)
 
 -- -- search for all chained jump destinations that can be reached
 -- recursiveSearch' :: [Pos] -> Pos -> State [Pos] [Pos]
