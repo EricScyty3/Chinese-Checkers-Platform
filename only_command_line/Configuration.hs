@@ -10,7 +10,7 @@ import System.IO
       hPutStr,
       IOMode(ReadMode, WriteMode),
       withFile, Handle )
-import NZobrist ( hashBoard, updateHash )
+import NZobrist ( hashBoard, updateHash, Hash )
 -- import BFS
 --     ( centroid,
 --       centroidPos,
@@ -33,7 +33,7 @@ import NBFS (symmetric1_pos)
 -- import Minimax (moveEvaluation)
 
 -- in a lookup table, the key is the hashed board and the value is the shortest path pair
-type LookupTable = HML.HashMap Int [Pos]
+type LookupTable = HML.HashMap Hash [Pos]
 
 countCombinations :: Integer -> Integer -> Integer
 countCombinations pieces totalSpace = let x = product [1..pieces]

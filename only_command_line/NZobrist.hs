@@ -11,6 +11,7 @@ import NProjection (startBase, goalBase)
 
 
 -- a list of unique random integers 
+type Hash = Int
 type StateTable = HM.HashMap Pos Int
 
 -- board state table: each position can only have one state, either occupied or not, and if a position is occupied, the stored value will be applied
@@ -49,9 +50,9 @@ stateTable = HM.fromList randomBoardState
 -- since this is just for heuristic board evaluation, therefore, only need to know the occupy status for each position
 
 -- the hashed values of the both start and goal states
-hashInitial :: Int
+hashInitial :: Hash
 hashInitial = hashBoard startBase
-hashEnd :: Int
+hashEnd :: Hash
 hashEnd = hashBoard goalBase
 
 -- a regular win for a player can be detected based on comparing the hashed values
@@ -59,7 +60,7 @@ winStateDetect :: [Pos] -> Bool
 winStateDetect ps = hashEnd == hashBoard ps
 
 -- change the current hashed value based on the new movement made on the board
-updateHash :: Int -> (Pos, Pos) -> Int
+updateHash :: Hash -> (Pos, Pos) -> Hash
 updateHash h (start, end) = case HM.lookup start stateTable of 
                                 Nothing -> error "Hash: invalid start position"
                                 Just h1 -> case HM.lookup end stateTable of
@@ -67,7 +68,7 @@ updateHash h (start, end) = case HM.lookup start stateTable of
                                                Just h2 -> (h `xor` h1) `xor` h2
 
 -- given a list of positions on the pieces on the current internal board, return a hashed value
-hashBoard :: [Pos] -> Int
+hashBoard :: [Pos] -> Hash
 hashBoard [] = 0
 hashBoard (p:ps) = case HM.lookup p stateTable of
                         -- get the random value corresponding to the position
@@ -76,9 +77,9 @@ hashBoard (p:ps) = case HM.lookup p stateTable of
                         Nothing -> error "Hash: invalid board position"
 
 -- given a positions change, reflect that onto the internal board's positions
-flipBoard :: [Pos] -> (Pos, Pos) -> [Pos]
-flipBoard ps (start, end) = replace end start ps
-    where
-        replace _ _ [] = []
-        replace new old (x:xs) = if old == x then new:xs
-                                 else x:replace new old xs
+-- flipBoard :: [Pos] -> (Pos, Pos) -> [Pos]
+-- flipBoard ps (start, end) = replace end start ps
+--     where
+--         replace _ _ [] = []
+--         replace new old (x:xs) = if old == x then new:xs
+--                                  else x:replace new old xs

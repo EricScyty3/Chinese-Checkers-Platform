@@ -4,7 +4,7 @@ module NBFS where
 -- if you're not interested in how to retrieve the lookup table used in this application, you can ignore this module
 
 import NBoard ( occupiedBoardSize, Pos, borderCheck, extractJustValues, setNub, replace2, replace )
-import Data.List ( elemIndex, sort, sortBy, transpose )
+import Data.List ( elemIndex, sort, sortBy, transpose, nub )
 import Control.Monad.ST ( runST )
 import Data.STRef ( modifySTRef, newSTRef, readSTRef )
 import Control.Monad.State ( State, evalState, MonadState(get) )
@@ -15,7 +15,10 @@ import NProjection (goalBase, startBase)
 import Control.Parallel.Strategies (parMap, rseq)
 import qualified Data.Heap as Heap
 import Data.Time (getCurrentTime, diffUTCTime)
-
+import System.Random ( newStdGen, Random(randomRs) )
+import System.Environment (getArgs)
+import qualified Data.Set as Set
+import NZobrist (Hash, hashBoard)
 
 -- it will need a breadth-first search for preventing duplicate moves, and also, due to the difficulty of measuring the prediction in A star, BFS is somehow more accurate 
 -- each level represents a move that is done only if certain moves before were done
@@ -49,33 +52,80 @@ printBoard' ps = printEoard' $ transform2Table ps emptyTable
         transform2Table [] b = b
         transform2Table (p:ps) board = transform2Table ps (replace2 p 1 board)
 
+randomBoard :: IO [(Int, Int)]
+randomBoard = do gen1 <- newStdGen
+                 gen2 <- newStdGen
+                 let xs = randomRs (0, 6) gen1
+                     ys = randomRs (0, 6) gen2
+                     ps = take 6 . nub $ zip xs ys
+                 return ps
+
 -- to speed up the processing, rather than having the whole occupied board, only the occupied positions are maintained in the state monad
 -- additional consideration for more accurate estimate might be considered in multi-agent form, but not necessary here
 
 -- a generation/layer of the search is consist of a list of candidate and corresponding centroid  
 type MinLayer = Heap.MinPrioHeap Int [Pos]
 type MaxLayer = Heap.MaxPrioHeap Int [Pos]
-
+type Record = Set.Set Hash
 
 -- ghc -main-is NBFS NBFS.hs -O2 -threaded -outputdir dist
 main :: IO()
-main = do start <- getCurrentTime
-          let x = shortestMoves startBase 800
-          putStrLn $ "The Shortest Path is: " ++ show x
+main = do (size1:size2:args) <- getArgs
+          start <- getCurrentTime
+          test <- randomBoard
+          let -- test = [(2,6),(3,3),(3,5),(6,4),(6,5),(6,6)]
+              x = shortestMoves test (read size1)
+              y = shortestMoves test (read size2)
+          printBoard' test
+          putStrLn $ "The Centroid is:" ++ show (centroid test) 
+          x `par` y `pseq` putStrLn $ "The Shortest Path is: " ++ show x
+          putStrLn $ "The Shortest Path is: " ++ show y
           end <- getCurrentTime
           putStrLn $ "Time cost: " ++ show (diffUTCTime end start)
 
--- breadth-first search
+-- discover a board's shortest path toward the goal state
 shortestMoves :: [Pos] -> Int -> Int
 shortestMoves ps wd = let evalValue = centroid ps
-                      in  if evalValue == 28 then 0 else bSearch 0 wd (Heap.singleton (evalValue, ps)) Heap.empty
+                      in  if evalValue == 28 then 0 
+                          else bSearch 0 wd (Heap.singleton (evalValue, ps)) (Set.singleton (hashBoard ps)) Heap.empty
 
-bSearch :: Int -> Int -> MinLayer -> MinLayer -> Int
-bSearch i lim current new = case Heap.view current of
-                                Nothing -> bSearch (i+1) lim new Heap.empty
-                                Just ((28, _), _) -> i
-                                Just ((c, b), rest) -> let candidates = expands (c, b) (allDestinations' b)
-                                                       in  bSearch i lim rest (renewLayer lim new candidates)
+-- breadth-first search
+bSearch :: Int -> Int -> MinLayer -> Record -> MinLayer -> Int
+bSearch i lim current record new = 
+                case Heap.view current of
+                    -- turn to the next generation if the current states are all traversed
+                    -- reset the record and the buffer
+                    Nothing -> bSearch (i+1) lim new Set.empty Heap.empty
+                    -- expand a board state in the current generation and update to the next one
+                    Just ((c, b), rest) -> let candidates = expands (c, b) (allDestinations' b)
+                                               (newLayer, newRecord) = renewLayer lim new record candidates
+                                           in  -- determine if reaching the goal state, if so, then return the number of the total layers
+                                               if goalReached newLayer then i+1
+                                               -- otherwise, keep investigating the next board state
+                                               else bSearch i lim rest newRecord newLayer
+    where 
+        goalReached layer = case Heap.viewHead layer of
+                                Just (28, _) -> True
+                                _ -> False
+{-
+bSearch2 :: Int -> Int -> MinLayer -> MinLayer -> MinLayer -> Int
+bSearch2 level size old new1 new2 = 
+    case Heap.view old of
+        Nothing -> bSearch2 (level+1) size (Heap.union new1 new2) Heap.empty Heap.empty
+        Just ((c, b), rest) -> case Heap.view rest of 
+                                 Nothing -> let candidates = expands (c, b) (allDestinations' b)
+                                                newLayer = renewLayer size new1 candidates
+                                            in  if goalReached newLayer then level+1
+                                                else bSearch2 (level+1) size (Heap.union newLayer new2) Heap.empty Heap.empty
+                                 Just ((c',b'), rest') -> let candidates1 = expands (c, b) (allDestinations' b)
+                                                              newLayer1 = renewLayer size new1 candidates1
+                                                              candidates2 = expands (c', b') (allDestinations' b')
+                                                              newLayer2 = renewLayer size new2 candidates2
+                                                          in  if newLayer1 `par` newLayer2 `pseq` (goalReached newLayer1 || goalReached newLayer2) then level+1
+                                                              else bSearch2 level size rest' newLayer1 newLayer2
+-}
+
+        
 
 -- -- for a list of board states, process each new state for each state 
 -- -- update the new positions based on the old ones
@@ -112,18 +162,25 @@ bSearch i lim current new = case Heap.view current of
 --                                       readSTRef n) -- update the previously discovered board states with the new found board states
 
 -- popular the candidate movements within a certain width, also replace the board states with better ones once the width is reached
-renewLayer :: Int -> MinLayer -> MaxLayer -> MinLayer
-renewLayer lim minHp maxHp =
+renewLayer :: Int -> MinLayer -> Record -> MaxLayer -> (MinLayer, Record)
+renewLayer lim minHp record maxHp =
     case Heap.view maxHp of
-        Nothing -> minHp -- return the new candidate set
-        Just ((28, board), _) -> Heap.singleton (28, board)  -- if reach the goal then just return a singleton
-        Just (item@(maxcen, _), restMaxHp) -> -- if the heap's space is still spare then just insert the the candidate
-                        if Heap.size minHp < lim then renewLayer lim (Heap.insert item minHp) restMaxHp
-                        -- otherwise, have to filter out the ones wth less centroid 
-                        else case Heap.view minHp of
-                                Nothing -> error "Invalid operation in Heap"
-                                Just ((mincen, _), restMinHp) -> if maxcen > mincen then renewLayer lim (Heap.insert item restMinHp) restMaxHp
-                                                                 else renewLayer lim minHp restMaxHp
+        Nothing -> (minHp, record) -- return the new candidate set
+        Just (item@(28, _), _) -> (Heap.singleton item, record)  -- if reach the goal then just return a singleton
+        Just (item@(maxcen, board), restMaxHp) -> 
+                    let h = hashBoard board
+                    in  -- if the heap's space is still spare then just insert the the candidate
+                        -- need to make sure that such a board state is not discovered before in the current layer
+                        -- skip if already exist
+                        if h `Set.member` record then renewLayer lim minHp record restMaxHp
+                        else if Heap.size minHp < lim then renewLayer lim (Heap.insert item minHp) (Set.insert h record) restMaxHp
+                             -- otherwise, have to filter out the ones wth less centroid 
+                             else case Heap.view minHp of
+                                    Nothing -> error "Invalid operation in Heap"
+                                    Just ((mincen, board'), restMinHp) -> 
+                                                    if maxcen >= mincen 
+                                                    then renewLayer lim (Heap.insert item restMinHp) (Set.insert h record) restMaxHp
+                                                    else renewLayer lim minHp record restMaxHp
 
 -- updateList (n:ns) wb ps
 --   | snd n == 28 = [n] -- if reach the goal then just return the goal state
