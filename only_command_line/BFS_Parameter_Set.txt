@@ -1,0 +1,3 @@
+
+
+Original search (width = 100), 100 random boards: time = , total moves = 
