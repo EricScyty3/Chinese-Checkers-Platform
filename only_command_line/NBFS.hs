@@ -104,55 +104,65 @@ bSearch i lim gen temp current record new =
                 case Heap.view current of
                     -- turn to the next generation if the current states are all traversed
                     -- reset the buffer while remaining/cleaning the tabu list
-                    Nothing -> {-if (i+1) `mod` 4 == 0 then-} bSearch (i+1) lim gen newTemp new record Heap.empty
-                               -- else bSearch (i+1) lim gen newTemp new record Heap.empty
+                    Nothing -> if (i+1) `mod` 4 == 0 then bSearch (i+1) lim gen newTemp new Set.empty Heap.empty
+                               else bSearch (i+1) lim gen newTemp new record Heap.empty
                     -- expand a board state in the current generation and update to the next one
                     Just ((c, b), rest) -> let candidates = expands (c, b) (allDestinations' b)
-                                               (newLayer, newRecord, newGen) = renewLayer lim gen temp new record candidates
+                                               (newGen, candidates') = createLayer c temp gen candidates Heap.empty
+                                               (newLayer, newRecord) = renewLayer lim new record candidates'
                                            in  -- determine if reaching the goal state, if so, then return the number of the total layers
                                                -- since the goal state is reached at the next step, the layer level needs to be incremented by 1
                                                if goalReached newLayer then i+1
                                                -- otherwise, keep investigating the next board state
-                                               else bSearch i lim newGen temp rest record {-newRecord-} newLayer
+                                               else bSearch i lim newGen temp rest newRecord newLayer
     where
         goalReached layer = case Heap.viewHead layer of
                                 Just (28, _) -> True
                                 _ -> False
 
         newTemp = 0.95 * temp
-
+            
 -- Simulated annealing
 -- Tabu Search
 -- Breadth-First Search
 -- popular the candidate movements within a certain width, also replace the board states with better ones once the width is reached
-renewLayer :: Int -> StdGen -> Float -> MinLayer -> TabuList -> MaxLayer -> (MinLayer, TabuList, StdGen)
-renewLayer lim gen temp minHp record maxHp =
+renewLayer :: Int -> MinLayer -> TabuList -> MaxLayer -> (MinLayer, TabuList)
+renewLayer lim minHp record maxHp =
     case Heap.view maxHp of
         -- base case 1, stop the renewng when finish updating the layer
-        Nothing -> (minHp, record, gen)
+        Nothing -> (minHp, record)
         -- base case 2, stop when discover a goal state (will be seen firstly based on the nature of max-heap)
-        Just (item@(28, _), _) -> (Heap.singleton item, record, gen)
+        Just (item@(28, _), _) -> (Heap.singleton item, record)
         -- otherwise, compare the two candidates and make update
         Just (item@(maxcen, board), restMaxHp)
             -> let h = hashBoard board
                in  case Heap.view minHp of
                         -- fill the new item into the empty layer
-                        Nothing -> renewLayer lim gen temp (Heap.insert item minHp) record {-(Set.insert h record)-} restMaxHp
+                        Nothing -> renewLayer lim (Heap.insert item minHp) (Set.insert h record) restMaxHp
                         Just ((mincen, _), restMinHp)
                             -- first discover whether this candidate has appeared before, if so, then skip this one 
-                            -- | h `Set.member` record -> renewLayer lim gen temp minHp record restMaxHp
+                            | h `Set.member` record -> renewLayer lim minHp record restMaxHp
                             -- second, check the size of the layer, if not yet reached the given limit, then just update it
-                            | Heap.size minHp < lim -> renewLayer lim gen temp (Heap.insert item minHp) record {-(Set.insert h record)-} restMaxHp
+                            | Heap.size minHp < lim -> renewLayer lim (Heap.insert item minHp) (Set.insert h record) restMaxHp
                             -- thrid, compare the two candidates, only update if giving positive increment of the centroid
                             -- since the two heap are different, one is minimum and another is maximum, therefore, the maximum candidate 
                             -- will always be compared with the minimum candidates, increasing the chance being accepted while eliminating the 
                             -- less promising ones
-                            | maxcen >= mincen -> renewLayer lim gen temp (Heap.insert item restMinHp) record {-(Set.insert h record)-} restMaxHp
-                            -- otherwise, try the SA condition 
-                            | otherwise -> let (r, newGen) = random gen :: (Float, StdGen)
-                                           in  -- generate a value to loosen constraint of the accepted candidates
-                                               if r <= exp (fromIntegral (maxcen - mincen) / temp) then renewLayer lim newGen temp (Heap.insert item restMinHp) record {-(Set.insert h record)-} restMaxHp
-                                               else renewLayer lim newGen temp minHp record restMaxHp
+                            | maxcen >= mincen -> renewLayer lim (Heap.insert item restMinHp) (Set.insert h record) restMaxHp
+                            -- otherwise, skip this one
+                            | otherwise -> renewLayer lim minHp record restMaxHp
+
+
+selectBySA :: Float -> StdGen -> Int -> Int -> (StdGen, Bool)
+selectBySA temp gen current new = let (r, newGen) = random gen :: (Float, StdGen)
+                                      result = new >= current || r <= exp (fromIntegral (new - current) / temp)
+                                  in  (newGen, result)
+
+createLayer :: Int -> Float -> StdGen -> [(Int, [Pos])] -> MaxLayer -> (StdGen, MaxLayer)
+createLayer _ _ gen [] layer = (gen, layer)
+createLayer current temp gen (item@(new, _):xs) layer = let (newGen, flag) = selectBySA temp gen current new
+                                                        in  if flag then createLayer current temp newGen xs (Heap.insert item layer)
+                                                            else createLayer current temp newGen xs layer
 
 --Board Handling--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- to tend the movement from right-top to left-bottom, the centroid of the position can be set as: y-x
@@ -183,8 +193,8 @@ symmetric2_pos = map (\(x, y) -> (y, x))
 
 -- implement a list of movements and get the resulting boards (positions), combine all into a MinHeap
 -- as well as update the new evaluation value of the resulting board
-expands :: (Int, [Pos]) -> [(Pos, [Pos])] -> MaxLayer
-expands currentState = Heap.fromList . concat . parMap rseq (flipBoard currentState)
+expands :: (Int, [Pos]) -> [(Pos, [Pos])] -> [(Int, [Pos])]
+expands currentState = concat . parMap rseq (flipBoard currentState)
 
 -- generate new boards based on the given pair of movements: (pos, a list of destinations)
 flipBoard :: (Int, [Pos]) -> (Pos, [Pos]) -> [(Int, [Pos])]

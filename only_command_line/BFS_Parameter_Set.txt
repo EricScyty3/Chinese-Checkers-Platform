@@ -25,27 +25,27 @@ Tabu Search (width = 1600, temporary memory): time = 179.674s , total moves = 13
 Tabu Search (width = 2400, temporary memory): time = 221.976s , total moves = 1352
 Tabu Search (width = 3200, temporary memory): time = 314.180 , total moves = 1347
 
-SA Search (width = 100): time = 6.660s, total moves = 1572
-SA Search (width = 400): time = 24.660s, total moves = 1492
-SA Search (width = 800),: time = 50.698s, total moves = 1467
-SA Search (width = 1600): time = 93.920s, total moves = 1441
-SA Search (width = 2400): time = 151.321s, total moves = 1427
+SA Search (width = 100): time = 5.526s, total moves = 1585
+SA Search (width = 400): time = 21.3652, total moves = 1502
+SA Search (width = 800): time = 39.217s, total moves = 1461
+SA Search (width = 1600): time = 79.812s, total moves = 1442
+SA Search (width = 2400): time = 111.849s, total moves = 1431
 
-SA Search (width = 100, keep memory): time = 9.905s, total moves = 1501
-SA Search (width = 400, keep memory): time = 38.974s, total moves = 1418
-SA Search (width = 800, keep memory): time = 76.846s, total moves = 1379
-SA Search (width = 1600, keep memory): time = 155.294s, total moves = 1358
-SA Search (width = 2400, keep memory): time = 253.302s, total moves = 1354
+SA Search (width = 100, keep memory): time = 7.550s, total moves = 1501
+SA Search (width = 400, keep memory): time = 31.475s, total moves = 1413
+SA Search (width = 800, keep memory): time = 69.564s, total moves = 1385
+SA Search (width = 1600, keep memory): time = 123.302s, total moves = 1363
+SA Search (width = 2400, keep memory): time = 198.830s, total moves = 1352
 
-SA Search (width = 100, clean memory): time = 11.260s, total moves = 1513
-SA Search (width = 400, clean memory): time = 44.739s, total moves = 1416
-SA Search (width = 800, clean memory): time = 86.082s, total moves = 1389
-SA Search (width = 1600, clean memory): time = 159.059s, total moves = 1364
-SA Search (width = 2400, clean memory): time = 201.790s, total moves = 1355
+SA Search (width = 100, clean memory): time = 6.520s, total moves = 1514
+SA Search (width = 400, clean memory): time = 27.608s, total moves = 1413
+SA Search (width = 800, clean memory): time = 55.014s, total moves = 1383
+SA Search (width = 1600, clean memory): time = 111.764s, total moves = 1364
+SA Search (width = 2400, clean memory): time = 163.267s , total moves = 1356
 
-SA Search (width = 100, temporary memory): time = 10.793s, total moves = 1509
-SA Search (width = 400, temporary memory): time = 45.968s, total moves = 1416
-SA Search (width = 800, temporary memory): time = 87.192s, total moves = 1383
-SA Search (width = 1600, temporary memory): time = 195.120s, total moves = 1364
-SA Search (width = 2400, temporary memory): time = 217.631s, total moves = 1353
-SA Search (width = 3200, temporary memory): time = 331.604s, total moves = 1347
+SA Search (width = 100, temporary memory): time = 7.032s, total moves = 1502
+SA Search (width = 400, temporary memory): time = 25.203s, total moves = 1411
+SA Search (width = 800, temporary memory): time = 52.479s, total moves = 1382
+SA Search (width = 1600, temporary memory): time = 110.403s, total moves = 1363
+SA Search (width = 2400, temporary memory): time = 167.610s total moves = 1355
+SA Search (width = 3200, temporary memory): time = 240.840s, total moves = 1346
