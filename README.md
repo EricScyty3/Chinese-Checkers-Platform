@@ -4,7 +4,7 @@
 
 This markdown sheet is a user guide for those who want to access the platform. The remainder will be divided into three parts: installation, the first launch of the executable, the experimental section. 
 
-Detailed project information can also be found in the university [GitLab](https://projects.cs.nott.ac.uk/scyty3/msc-project) here. 
+Detailed project information can also be found here [Github](https://github.com/EricScyty3/Chinese-Checkers-Platform). 
 
 <div align="center">
     <img src="./second-semester/assets/images/game_6.png" alt="game_6" width="50%" />
